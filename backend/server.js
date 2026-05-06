@@ -12,7 +12,7 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const JWT_SECRET = process.env.JWT_SECRET || "album-2026-dev-secret";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173";
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const PACKS_PER_DAY = 1;
@@ -119,6 +119,31 @@ function signAccessToken(user) {
 function makeRefreshToken() {
     return crypto.randomBytes(48).toString("hex");
 }
+
+function parseAllowedOrigins(raw) {
+    if (!raw) return [];
+    return String(raw)
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+}
+
+const allowedOrigins = parseAllowedOrigins(CORS_ORIGIN);
+
+function isOriginAllowed(origin) {
+    if (allowedOrigins.includes("*")) return true;
+    return allowedOrigins.includes(origin);
+}
+
+const corsOptions = {
+    origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        if (isOriginAllowed(origin)) return callback(null, true);
+        return callback(new Error("Origin nao permitida por CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+};
 
 async function createRefreshToken(userId) {
     const token = makeRefreshToken();
@@ -241,7 +266,8 @@ async function initDb() {
   `);
 }
 
-app.use(cors({ origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN }));
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {

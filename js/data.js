@@ -373,3 +373,8 @@ function generateAllStickers() {
 }
 
 const ALL_STICKERS = generateAllStickers();
+
+if (typeof window !== "undefined") {
+    window.ALBUM_DATA = ALBUM_DATA;
+    window.ALL_STICKERS = ALL_STICKERS;
+}
