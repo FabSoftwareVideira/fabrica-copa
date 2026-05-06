@@ -12,11 +12,36 @@ const outputFilePath = path.join(rootDir, "js", "player-images.json");
 
 const argLimit = process.argv.find((arg) => arg.startsWith("--limit="));
 const argDelay = process.argv.find((arg) => arg.startsWith("--delay="));
+const argPlayer = process.argv.find((arg) => arg.startsWith("--player="));
+const argCookie = process.argv.find((arg) => arg.startsWith("--cookie="));
+
 const maxItems = argLimit ? Number(argLimit.split("=")[1]) : null;
 const delayMs = argDelay ? Number(argDelay.split("=")[1]) : 350;
+const playerFilter = argPlayer ? normalizePlayerName(argPlayer.split("=")[1]) : "";
+const cookieHeader = argCookie ? argCookie.slice("--cookie=".length) : "";
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizePlayerName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ");
+}
+
+function resolveUrl(url, base) {
+    if (!url) return null;
+    try {
+        return new URL(url, base).toString();
+    } catch {
+        return null;
+    }
+}
+
+function normalizeImageUrl(url) {
+    if (!url) return null;
+    if (url.startsWith("//")) return `https:${url}`;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return null;
 }
 
 function loadAlbumData() {
@@ -45,156 +70,157 @@ function collectPlayers(albumData) {
     return players;
 }
 
-function normalizeImageUrl(url) {
-    if (!url) return null;
-    if (url.startsWith("//")) return `https:${url}`;
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    return null;
-}
-
-function normalizePlayerName(name) {
-    return String(name || "").trim().replace(/\s+/g, " ");
-}
-
-function toWikipediaSlug(titleOrName) {
-    return encodeURIComponent(normalizePlayerName(titleOrName).replace(/\s+/g, "_"));
-}
-
-function buildWikipediaPageUrl(titleOrName, lang) {
-    return `https://${lang}.wikipedia.org/wiki/${toWikipediaSlug(titleOrName)}`;
-}
-
-async function fetchJson(url) {
-    const response = await fetch(url, {
-        headers: {
-            "user-agent": "album-copa-2026-scraper/1.0 (educational project)",
-            accept: "application/json",
-        },
-    });
-    if (!response.ok) {
-        throw new Error(`Falha em JSON ${response.status} para ${url}`);
-    }
-    return response.json();
+function buildTransfermarktSearchUrl(query) {
+    const params = new URLSearchParams({ query: normalizePlayerName(query) });
+    return `https://www.transfermarkt.com.br/schnellsuche/ergebnis/schnellsuche?${params.toString()}`;
 }
 
 async function fetchText(url) {
-    const response = await fetch(url, {
-        headers: {
-            "user-agent": "album-copa-2026-scraper/1.0 (educational project)",
-            accept: "text/html",
-        },
-    });
+    const headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+    };
+
+    if (cookieHeader) {
+        headers.cookie = cookieHeader;
+    }
+
+    const response = await fetch(url, { headers });
+
     if (!response.ok) {
         throw new Error(`Falha em HTML ${response.status} para ${url}`);
     }
-    return response.text();
-}
 
-async function findWikipediaTitle(playerName, teamName, lang) {
-    const normalizedPlayerName = normalizePlayerName(playerName);
-    const query = `${normalizedPlayerName} ${teamName} futebol`;
-    const params = new URLSearchParams({
-        action: "query",
-        list: "search",
-        srsearch: query,
-        srlimit: "1",
-        format: "json",
-        origin: "*",
-    });
-
-    const url = `https://${lang}.wikipedia.org/w/api.php?${params.toString()}`;
-    const json = await fetchJson(url);
-    const results = json?.query?.search;
-    if (!Array.isArray(results) || results.length === 0) {
-        return null;
+    const html = await response.text();
+    if (response.status === 202 || !html.trim()) {
+        throw new Error(
+            `Transfermarkt bloqueou a requisicao (${response.status}). Tente executar com --cookie=\"SEU_COOKIE\"`,
+        );
     }
-    return results[0].title;
+
+    return html;
 }
 
-async function extractInfoboxImage(pageTitle, lang) {
-    const pageUrl = buildWikipediaPageUrl(pageTitle, lang);
-    const html = await fetchText(pageUrl);
-    const $ = cheerio.load(html);
+function extractPlayerProfileUrl(searchHtml) {
+    const $ = cheerio.load(searchHtml);
+
+    const href = $("a[href*='/profil/spieler/']").first().attr("href");
+    return resolveUrl(href, "https://www.transfermarkt.com.br");
+}
+
+function pickImageFromProfileHtml(profileHtml, pageUrl) {
+    const $ = cheerio.load(profileHtml);
 
     const selectors = [
-        ".infobox img",
-        "table.infobox img",
-        ".infobox.vcard img",
-        ".infobox.biography.vcard img",
+        ".modal-trigger img",
+        "img.modal-trigger",
+        ".data-header__profile-container img",
+        ".data-header__profile-image img",
     ];
 
     for (const selector of selectors) {
-        const src = $(selector).first().attr("src");
-        const imageUrl = normalizeImageUrl(src);
-        if (imageUrl) {
-            return { imageUrl, pageUrl };
-        }
+        const node = $(selector).first();
+        if (!node || node.length === 0) continue;
+
+        const src = node.attr("src") || node.attr("data-src") || node.attr("data-lazy");
+        const absolute = resolveUrl(src, pageUrl);
+        const imageUrl = normalizeImageUrl(absolute);
+        if (imageUrl) return imageUrl;
     }
 
-    return { imageUrl: null, pageUrl };
+    return null;
+}
+
+async function fetchTransfermarktPlayer(playerName, teamName) {
+    const searchTerms = [
+        `${normalizePlayerName(playerName)} ${teamName}`,
+        normalizePlayerName(playerName),
+    ];
+
+    for (const term of searchTerms) {
+        const searchUrl = buildTransfermarktSearchUrl(term);
+        const searchHtml = await fetchText(searchUrl);
+        const profileUrl = extractPlayerProfileUrl(searchHtml);
+        if (!profileUrl) continue;
+
+        const profileHtml = await fetchText(profileUrl);
+        const imageUrl = pickImageFromProfileHtml(profileHtml, profileUrl);
+        if (!imageUrl) continue;
+
+        return {
+            profileUrl,
+            imageUrl,
+            searchUrl,
+        };
+    }
+
+    return null;
 }
 
 async function fetchPlayerImage(player) {
-    const langs = ["pt", "en"];
-    const normalizedPlayerName = normalizePlayerName(player.name);
-
-    for (const lang of langs) {
-        try {
-            // Tenta primeiro URL direta no formato /wiki/Nome_Sobrenome
-            const direct = await extractInfoboxImage(normalizedPlayerName, lang);
-            if (direct.imageUrl) {
-                return {
-                    player: player.name,
-                    teamId: player.teamId,
-                    teamName: player.teamName,
-                    groupId: player.groupId,
-                    wikiLang: lang,
-                    wikiTitle: normalizedPlayerName,
-                    wikiPage: direct.pageUrl,
-                    imageUrl: direct.imageUrl,
-                    found: true,
-                };
-            }
-
-            const title = await findWikipediaTitle(player.name, player.teamName, lang);
-            if (!title) continue;
-
-            const { imageUrl, pageUrl } = await extractInfoboxImage(title, lang);
-            if (!imageUrl) continue;
-
+    try {
+        const transfermarkt = await fetchTransfermarktPlayer(player.name, player.teamName);
+        if (!transfermarkt) {
             return {
                 player: player.name,
                 teamId: player.teamId,
                 teamName: player.teamName,
                 groupId: player.groupId,
-                wikiLang: lang,
-                wikiTitle: title,
-                wikiPage: pageUrl,
-                imageUrl,
-                found: true,
+                source: "transfermarkt",
+                sourceMethod: "transfermarkt-search+modal-trigger",
+                transfermarktPage: null,
+                searchPage: null,
+                error: "Perfil ou imagem nao encontrado",
+                imageUrl: null,
+                found: false,
             };
-        } catch {
-            // Continua tentando no proximo idioma
         }
-    }
 
-    return {
-        player: player.name,
-        teamId: player.teamId,
-        teamName: player.teamName,
-        groupId: player.groupId,
-        wikiLang: null,
-        wikiTitle: null,
-        wikiPage: null,
-        imageUrl: null,
-        found: false,
-    };
+        return {
+            player: player.name,
+            teamId: player.teamId,
+            teamName: player.teamName,
+            groupId: player.groupId,
+            source: "transfermarkt",
+            sourceMethod: "transfermarkt-search+modal-trigger",
+            transfermarktPage: transfermarkt.profileUrl,
+            searchPage: transfermarkt.searchUrl,
+            error: null,
+            imageUrl: transfermarkt.imageUrl,
+            found: true,
+        };
+    } catch (err) {
+        return {
+            player: player.name,
+            teamId: player.teamId,
+            teamName: player.teamName,
+            groupId: player.groupId,
+            source: "transfermarkt",
+            sourceMethod: "transfermarkt-search+modal-trigger",
+            transfermarktPage: null,
+            searchPage: null,
+            error: err?.message || "Falha inesperada no scraping",
+            imageUrl: null,
+            found: false,
+        };
+    }
 }
 
 async function main() {
     const albumData = loadAlbumData();
     const players = collectPlayers(albumData);
-    const selectedPlayers = Number.isFinite(maxItems) && maxItems > 0 ? players.slice(0, maxItems) : players;
+
+    const filteredPlayers = playerFilter
+        ? players.filter(
+            (p) => normalizePlayerName(p.name).toLowerCase() === playerFilter.toLowerCase(),
+        )
+        : players;
+
+    const selectedPlayers =
+        Number.isFinite(maxItems) && maxItems > 0
+            ? filteredPlayers.slice(0, maxItems)
+            : filteredPlayers;
 
     console.log(`Jogadores para processar: ${selectedPlayers.length}`);
 
@@ -217,7 +243,7 @@ async function main() {
 
     const payload = {
         generatedAt: new Date().toISOString(),
-        source: "wikipedia-infobox",
+        source: "transfermarkt-modal-trigger",
         totalPlayers: selectedPlayers.length,
         foundImages: foundCount,
         notFoundImages: selectedPlayers.length - foundCount,

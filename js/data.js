@@ -100,7 +100,7 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "bra", name: "Brasil", flag: "🇧🇷", abbr: "BRA",
-                    players: ["Vinícius Jr.", "Rodrygo", "Casemiro", "Marquinhos", "Alisson"]
+                    players: ["Vinícius Junior", "Rodrygo", "Casemiro", "Marquinhos", "Alisson"]
                 },
                 {
                     id: "kor", name: "Coreia do Sul", flag: "🇰🇷", abbr: "KOR",
