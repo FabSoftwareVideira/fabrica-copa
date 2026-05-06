@@ -5,7 +5,7 @@
 const ALBUM_DATA = {
     title: "Copa do Mundo FIFA 2026",
     subtitle: "EUA • Canadá • México",
-    totalExpected: 310,
+    totalExpected: 298,
 
     // Seção de figurinhas especiais
     special: {
@@ -320,20 +320,6 @@ function generateAllStickers() {
     // Figurinhas por grupo
     ALBUM_DATA.groups.forEach(group => {
         let stickerNum = group.startNum;
-
-        // Figurinha do grupo
-        stickers.push({
-            id: `grp-${group.id}`,
-            num: stickerNum++,
-            name: `Grupo ${group.id}`,
-            section: `grupo-${group.id}`,
-            sectionName: group.name,
-            type: "group",
-            icon: "📋",
-            teamId: null,
-            teamName: null,
-            groupId: group.id,
-        });
 
         // Figurinhas dos times
         group.teams.forEach(team => {

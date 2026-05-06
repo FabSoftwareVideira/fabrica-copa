@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, reactive } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
 
 const API_BASE_URL = "http://localhost:3001/api";
 const PACKS_PER_DAY = 1;
+const PACK_DRAG_OPEN_DISTANCE = 180;
 
 const GROUP_COLORS = {
   especial: "#f59e0b",
@@ -46,6 +47,10 @@ const ui = reactive({
   flipDirection: "next",
   toast: "",
   packOpen: false,
+  packStage: "sealed",
+  packDragActive: false,
+  packDragProgress: 0,
+  packDragStartX: 0,
   promoOpen: false,
   authOpen: false,
   authMode: "login",
@@ -209,6 +214,21 @@ const searchResults = computed(() => {
   );
 });
 
+const packNewCount = computed(
+  () => ui.wasOwned.filter((owned) => !owned).length,
+);
+
+const packRepeatCount = computed(
+  () => ui.wasOwned.filter((owned) => owned).length,
+);
+
+const packDragStyle = computed(() => ({
+  "--tear-progress": `${ui.packDragProgress}%`,
+  "--pack-shift": `${Math.round(ui.packDragProgress * 1.2)}px`,
+}));
+
+let packRevealTimer = null;
+
 onMounted(async () => {
   if (isAuthenticated.value) {
     await bootstrapAuth();
@@ -216,6 +236,11 @@ onMounted(async () => {
     ui.authOpen = true;
     ui.authMode = "login";
   }
+});
+
+onBeforeUnmount(() => {
+  removePackDragListeners();
+  clearPackRevealTimer();
 });
 
 function parseUser() {
@@ -386,6 +411,7 @@ async function openPack() {
 
     ui.pack = Array.isArray(data.pack) ? data.pack : [];
     ui.wasOwned = Array.isArray(data.wasOwned) ? data.wasOwned : [];
+    resetPackOpeningState();
     ui.packOpen = true;
 
     await loadPackHistory();
@@ -397,9 +423,86 @@ async function openPack() {
 }
 
 function closePackModal() {
+  removePackDragListeners();
+  clearPackRevealTimer();
   ui.packOpen = false;
+  ui.packStage = "sealed";
+  ui.packDragActive = false;
+  ui.packDragProgress = 0;
+  ui.packDragStartX = 0;
   ui.pack = [];
   ui.wasOwned = [];
+}
+
+function resetPackOpeningState() {
+  ui.packStage = "sealed";
+  ui.packDragActive = false;
+  ui.packDragProgress = 0;
+  ui.packDragStartX = 0;
+  clearPackRevealTimer();
+  removePackDragListeners();
+}
+
+function clearPackRevealTimer() {
+  if (!packRevealTimer) return;
+  clearTimeout(packRevealTimer);
+  packRevealTimer = null;
+}
+
+function removePackDragListeners() {
+  window.removeEventListener("pointermove", onPackDragMove);
+  window.removeEventListener("pointerup", onPackDragEnd);
+  window.removeEventListener("pointercancel", onPackDragEnd);
+}
+
+function startPackDrag(event) {
+  if (ui.packStage !== "sealed") return;
+  event.preventDefault();
+  ui.packDragActive = true;
+  ui.packDragStartX = event.clientX;
+
+  removePackDragListeners();
+  window.addEventListener("pointermove", onPackDragMove);
+  window.addEventListener("pointerup", onPackDragEnd);
+  window.addEventListener("pointercancel", onPackDragEnd);
+}
+
+function onPackDragMove(event) {
+  if (!ui.packDragActive || ui.packStage !== "sealed") return;
+  const delta = Math.max(0, event.clientX - ui.packDragStartX);
+  const progress = Math.min(
+    100,
+    Math.round((delta / PACK_DRAG_OPEN_DISTANCE) * 100),
+  );
+  ui.packDragProgress = progress;
+
+  if (progress >= 100) {
+    revealPackFromDrag();
+  }
+}
+
+function onPackDragEnd() {
+  if (!ui.packDragActive) return;
+  ui.packDragActive = false;
+  removePackDragListeners();
+
+  if (ui.packStage === "sealed" && ui.packDragProgress < 100) {
+    ui.packDragProgress = 0;
+  }
+}
+
+function revealPackFromDrag() {
+  if (ui.packStage !== "sealed") return;
+  ui.packStage = "opening";
+  ui.packDragActive = false;
+  ui.packDragProgress = 100;
+  removePackDragListeners();
+  clearPackRevealTimer();
+
+  packRevealTimer = setTimeout(() => {
+    ui.packStage = "opened";
+    packRevealTimer = null;
+  }, 360);
 }
 
 async function redeemPromo() {
@@ -506,6 +609,12 @@ function stickerStatus(item) {
   if (count > 1) return `Repetida (${count}x)`;
   if (count === 1) return "Colada";
   return "Faltando";
+}
+
+function packGroupStyle(item) {
+  return {
+    "--group-color": groupColor(item),
+  };
 }
 
 function selectFlipGroup(groupKey) {
@@ -686,9 +795,6 @@ function goToNextFlipPage() {
             <option value="duplicate">Repetidas</option>
           </select>
         </div>
-        <p class="read-only-hint">
-          As figurinhas sao atualizadas apenas ao abrir pacotinhos.
-        </p>
         <div class="cards">
           <article
             v-for="item in filteredAlbum"
@@ -866,22 +972,91 @@ function goToNextFlipPage() {
     </footer>
 
     <div v-if="ui.packOpen" class="modal">
-      <div class="modal-box">
-        <h2>Novo Pacotinho</h2>
-        <div class="pack-grid">
-          <article
-            v-for="(item, index) in ui.pack"
-            :key="`${item.id}-${index}`"
-            class="pack-card"
-            :class="{ owned: ui.wasOwned[index] }"
-          >
-            <span class="num">#{{ item.num }}</span>
-            <span class="icon">{{ item.icon }}</span>
-            <strong>{{ item.name }}</strong>
-            <small>{{ ui.wasOwned[index] ? "Repetida" : "Nova" }}</small>
-          </article>
-        </div>
-        <button type="button" @click="closePackModal">Fechar</button>
+      <div
+        class="modal-box pack-modal-box"
+        :class="`pack-stage-${ui.packStage}`"
+      >
+        <template v-if="ui.packStage !== 'opened'">
+          <h2>Pacotinho Lacrado</h2>
+          <p class="pack-instruction">
+            Arraste o pacotinho para a direita para rasgar e revelar as
+            figurinhas.
+          </p>
+
+          <div class="pack-opening-zone">
+            <div
+              class="sticker-pack"
+              :class="{ dragging: ui.packDragActive }"
+              :style="packDragStyle"
+              @pointerdown="startPackDrag"
+            >
+              <div class="pack-shine" />
+              <div class="pack-rip" />
+              <span class="pack-brand">FIFA World Cup 2026</span>
+              <span class="pack-tear-handle">ARRASTE ➜</span>
+            </div>
+          </div>
+
+          <div class="pack-progress-track">
+            <div
+              class="pack-progress-fill"
+              :style="{ width: `${ui.packDragProgress}%` }"
+            />
+          </div>
+
+          <small class="pack-progress-label">
+            {{
+              ui.packStage === "opening"
+                ? "Abrindo pacotinho..."
+                : `Rasgo: ${ui.packDragProgress}%`
+            }}
+          </small>
+
+          <button type="button" @click="closePackModal">Cancelar</button>
+        </template>
+
+        <template v-else>
+          <div class="pack-reveal-head">
+            <h2>Figurinhas Reveladas</h2>
+            <p>Confira o resultado deste pacotinho</p>
+          </div>
+
+          <div class="pack-summary">
+            <span class="pack-summary-chip new">Novas: {{ packNewCount }}</span>
+            <span class="pack-summary-chip repeat"
+              >Repetidas: {{ packRepeatCount }}</span
+            >
+          </div>
+
+          <div class="pack-grid pack-grid-revealed">
+            <article
+              v-for="(item, index) in ui.pack"
+              :key="`${item.id}-${index}`"
+              class="pack-card reveal-card"
+              :class="{ owned: ui.wasOwned[index] }"
+              :style="packGroupStyle(item)"
+            >
+              <div class="pack-card-top">
+                <span class="num">#{{ item.num }}</span>
+                <span
+                  class="pack-result-badge"
+                  :class="ui.wasOwned[index] ? 'repeat' : 'new'"
+                >
+                  {{ ui.wasOwned[index] ? "Repetida" : "Nova" }}
+                </span>
+              </div>
+              <span class="icon">{{ item.icon }}</span>
+              <strong>{{ item.name }}</strong>
+              <div class="pack-meta">
+                <small class="pack-group-chip">{{ groupLabel(item) }}</small>
+                <small v-if="item.teamName" class="pack-team-chip">{{
+                  item.teamName
+                }}</small>
+              </div>
+            </article>
+          </div>
+          <button type="button" @click="closePackModal">Colar no Album</button>
+        </template>
       </div>
     </div>
 
