@@ -1,0 +1,229 @@
+{
+  "generatedAt": "2026-05-06T13:13:06.595Z",
+  "source": "wikipedia-infobox",
+  "totalPlayers": 20,
+  "foundImages": 12,
+  "notFoundImages": 8,
+  "items": [
+    {
+      "player": "Christian Pulisic",
+      "teamId": "usa",
+      "teamName": "Estados Unidos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Christian Pulisic",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Christian_Pulisic",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Christian_Pulisic_USMNT_v_Belgium_Mar_28_2026-73_%28cropped%29.jpg/250px-Christian_Pulisic_USMNT_v_Belgium_Mar_28_2026-73_%28cropped%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Tyler Adams",
+      "teamId": "usa",
+      "teamName": "Estados Unidos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Tyler Adams",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Tyler_Adams",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/2021-11-06_Fu%C3%9Fball%2C_M%C3%A4nner%2C_1._Bundesliga%2C_RB_Leipzig_-_Borussia_Dortmund_1DX_1527_by_Stepro_%28cropped2%29.jpg/250px-2021-11-06_Fu%C3%9Fball%2C_M%C3%A4nner%2C_1._Bundesliga%2C_RB_Leipzig_-_Borussia_Dortmund_1DX_1527_by_Stepro_%28cropped2%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Weston McKennie",
+      "teamId": "usa",
+      "teamName": "Estados Unidos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Weston McKennie",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Weston_McKennie",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Weston_McKennie_USMNT_v_Belgium_Mar_28_2026-68_%28cropped%29.jpg/250px-Weston_McKennie_USMNT_v_Belgium_Mar_28_2026-68_%28cropped%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Gio Reyna",
+      "teamId": "usa",
+      "teamName": "Estados Unidos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Giovanni Reyna",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Giovanni_Reyna",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Gio_Reyna_USMNT_v_Belgium_Mar_28_2026-60_%28cropped%29.jpg/250px-Gio_Reyna_USMNT_v_Belgium_Mar_28_2026-60_%28cropped%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Matt Turner",
+      "teamId": "usa",
+      "teamName": "Estados Unidos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Matt Turner",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Matt_Turner",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Matt_Turner_Red_Bulls_Revolution-34_%28cropped%29.jpg/250px-Matt_Turner_Red_Bulls_Revolution-34_%28cropped%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Achraf Hakimi",
+      "teamId": "mar",
+      "teamName": "Marrocos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Achraf Hakimi",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Achraf_Hakimi",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Achraf_Hakimi_vs_Niger%2C_5_Sept_2025.jpg/250px-Achraf_Hakimi_vs_Niger%2C_5_Sept_2025.jpg",
+      "found": true
+    },
+    {
+      "player": "Hakim Ziyech",
+      "teamId": "mar",
+      "teamName": "Marrocos",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Hakim Ziyech",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Hakim_Ziyech",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Hakim_Ziyech_2021.jpg/250px-Hakim_Ziyech_2021.jpg",
+      "found": true
+    },
+    {
+      "player": "Youssef En-Nesyri",
+      "teamId": "mar",
+      "teamName": "Marrocos",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Sofyan Amrabat",
+      "teamId": "mar",
+      "teamName": "Marrocos",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Bono",
+      "teamId": "mar",
+      "teamName": "Marrocos",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Granit Xhaka",
+      "teamId": "sui",
+      "teamName": "Suíça",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Xherdan Shaqiri",
+      "teamId": "sui",
+      "teamName": "Suíça",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Yann Sommer",
+      "teamId": "sui",
+      "teamName": "Suíça",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Manuel Akanji",
+      "teamId": "sui",
+      "teamName": "Suíça",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Manuel Akanji",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Manuel_Akanji",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/2023-10-04_Fu%C3%9Fball%2C_M%C3%A4nner%2C_UEFA_Champions_League%2C_RB_Leipzig_-_Manchester_City_FC_1DX_2792_%28Manuel_Akanji%29.jpg/250px-2023-10-04_Fu%C3%9Fball%2C_M%C3%A4nner%2C_UEFA_Champions_League%2C_RB_Leipzig_-_Manchester_City_FC_1DX_2792_%28Manuel_Akanji%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Ruben Vargas",
+      "teamId": "sui",
+      "teamName": "Suíça",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    },
+    {
+      "player": "Musa Al-Tamari",
+      "teamId": "jor",
+      "teamName": "Jordânia",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Mandato Britânico da Palestina",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Mandato_Brit%C3%A2nico_da_Palestina",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/France_and_United_Kingdom_flags.svg/40px-France_and_United_Kingdom_flags.svg.png",
+      "found": true
+    },
+    {
+      "player": "Yazan Al-Naimat",
+      "teamId": "jor",
+      "teamName": "Jordânia",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Copa da Ásia de 2023",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Copa_da_%C3%81sia_de_2023",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Flag_of_Qatar.svg/40px-Flag_of_Qatar.svg.png",
+      "found": true
+    },
+    {
+      "player": "Ahmad Salam",
+      "teamId": "jor",
+      "teamName": "Jordânia",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Saddam Hussein",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Saddam_Hussein",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Saddam_Hussein_in_1998.png/250px-Saddam_Hussein_in_1998.png",
+      "found": true
+    },
+    {
+      "player": "Mahmoud Rashid",
+      "teamId": "jor",
+      "teamName": "Jordânia",
+      "groupId": "A",
+      "wikiLang": "pt",
+      "wikiTitle": "Abdullah II da Jordânia",
+      "wikiPage": "https://pt.wikipedia.org/wiki/Abdullah_II_da_Jord%C3%A2nia",
+      "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Sanae_Takaichi_meets_Abdullah_II_of_Jordan_000185450_%28Abdullah_II%29.jpg/250px-Sanae_Takaichi_meets_Abdullah_II_of_Jordan_000185450_%28Abdullah_II%29.jpg",
+      "found": true
+    },
+    {
+      "player": "Shadi Shaheen",
+      "teamId": "jor",
+      "teamName": "Jordânia",
+      "groupId": "A",
+      "wikiLang": null,
+      "wikiTitle": null,
+      "wikiPage": null,
+      "imageUrl": null,
+      "found": false
+    }
+  ]
+}

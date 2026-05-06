@@ -362,6 +362,38 @@ button:disabled {
   font-size: 1.45rem;
 }
 
+.sticker-photo-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--group-color, #334155) 45%, #cbd5e1);
+  background: color-mix(in srgb, var(--group-color, #334155) 10%, #ffffff);
+  min-height: 122px;
+}
+
+.sticker-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+}
+
+.sticker-flag {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+  font-size: 1rem;
+}
+
 .num {
   color: #475569;
   font-size: 0.9rem;
@@ -486,6 +518,10 @@ button:disabled {
   gap: 0.26rem;
   border: 1px solid var(--line);
   transition: transform 160ms ease;
+}
+
+.flip-card .sticker-photo-wrap {
+  min-height: 102px;
 }
 
 .flip-card:hover {
@@ -759,6 +795,10 @@ button:disabled {
     color-mix(in srgb, var(--group-color) 13%, #ffffff),
     #ffffff 45%
   );
+}
+
+.pack-card.reveal-card .sticker-photo-wrap {
+  min-height: 110px;
 }
 
 .pack-card-top {
