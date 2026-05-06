@@ -25,6 +25,7 @@ const stickerMap = new Map(stickers.map((item) => [item.id, item]));
 
 const state = reactive({
   view: "dashboard",
+  flipGroup: "especial",
   filterGroup: "all",
   filterStatus: "all",
   searchQuery: "",
@@ -42,6 +43,7 @@ const state = reactive({
 const ui = reactive({
   loading: false,
   openingPack: false,
+  flipDirection: "next",
   toast: "",
   packOpen: false,
   promoOpen: false,
@@ -80,6 +82,18 @@ const percent = computed(() =>
     ? 0
     : Math.round((collectedCount.value / total.value) * 100),
 );
+const progressTheme = computed(() => {
+  if (percent.value >= 76) {
+    return { key: "theme-finals", label: "Fase 4: Final" };
+  }
+  if (percent.value >= 51) {
+    return { key: "theme-semifinal", label: "Fase 3: Semifinais" };
+  }
+  if (percent.value >= 26) {
+    return { key: "theme-groups", label: "Fase 2: Grupos" };
+  }
+  return { key: "theme-kickoff", label: "Fase 1: Abertura" };
+});
 const dailyLeft = computed(() => {
   const today = todayStr();
   const used = state.packsUsedDate === today ? state.packsUsedToday : 0;
@@ -115,6 +129,71 @@ const filteredAlbum = computed(() => {
 
     return true;
   });
+});
+
+const albumPages = computed(() => {
+  const pages = new Map();
+
+  for (const item of stickers) {
+    const key = item.section === "especial" ? "especial" : item.groupId;
+    if (!key) continue;
+
+    if (!pages.has(key)) {
+      pages.set(key, {
+        key,
+        name: key === "especial" ? "Especial" : `Grupo ${key}`,
+        color: GROUP_COLORS[key] || "#334155",
+        stickers: [],
+      });
+    }
+
+    pages.get(key).stickers.push(item);
+  }
+
+  const order = [
+    "especial",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+  ];
+
+  return [...pages.values()]
+    .map((page) => {
+      const orderedStickers = [...page.stickers].sort((a, b) => a.num - b.num);
+      const collectedItems = orderedStickers.filter(
+        (s) => getCount(s.id) >= 1,
+      ).length;
+      const pendingItems = orderedStickers.length - collectedItems;
+      const pct = orderedStickers.length
+        ? Math.round((collectedItems / orderedStickers.length) * 100)
+        : 0;
+
+      return {
+        ...page,
+        stickers: orderedStickers,
+        collectedItems,
+        pendingItems,
+        pct,
+      };
+    })
+    .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+});
+
+const currentFlipPage = computed(() => {
+  if (albumPages.value.length === 0) return null;
+  return (
+    albumPages.value.find((page) => page.key === state.flipGroup) ||
+    albumPages.value[0]
+  );
 });
 
 const searchResults = computed(() => {
@@ -428,18 +507,54 @@ function stickerStatus(item) {
   if (count === 1) return "Colada";
   return "Faltando";
 }
+
+function selectFlipGroup(groupKey) {
+  if (!currentFlipPage.value || groupKey === currentFlipPage.value.key) return;
+  const currentIdx = albumPages.value.findIndex(
+    (page) => page.key === currentFlipPage.value.key,
+  );
+  const targetIdx = albumPages.value.findIndex((page) => page.key === groupKey);
+  if (targetIdx < 0) return;
+
+  ui.flipDirection = targetIdx >= currentIdx ? "next" : "prev";
+  state.flipGroup = groupKey;
+}
+
+function goToPreviousFlipPage() {
+  if (!currentFlipPage.value) return;
+  const idx = albumPages.value.findIndex(
+    (page) => page.key === currentFlipPage.value.key,
+  );
+  if (idx <= 0) return;
+  ui.flipDirection = "prev";
+  state.flipGroup = albumPages.value[idx - 1].key;
+}
+
+function goToNextFlipPage() {
+  if (!currentFlipPage.value) return;
+  const idx = albumPages.value.findIndex(
+    (page) => page.key === currentFlipPage.value.key,
+  );
+  if (idx < 0 || idx >= albumPages.value.length - 1) return;
+  ui.flipDirection = "next";
+  state.flipGroup = albumPages.value[idx + 1].key;
+}
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :class="progressTheme.key">
+    <div class="ambient-orb ambient-orb-a" aria-hidden="true" />
+    <div class="ambient-orb ambient-orb-b" aria-hidden="true" />
+
     <header class="topbar">
-      <div>
+      <div class="topbar-brand">
+        <p class="eyebrow">World Cup Sticker Album</p>
         <h1>Album Copa 2026</h1>
-        <p>EUA, Canada e Mexico</p>
+        <p>EUA, Canada e Mexico · {{ progressTheme.label }}</p>
       </div>
       <div class="top-actions">
         <button class="promo-btn" type="button" @click="ui.promoOpen = true">
-          Codigo
+          Codigo Promocional
         </button>
         <button
           class="pack-btn"
@@ -487,6 +602,13 @@ function stickerStatus(item) {
       </button>
       <button
         type="button"
+        :class="{ active: state.view === 'flip' }"
+        @click="state.view = 'flip'"
+      >
+        Folhear
+      </button>
+      <button
+        type="button"
         :class="{ active: state.view === 'search' }"
         @click="state.view = 'search'"
       >
@@ -496,6 +618,10 @@ function stickerStatus(item) {
 
     <main class="content">
       <section v-if="state.view === 'dashboard'" class="panel">
+        <div class="panel-head">
+          <h2>Visao Geral</h2>
+          <span class="badge-chip">{{ percent }}% completo</span>
+        </div>
         <div class="stats">
           <article>
             <strong>{{ total }}</strong>
@@ -535,6 +661,10 @@ function stickerStatus(item) {
       </section>
 
       <section v-if="state.view === 'album'" class="panel">
+        <div class="panel-head">
+          <h2>Catalogo Completo</h2>
+          <span class="badge-chip">{{ filteredAlbum.length }} exibidas</span>
+        </div>
         <div class="filters">
           <select v-model="state.filterGroup">
             <option value="all">Todos os grupos</option>
@@ -576,6 +706,10 @@ function stickerStatus(item) {
       </section>
 
       <section v-if="state.view === 'missing'" class="panel">
+        <div class="panel-head">
+          <h2>Figurinhas Faltando</h2>
+          <span class="badge-chip">{{ missingList.length }} itens</span>
+        </div>
         <h3>Figurinhas faltando ({{ missingList.length }})</h3>
         <div class="list">
           <article v-for="item in missingList" :key="item.id">
@@ -587,6 +721,10 @@ function stickerStatus(item) {
       </section>
 
       <section v-if="state.view === 'duplicates'" class="panel">
+        <div class="panel-head">
+          <h2>Figurinhas Repetidas</h2>
+          <span class="badge-chip">{{ duplicatesList.length }} itens</span>
+        </div>
         <h3>Figurinhas repetidas ({{ duplicatesList.length }})</h3>
         <div class="list">
           <article v-for="item in duplicatesList" :key="item.id">
@@ -597,8 +735,101 @@ function stickerStatus(item) {
         </div>
       </section>
 
+      <section v-if="state.view === 'flip'" class="panel panel-flip">
+        <div class="panel-head">
+          <h2>Folhear Album</h2>
+          <span class="badge-chip">1 folha por grupo</span>
+        </div>
+
+        <div class="flip-nav">
+          <button
+            type="button"
+            class="flip-arrow"
+            :disabled="
+              !currentFlipPage ||
+              albumPages.findIndex((p) => p.key === currentFlipPage.key) === 0
+            "
+            @click="goToPreviousFlipPage"
+          >
+            ◀
+          </button>
+
+          <div class="flip-tabs">
+            <button
+              v-for="page in albumPages"
+              :key="page.key"
+              type="button"
+              class="flip-tab"
+              :class="{
+                active: currentFlipPage && currentFlipPage.key === page.key,
+              }"
+              @click="selectFlipGroup(page.key)"
+            >
+              {{ page.name }}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="flip-arrow"
+            :disabled="
+              !currentFlipPage ||
+              albumPages.findIndex((p) => p.key === currentFlipPage.key) ===
+                albumPages.length - 1
+            "
+            @click="goToNextFlipPage"
+          >
+            ▶
+          </button>
+        </div>
+
+        <transition :name="`sheet-turn-${ui.flipDirection}`" mode="out-in">
+          <article
+            v-if="currentFlipPage"
+            :key="currentFlipPage.key"
+            class="flip-sheet"
+            :style="{ '--sheet-color': currentFlipPage.color }"
+          >
+            <header class="flip-sheet-head">
+              <div>
+                <h3>{{ currentFlipPage.name }}</h3>
+                <p>
+                  Coladas: {{ currentFlipPage.collectedItems }} · Pendentes:
+                  {{ currentFlipPage.pendingItems }}
+                </p>
+              </div>
+              <span class="badge-chip">{{ currentFlipPage.pct }}%</span>
+            </header>
+
+            <div class="flip-sheet-grid">
+              <article
+                v-for="item in currentFlipPage.stickers"
+                :key="item.id"
+                class="flip-card"
+                :class="{
+                  stuck: getCount(item.id) >= 1,
+                  pending: getCount(item.id) < 1,
+                }"
+              >
+                <span class="num">#{{ item.num }}</span>
+                <span class="icon">{{ item.icon }}</span>
+                <strong>{{ item.name }}</strong>
+                <small>
+                  {{ getCount(item.id) >= 1 ? "Colada" : "Pendente" }}
+                </small>
+              </article>
+            </div>
+          </article>
+        </transition>
+      </section>
+
       <section v-if="state.view === 'search'" class="panel">
+        <div class="panel-head">
+          <h2>Busca de Figurinhas</h2>
+          <span class="badge-chip">{{ searchResults.length }} resultados</span>
+        </div>
         <input
+          class="search-input"
           v-model="state.searchQuery"
           type="search"
           placeholder="Buscar por nome, time ou numero"
@@ -625,7 +856,7 @@ function stickerStatus(item) {
 
     <footer class="footer">
       <div v-if="isAuthenticated" class="user-row">
-        <span>Logado como {{ state.user.name }}</span>
+        <span class="user-pill">Logado como {{ state.user.name }}</span>
         <button type="button" @click="logout">Sair</button>
       </div>
       <div v-else class="user-row">
@@ -644,7 +875,8 @@ function stickerStatus(item) {
             class="pack-card"
             :class="{ owned: ui.wasOwned[index] }"
           >
-            <span>#{{ item.num }}</span>
+            <span class="num">#{{ item.num }}</span>
+            <span class="icon">{{ item.icon }}</span>
             <strong>{{ item.name }}</strong>
             <small>{{ ui.wasOwned[index] ? "Repetida" : "Nova" }}</small>
           </article>
