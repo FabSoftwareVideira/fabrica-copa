@@ -46,7 +46,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "jor", name: "Jordânia", flag: "🇯🇴", abbr: "JOR",
-                    players: ["Musa Al-Tamari", "Yazan Al-Naimat", "Ali Olwan", "Noor Al-Rawabdeh", "Nizar Al-Rashdan", "Yazeed Abulaila", "Abdallah Nasib", "Ehsan Haddad", "Salem Al-Ajalin", "Mahmoud Al-Mardi"]
+                    players: ["Mousa Tamari", "Yazan Al-Naimat", "Ali Olwan", "Noor Al-Rawabdeh", "Nizar Al-Rashdan", "Yazeed Abulaila", "Abdallah Nasib", "Ehsan Haddad", "Salem Al-Ajalin", "Mahmoud Al-Mardi"]
                 }
             ]
         },
@@ -60,7 +60,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "ksa", name: "Arábia Saudita", flag: "🇸🇦", abbr: "KSA",
-                    players: ["Salem Al-Dawsari", "Mohammed Al-Owais", "Firas Al-Buraikan", "Sami Al-Najei", "Ali Al-Bulaihi", "Saud Abdulhamid", "Abdulelah Al-Malki", "Mohamed Kanno", "Hassan Tambakti", "Abdulrahman Ghareeb"]
+                    players: ["Salem Al-Dawsari", "Mohammed Al-Owais", "Firas Al-Buraikan", "Sami Al-Najei", "Ali Al-Bulayhi", "Saud Abdulhamid", "Abdulelah Al-Malki", "Mohamed Kanno", "Hassan Tambakti", "Abdulrahman Ghareeb"]
                 },
                 {
                     id: "den", name: "Dinamarca", flag: "🇩🇰", abbr: "DEN",
@@ -104,7 +104,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "kor", name: "Coreia do Sul", flag: "🇰🇷", abbr: "KOR",
-                    players: ["Son Heung-min", "Kim Min-jae", "Lee Kang-in", "Hwang Hee-chan", "Lee Jae-sung", "Cho Gue-sung", "Hwang In-beom", "Seol Young-woo", "Kim Seung-gyu", "Paik Seung-ho"]
+                    players: ["Heung-min Son", "Min-jae Kim", "Kang-in Lee", "Hee-chan Hwang", "Jae-sung Lee", "Gue-sung Cho", "In-beom Hwang", "Young-woo Seol", "Seung-gyu Kim", "Seung-ho Paik"]
                 },
                 {
                     id: "sco", name: "Escócia", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", abbr: "SCO",
@@ -174,7 +174,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "egy", name: "Egito", flag: "🇪🇬", abbr: "EGY",
-                    players: ["Mohamed Salah", "Omar Marmoush", "Mostafa Mohamed", "Trezeguet", "Mohamed Elneny", "Emam Ashour", "Ahmed Hegazi", "Mohamed Abdelmonem", "Hamdi Fathi", "Mohamed El Shenawy"]
+                    players: ["Mohamed Salah", "Omar Marmoush", "Mostafa Mohamed", "Trezeguet", "Mohamed Elneny", "Emam Ashour", "Ahmed Hegazi", "Mohamed Abdelmonem", "Hamdy Fathy", "Mohamed El Shenawy"]
                 },
                 {
                     id: "rou", name: "Romênia", flag: "🇷🇴", abbr: "ROU",
@@ -188,7 +188,7 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "esp", name: "Espanha", flag: "🇪🇸", abbr: "ESP",
-                    players: ["Lamine Yamal", "Pedri", "Gavi", "Rodri", "Nico Williams", "Dani Olmo", "Pau Cubarsí", "Álex Grimaldo", "Dani Carvajal", "Unai Simón"]
+                    players: ["Lamine Yamal", "Pedri", "Gavi", "Rodri", "Nico Williams", "Dani Olmo", "Pau Cubarsí", "Álex Grimaldo", "Daniel Carvajal", "Unai Simón"]
                 },
                 {
                     id: "ven", name: "Venezuela", flag: "🇻🇪", abbr: "VEN",
@@ -200,7 +200,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "dza", name: "Argélia", flag: "🇩🇿", abbr: "DZA",
-                    players: ["Riyad Mahrez", "Ismaël Bennacer", "Rayan Aït-Nouri", "Mohammed Amoura", "Farès Chaïbi", "Amine Gouiri", "Said Benrahma", "Aissa Mandi", "Anthony Mandrea", "Houssem Aouar"]
+                    players: ["Riyad Mahrez", "Ismaël Bennacer", "Rayan Aït-Nouri", "Mohamed Amoura", "Farès Chaïbi", "Amine Gouiri", "Said Benrahma", "Aissa Mandi", "Anthony Mandrea", "Houssem Aouar"]
                 }
             ]
         },
@@ -214,7 +214,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "irn", name: "Irã", flag: "🇮🇷", abbr: "IRN",
-                    players: ["Mehdi Taremi", "Sardar Azmoun", "Alireza Jahanbakhsh", "Samman Ghoddos", "Mehdi Ghayedi", "Saeid Ezatolahi", "Milad Mohammadi", "Hossein Kanaanizadegan", "Ramin Rezaeian", "Alireza Beiranvand"]
+                    players: ["Mehdi Taremi", "Sardar Azmoun", "Alireza Jahanbakhsh", "Saman Ghoddos", "Mehdi Ghayedi", "Saeed Ezatolahi", "Milad Mohammadi", "Hossein Kanaanizadegan", "Ramin Rezaeian", "Alireza Beiranvand"]
                 },
                 {
                     id: "pol", name: "Polônia", flag: "🇵🇱", abbr: "POL",
@@ -295,6 +295,20 @@ const ALBUM_DATA = {
     ]
 };
 
+const TEAM_IMAGE_BASE_PATH = "/teams";
+
+function getTeamImagePath(teamId) {
+    return `${TEAM_IMAGE_BASE_PATH}/${teamId}.png`;
+}
+
+ALBUM_DATA.groups = ALBUM_DATA.groups.map(group => ({
+    ...group,
+    teams: group.teams.map(team => ({
+        ...team,
+        image: team.image || getTeamImagePath(team.id),
+    })),
+}));
+
 // Gera a lista plana de todas as figurinhas
 function generateAllStickers() {
     const stickers = [];
@@ -334,6 +348,7 @@ function generateAllStickers() {
                 icon: team.flag,
                 teamId: team.id,
                 teamName: team.name,
+                teamImage: team.image,
                 groupId: group.id,
             });
 
@@ -349,6 +364,7 @@ function generateAllStickers() {
                     icon: team.flag,
                     teamId: team.id,
                     teamName: team.name,
+                    teamImage: team.image,
                     groupId: group.id,
                 });
             });

@@ -336,7 +336,7 @@ button:disabled {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0.7rem;
 }
 
@@ -353,10 +353,10 @@ button:disabled {
   animation: rise 320ms ease-out;
 }
 
-.card:hover,
+/* .card:hover,
 .pack-card:hover {
   transform: translateY(-2px);
-}
+} */
 
 .card .icon {
   font-size: 1.45rem;
@@ -524,9 +524,9 @@ button:disabled {
   min-height: 102px;
 }
 
-.flip-card:hover {
+/* .flip-card:hover {
   transform: translateY(-1px);
-}
+} */
 
 .flip-card.stuck {
   background: #ecfdf5;

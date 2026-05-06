@@ -5,7 +5,59 @@ import playerImagesData from "../js/player-images.json";
 const API_BASE_URL = "http://localhost:3001/api";
 const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
-const DEFAULT_PLAYER_IMAGE = "/player-default.svg";
+const DEFAULT_PLAYER_IMAGE = "/player-default.png";
+const DEFAULT_TEAM_IMAGE = "/teams/default.png";
+const TEAM_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "svg"];
+const TEAM_IMAGE_CODES = {
+  usa: "us",
+  mar: "ma",
+  sui: "ch",
+  jor: "jo",
+  mex: "mx",
+  ksa: "sa",
+  den: "dk",
+  sen: "sn",
+  can: "ca",
+  aus: "au",
+  cro: "hr",
+  per: "pe",
+  bra: "br",
+  kor: "kr",
+  sco: "sc",
+  civ: "ci",
+  arg: "ar",
+  jpn: "jp",
+  tur: "tr",
+  nga: "ng",
+  fra: "fr",
+  col: "co",
+  aut: "at",
+  irq: "iq",
+  ger: "de",
+  ecu: "ec",
+  egy: "eg",
+  rou: "ro",
+  esp: "es",
+  ven: "ve",
+  srb: "rs",
+  dza: "dz",
+  eng: "gb-eng",
+  irn: "ir",
+  pol: "pl",
+  gha: "gh",
+  por: "pt",
+  uru: "uy",
+  ned: "nl",
+  rsa: "za",
+  ita: "it",
+  bel: "be",
+  pan: "pa",
+  uzb: "uz",
+  hon: "hn",
+  jam: "jm",
+  cmr: "cm",
+  nzl: "nz",
+};
 
 const GROUP_COLORS = {
   especial: "#f59e0b",
@@ -632,21 +684,83 @@ function packGroupStyle(item) {
   };
 }
 
+function buildImageVariants(basePath) {
+  if (!basePath) return [];
+
+  const trimmed = String(basePath).trim();
+  if (!trimmed) return [];
+
+  if (/\.(png|jpe?g|webp|svg)$/i.test(trimmed)) {
+    const withoutExt = trimmed.replace(/\.(png|jpe?g|webp|svg)$/i, "");
+    return [
+      trimmed,
+      ...TEAM_IMAGE_EXTENSIONS.map((ext) => `${withoutExt}.${ext}`),
+    ];
+  }
+
+  return TEAM_IMAGE_EXTENSIONS.map((ext) => `${trimmed}.${ext}`);
+}
+
+function getTeamImageCandidates(item) {
+  const candidates = [];
+
+  if (item?.teamImage) {
+    candidates.push(...buildImageVariants(item.teamImage));
+  }
+
+  if (item?.teamId) {
+    candidates.push(...buildImageVariants(`/teams/${item.teamId}`));
+    const shortCode = TEAM_IMAGE_CODES[item.teamId];
+    if (shortCode) {
+      candidates.push(...buildImageVariants(`/teams/${shortCode}`));
+    }
+  }
+
+  candidates.push(DEFAULT_TEAM_IMAGE);
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function stickerPhotoCandidates(item) {
+  if (!item) return [];
+
+  if (item.type === "badge") {
+    return getTeamImageCandidates(item);
+  }
+
+  if (item.type === "player") {
+    const lookupKey = `${String(item.name || "").toLowerCase()}::${item.teamId || ""}`;
+    const record = playerImageMap.get(lookupKey);
+    return record?.imageUrl
+      ? [record.imageUrl, DEFAULT_PLAYER_IMAGE]
+      : [DEFAULT_PLAYER_IMAGE];
+  }
+
+  return [];
+}
+
 function stickerPhoto(item) {
   const key = item?.id || "";
   if (!key) return "";
   if (stickerPhotoCache.has(key)) return stickerPhotoCache.get(key);
 
-  if (item.type !== "player") {
-    stickerPhotoCache.set(key, "");
-    return "";
-  }
-
-  const lookupKey = `${String(item.name || "").toLowerCase()}::${item.teamId || ""}`;
-  const record = playerImageMap.get(lookupKey);
-  const photo = record?.imageUrl || DEFAULT_PLAYER_IMAGE;
+  const [photo = ""] = stickerPhotoCandidates(item);
   stickerPhotoCache.set(key, photo);
   return photo;
+}
+
+function onStickerPhotoError(event, item) {
+  const target = event?.target;
+  if (!(target instanceof HTMLImageElement)) return;
+
+  const candidates = stickerPhotoCandidates(item);
+  const currentIndex = Number(target.dataset.photoIndex || "0");
+  const nextIndex = currentIndex + 1;
+
+  if (nextIndex >= candidates.length) return;
+
+  target.dataset.photoIndex = String(nextIndex);
+  target.src = candidates[nextIndex];
 }
 
 function selectFlipGroup(groupKey) {
@@ -831,7 +945,7 @@ function goToNextFlipPage() {
           <article
             v-for="item in filteredAlbum"
             :key="item.id"
-            class="card"
+            class="card album-card"
             :style="stickerBorder(item)"
           >
             <span class="num">#{{ item.num }}</span>
@@ -844,7 +958,9 @@ function goToNextFlipPage() {
                 class="sticker-photo"
                 :src="stickerPhoto(item)"
                 :alt="`Foto de ${item.name}`"
+                data-photo-index="0"
                 loading="lazy"
+                @error="onStickerPhotoError($event, item)"
               />
               <span class="sticker-flag">{{ item.icon }}</span>
             </div>
@@ -971,7 +1087,9 @@ function goToNextFlipPage() {
                     class="sticker-photo"
                     :src="stickerPhoto(item)"
                     :alt="`Foto de ${item.name}`"
+                    data-photo-index="0"
                     loading="lazy"
+                    @error="onStickerPhotoError($event, item)"
                   />
                   <span class="sticker-flag">{{ item.icon }}</span>
                 </div>
@@ -1016,7 +1134,9 @@ function goToNextFlipPage() {
                 class="sticker-photo"
                 :src="stickerPhoto(item)"
                 :alt="`Foto de ${item.name}`"
+                data-photo-index="0"
                 loading="lazy"
+                @error="onStickerPhotoError($event, item)"
               />
               <span class="sticker-flag">{{ item.icon }}</span>
             </div>
@@ -1122,7 +1242,9 @@ function goToNextFlipPage() {
                   class="sticker-photo"
                   :src="stickerPhoto(item)"
                   :alt="`Foto de ${item.name}`"
+                  data-photo-index="0"
                   loading="lazy"
+                  @error="onStickerPhotoError($event, item)"
                 />
                 <span class="sticker-flag">{{ item.icon }}</span>
               </div>
