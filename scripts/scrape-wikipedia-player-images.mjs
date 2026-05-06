@@ -52,6 +52,18 @@ function normalizeImageUrl(url) {
     return null;
 }
 
+function normalizePlayerName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ");
+}
+
+function toWikipediaSlug(titleOrName) {
+    return encodeURIComponent(normalizePlayerName(titleOrName).replace(/\s+/g, "_"));
+}
+
+function buildWikipediaPageUrl(titleOrName, lang) {
+    return `https://${lang}.wikipedia.org/wiki/${toWikipediaSlug(titleOrName)}`;
+}
+
 async function fetchJson(url) {
     const response = await fetch(url, {
         headers: {
@@ -79,7 +91,8 @@ async function fetchText(url) {
 }
 
 async function findWikipediaTitle(playerName, teamName, lang) {
-    const query = `${playerName} ${teamName} futebol`;
+    const normalizedPlayerName = normalizePlayerName(playerName);
+    const query = `${normalizedPlayerName} ${teamName} futebol`;
     const params = new URLSearchParams({
         action: "query",
         list: "search",
@@ -99,7 +112,7 @@ async function findWikipediaTitle(playerName, teamName, lang) {
 }
 
 async function extractInfoboxImage(pageTitle, lang) {
-    const pageUrl = `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/\s+/g, "_"))}`;
+    const pageUrl = buildWikipediaPageUrl(pageTitle, lang);
     const html = await fetchText(pageUrl);
     const $ = cheerio.load(html);
 
@@ -123,9 +136,26 @@ async function extractInfoboxImage(pageTitle, lang) {
 
 async function fetchPlayerImage(player) {
     const langs = ["pt", "en"];
+    const normalizedPlayerName = normalizePlayerName(player.name);
 
     for (const lang of langs) {
         try {
+            // Tenta primeiro URL direta no formato /wiki/Nome_Sobrenome
+            const direct = await extractInfoboxImage(normalizedPlayerName, lang);
+            if (direct.imageUrl) {
+                return {
+                    player: player.name,
+                    teamId: player.teamId,
+                    teamName: player.teamName,
+                    groupId: player.groupId,
+                    wikiLang: lang,
+                    wikiTitle: normalizedPlayerName,
+                    wikiPage: direct.pageUrl,
+                    imageUrl: direct.imageUrl,
+                    found: true,
+                };
+            }
+
             const title = await findWikipediaTitle(player.name, player.teamName, lang);
             if (!title) continue;
 

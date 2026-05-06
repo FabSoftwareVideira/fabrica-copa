@@ -42,7 +42,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "sui", name: "Suíça", flag: "🇨🇭", abbr: "SUI",
-                    players: ["Granit Xhaka", "Xherdan Shaqiri", "Yann Sommer", "Manuel Akanji", "Ruben Vargas"]
+                    players: ["Granit Xhaka", "Xherdan Shaqiri", "Yann Sommer", "Manuel Akanji", "Rubén Vargas"]
                 },
                 {
                     id: "jor", name: "Jordânia", flag: "🇯🇴", abbr: "JOR",
@@ -262,7 +262,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "pan", name: "Panamá", flag: "🇵🇦", abbr: "PAN",
-                    players: ["Ismael Díaz", "Adalberto Carrasquilla", "Anibal Godoy", "Orlando Mosquera", "José Fajardo"]
+                    players: ["Ismael Díaz", "Adalberto Carrasquilla", "Aníbal Godoy", "Orlando Mosquera", "José Fajardo"]
                 },
                 {
                     id: "uzb", name: "Uzbequistão", flag: "🇺🇿", abbr: "UZB",

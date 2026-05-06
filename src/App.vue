@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
+import playerImagesData from "../js/player-images.json";
 
 const API_BASE_URL = "http://localhost:3001/api";
 const PACKS_PER_DAY = 1;
@@ -21,59 +22,20 @@ const GROUP_COLORS = {
   L: "#78716c",
 };
 
-const TEAM_COLORS = {
-  usa: ["#b22234", "#3c3b6e"],
-  mar: ["#c1272d", "#006233"],
-  sui: ["#d52b1e", "#ffffff"],
-  jor: ["#007a3d", "#ce1126"],
-  mex: ["#006847", "#ce1126"],
-  ksa: ["#006c35", "#ffffff"],
-  den: ["#c60c30", "#ffffff"],
-  sen: ["#00853f", "#fdef42"],
-  can: ["#d80621", "#ffffff"],
-  aus: ["#012169", "#ffcd00"],
-  cro: ["#ff0000", "#ffffff"],
-  per: ["#d91023", "#ffffff"],
-  bra: ["#009739", "#ffdf00"],
-  kor: ["#cd2e3a", "#0047a0"],
-  sco: ["#0065bd", "#ffffff"],
-  civ: ["#f77f00", "#009e60"],
-  arg: ["#74acdf", "#ffffff"],
-  jpn: ["#ffffff", "#bc002d"],
-  tur: ["#e30a17", "#ffffff"],
-  nga: ["#008751", "#ffffff"],
-  fra: ["#0055a4", "#ef4135"],
-  col: ["#fcd116", "#003893"],
-  aut: ["#ed2939", "#ffffff"],
-  irq: ["#ce1126", "#000000"],
-  ger: ["#000000", "#dd0000"],
-  ecu: ["#ffdd00", "#0033a0"],
-  egy: ["#ce1126", "#000000"],
-  rou: ["#002b7f", "#fcd116"],
-  esp: ["#aa151b", "#f1bf00"],
-  ven: ["#f4c300", "#0033a0"],
-  srb: ["#c6363c", "#0c4076"],
-  dza: ["#006233", "#ffffff"],
-  eng: ["#ffffff", "#ce1126"],
-  irn: ["#239f40", "#da0000"],
-  pol: ["#ffffff", "#dc143c"],
-  gha: ["#ce1126", "#fcd116"],
-  por: ["#046a38", "#da291c"],
-  uru: ["#4aadd6", "#ffffff"],
-  ned: ["#ae1c28", "#21468b"],
-  rsa: ["#007749", "#ffb612"],
-  ita: ["#009246", "#ce2b37"],
-  bel: ["#000000", "#ffde00"],
-  pan: ["#005293", "#d21034"],
-  uzb: ["#1eb53a", "#0099b5"],
-  hon: ["#0073cf", "#ffffff"],
-  jam: ["#009b3a", "#fed100"],
-  cmr: ["#007a5e", "#ce1126"],
-  nzl: ["#00247d", "#ffffff"],
-};
-
 const stickers = Array.isArray(window.ALL_STICKERS) ? window.ALL_STICKERS : [];
 const stickerMap = new Map(stickers.map((item) => [item.id, item]));
+const playerImageItems = Array.isArray(playerImagesData?.items)
+  ? playerImagesData.items
+  : [];
+
+const playerImageMap = new Map(
+  playerImageItems
+    .filter((item) => item?.found && item?.player && item?.imageUrl)
+    .map((item) => [
+      `${item.player.toLowerCase()}::${item.teamId || ""}`,
+      item,
+    ]),
+);
 
 const state = reactive({
   view: "dashboard",
@@ -669,59 +631,19 @@ function packGroupStyle(item) {
   };
 }
 
-function toDataSvg(svg) {
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-function getSelectionPalette(item) {
-  if (item.teamId && TEAM_COLORS[item.teamId]) {
-    return TEAM_COLORS[item.teamId];
-  }
-
-  const base = groupColor(item);
-  return [base, "#ffffff"];
-}
-
-function makeStickerPhoto(item) {
-  const [primary, secondary] = getSelectionPalette(item);
-  const accent = groupColor(item);
-  const tint = item.type === "player" ? "#0f172a" : "#334155";
-  const icon = item.icon || "⚽";
-  const title = item.type === "player" ? "Jogador" : "Figurinha";
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="${primary}" stop-opacity="0.92"/>
-          <stop offset="100%" stop-color="${secondary}" stop-opacity="1"/>
-        </linearGradient>
-        <linearGradient id="shirt" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="${primary}"/>
-          <stop offset="50%" stop-color="${secondary}"/>
-          <stop offset="100%" stop-color="${primary}"/>
-        </linearGradient>
-      </defs>
-      <rect width="320" height="220" rx="18" fill="url(#bg)"/>
-      <rect x="0" y="0" width="320" height="220" fill="${accent}" fill-opacity="0.12"/>
-      <circle cx="160" cy="72" r="34" fill="${tint}" fill-opacity="0.92"/>
-      <path d="M86 196c9-38 36-60 74-60s65 22 74 60" fill="url(#shirt)"/>
-      <path d="M116 196c8-32 22-50 44-57" stroke="${primary}" stroke-width="10" opacity="0.5"/>
-      <path d="M204 196c-8-32-22-50-44-57" stroke="${primary}" stroke-width="10" opacity="0.5"/>
-      <rect x="90" y="149" width="140" height="60" rx="14" fill="#ffffff" fill-opacity="0.22"/>
-      <text x="160" y="164" text-anchor="middle" font-size="17" font-family="Arial" fill="#0f172a" fill-opacity="0.82">${title}</text>
-      <text x="160" y="202" text-anchor="middle" font-size="34" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji">${icon}</text>
-    </svg>
-  `;
-
-  return toDataSvg(svg);
-}
-
 function stickerPhoto(item) {
   const key = item?.id || "";
   if (!key) return "";
   if (stickerPhotoCache.has(key)) return stickerPhotoCache.get(key);
-  const photo = makeStickerPhoto(item);
+
+  if (item.type !== "player") {
+    stickerPhotoCache.set(key, "");
+    return "";
+  }
+
+  const lookupKey = `${String(item.name || "").toLowerCase()}::${item.teamId || ""}`;
+  const record = playerImageMap.get(lookupKey);
+  const photo = record?.imageUrl || "";
   stickerPhotoCache.set(key, photo);
   return photo;
 }
@@ -912,7 +834,11 @@ function goToNextFlipPage() {
             :style="stickerBorder(item)"
           >
             <span class="num">#{{ item.num }}</span>
-            <div class="sticker-photo-wrap" :style="packGroupStyle(item)">
+            <div
+              v-if="stickerPhoto(item)"
+              class="sticker-photo-wrap"
+              :style="packGroupStyle(item)"
+            >
               <img
                 class="sticker-photo"
                 :src="stickerPhoto(item)"
@@ -1035,7 +961,11 @@ function goToNextFlipPage() {
                 }"
               >
                 <span class="num">#{{ item.num }}</span>
-                <div class="sticker-photo-wrap" :style="packGroupStyle(item)">
+                <div
+                  v-if="stickerPhoto(item)"
+                  class="sticker-photo-wrap"
+                  :style="packGroupStyle(item)"
+                >
                   <img
                     class="sticker-photo"
                     :src="stickerPhoto(item)"
@@ -1076,7 +1006,11 @@ function goToNextFlipPage() {
             :style="stickerBorder(item)"
           >
             <span class="num">#{{ item.num }}</span>
-            <div class="sticker-photo-wrap" :style="packGroupStyle(item)">
+            <div
+              v-if="stickerPhoto(item)"
+              class="sticker-photo-wrap"
+              :style="packGroupStyle(item)"
+            >
               <img
                 class="sticker-photo"
                 :src="stickerPhoto(item)"
@@ -1178,7 +1112,11 @@ function goToNextFlipPage() {
                   {{ ui.wasOwned[index] ? "Repetida" : "Nova" }}
                 </span>
               </div>
-              <div class="sticker-photo-wrap" :style="packGroupStyle(item)">
+              <div
+                v-if="stickerPhoto(item)"
+                class="sticker-photo-wrap"
+                :style="packGroupStyle(item)"
+              >
                 <img
                   class="sticker-photo"
                   :src="stickerPhoto(item)"
