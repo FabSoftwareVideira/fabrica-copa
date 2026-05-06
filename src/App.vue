@@ -137,6 +137,7 @@ const ui = reactive({
   promoCode: "",
   pack: [],
   wasOwned: [],
+  mobileMenuOpen: false,
 });
 
 const authForm = reactive({
@@ -227,6 +228,7 @@ const albumPages = computed(() => {
         name: key === "especial" ? "Especial" : `Grupo ${key}`,
         color: GROUP_COLORS[key] || "#334155",
         stickers: [],
+        selections: new Map(),
       });
     }
 
@@ -252,6 +254,37 @@ const albumPages = computed(() => {
   return [...pages.values()]
     .map((page) => {
       const orderedStickers = [...page.stickers].sort((a, b) => a.num - b.num);
+
+      // Agrupar stickers por seleção (time)
+      const selectionsMap = new Map();
+      for (const sticker of orderedStickers) {
+        const selectionKey = sticker.teamId || "outros";
+        if (!selectionsMap.has(selectionKey)) {
+          selectionsMap.set(selectionKey, {
+            teamId: selectionKey,
+            teamName: sticker.teamName || "Outros",
+            stickers: [],
+          });
+        }
+        selectionsMap.get(selectionKey).stickers.push(sticker);
+      }
+
+      const selections = [...selectionsMap.values()].map((sel) => {
+        const collectedItems = sel.stickers.filter(
+          (s) => getCount(s.id) >= 1,
+        ).length;
+        const pendingItems = sel.stickers.length - collectedItems;
+        const pct = sel.stickers.length
+          ? Math.round((collectedItems / sel.stickers.length) * 100)
+          : 0;
+        return {
+          ...sel,
+          collectedItems,
+          pendingItems,
+          pct,
+        };
+      });
+
       const collectedItems = orderedStickers.filter(
         (s) => getCount(s.id) >= 1,
       ).length;
@@ -263,6 +296,7 @@ const albumPages = computed(() => {
       return {
         ...page,
         stickers: orderedStickers,
+        selections,
         collectedItems,
         pendingItems,
         pct,
@@ -761,6 +795,19 @@ function stickerPhoto(item) {
   return photo;
 }
 
+function getStickerPhotoForDisplay(item) {
+  const isCollected = getCount(item.id) >= 1;
+  if (!isCollected) {
+    if (item.type === "player") {
+      return DEFAULT_PLAYER_IMAGE;
+    } else if (item.type === "badge") {
+      return DEFAULT_TEAM_IMAGE;
+    }
+    return "";
+  }
+  return stickerPhoto(item);
+}
+
 function onStickerPhotoError(event, item) {
   const target = event?.target;
   if (!(target instanceof HTMLImageElement)) return;
@@ -817,17 +864,37 @@ function goToNextFlipPage() {
       <div class="topbar-brand">
         <p class="eyebrow">World Cup Sticker Album</p>
         <h1>Album Copa 2026</h1>
-        <p>EUA, Canada e Mexico · {{ progressTheme.label }}</p>
       </div>
-      <div class="top-actions">
-        <button class="promo-btn" type="button" @click="ui.promoOpen = true">
+      <button
+        class="topbar-menu-toggle"
+        type="button"
+        aria-label="Toggle menu"
+        :class="{ open: ui.mobileMenuOpen }"
+        @click="ui.mobileMenuOpen = !ui.mobileMenuOpen"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <div class="topbar-actions" :class="{ open: ui.mobileMenuOpen }">
+        <button
+          class="promo-btn"
+          type="button"
+          @click="
+            ui.promoOpen = true;
+            ui.mobileMenuOpen = false;
+          "
+        >
           Codigo Promocional
         </button>
         <button
           class="pack-btn"
           type="button"
           :disabled="ui.openingPack || packsAvailable <= 0"
-          @click="openPack"
+          @click="
+            openPack();
+            ui.mobileMenuOpen = false;
+          "
         >
           {{
             ui.openingPack
@@ -835,49 +902,106 @@ function goToNextFlipPage() {
               : `Abrir Pacotinho (${packsAvailable})`
           }}
         </button>
+        <div v-if="isAuthenticated" class="user-actions">
+          <span class="user-pill">{{ state.user.name }}</span>
+          <button
+            type="button"
+            class="logout-btn"
+            @click="
+              logout();
+              ui.mobileMenuOpen = false;
+            "
+          >
+            Sair
+          </button>
+        </div>
+        <div v-else class="user-actions">
+          <button
+            type="button"
+            class="auth-btn"
+            @click="
+              openAuth('login');
+              ui.mobileMenuOpen = false;
+            "
+          >
+            Entrar
+          </button>
+          <button
+            type="button"
+            class="auth-btn register-btn"
+            @click="
+              openAuth('register');
+              ui.mobileMenuOpen = false;
+            "
+          >
+            Cadastrar
+          </button>
+        </div>
       </div>
     </header>
 
-    <nav class="tabs">
+    <div class="header-subtitle">
+      <p>EUA, Canada e Mexico · {{ progressTheme.label }}</p>
+    </div>
+
+    <nav class="tabs" :class="{ open: ui.mobileMenuOpen }">
       <button
         type="button"
         :class="{ active: state.view === 'dashboard' }"
-        @click="state.view = 'dashboard'"
+        @click="
+          state.view = 'dashboard';
+          ui.mobileMenuOpen = false;
+        "
       >
         Inicio
       </button>
       <button
         type="button"
         :class="{ active: state.view === 'album' }"
-        @click="state.view = 'album'"
+        @click="
+          state.view = 'album';
+          ui.mobileMenuOpen = false;
+        "
       >
         Album
       </button>
       <button
         type="button"
         :class="{ active: state.view === 'missing' }"
-        @click="state.view = 'missing'"
+        @click="
+          state.view = 'missing';
+          ui.mobileMenuOpen = false;
+        "
       >
         Faltando
       </button>
       <button
         type="button"
         :class="{ active: state.view === 'duplicates' }"
-        @click="state.view = 'duplicates'"
+        @click="
+          state.view = 'duplicates';
+          ui.mobileMenuOpen = false;
+        "
       >
         Repetidas
       </button>
       <button
         type="button"
         :class="{ active: state.view === 'flip' }"
-        @click="state.view = 'flip'"
+        @click="
+          state.view = 'flip';
+          ui.mobileMenuOpen = false;
+        "
       >
         Folhear
       </button>
       <button
         type="button"
         :class="{ active: state.view === 'search' }"
-        @click="state.view = 'search'"
+        @click="
+          state.view = 'search';
+          ui.mobileMenuOpen = false;
+        "
       >
         Buscar
       </button>
@@ -962,13 +1086,13 @@ function goToNextFlipPage() {
           >
             <span class="num">#{{ item.num }}</span>
             <div
-              v-if="stickerPhoto(item)"
+              v-if="getStickerPhotoForDisplay(item)"
               class="sticker-photo-wrap"
               :style="packGroupStyle(item)"
             >
               <img
                 class="sticker-photo"
-                :src="stickerPhoto(item)"
+                :src="getStickerPhotoForDisplay(item)"
                 :alt="`Foto de ${item.name}`"
                 data-photo-index="0"
                 loading="lazy"
@@ -1079,37 +1203,51 @@ function goToNextFlipPage() {
               <span class="badge-chip">{{ currentFlipPage.pct }}%</span>
             </header>
 
-            <div class="flip-sheet-grid">
-              <article
-                v-for="item in currentFlipPage.stickers"
-                :key="item.id"
-                class="flip-card"
-                :class="{
-                  stuck: getCount(item.id) >= 1,
-                  pending: getCount(item.id) < 1,
-                }"
-              >
-                <span class="num">#{{ item.num }}</span>
-                <div
-                  v-if="stickerPhoto(item)"
-                  class="sticker-photo-wrap"
-                  :style="packGroupStyle(item)"
+            <div
+              v-for="selection in currentFlipPage.selections"
+              :key="selection.teamId"
+              class="flip-selection"
+            >
+              <div class="flip-selection-header">
+                <h4>{{ selection.teamName }}</h4>
+                <span class="selection-stat"
+                  >{{ selection.collectedItems }}/{{
+                    selection.stickers.length
+                  }}</span
                 >
-                  <img
-                    class="sticker-photo"
-                    :src="stickerPhoto(item)"
-                    :alt="`Foto de ${item.name}`"
-                    data-photo-index="0"
-                    loading="lazy"
-                    @error="onStickerPhotoError($event, item)"
-                  />
-                  <span class="sticker-flag">{{ item.icon }}</span>
-                </div>
-                <strong>{{ item.name }}</strong>
-                <small>
-                  {{ getCount(item.id) >= 1 ? "Colada" : "Pendente" }}
-                </small>
-              </article>
+              </div>
+              <div class="flip-sheet-grid">
+                <article
+                  v-for="item in selection.stickers"
+                  :key="item.id"
+                  class="flip-card"
+                  :class="{
+                    stuck: getCount(item.id) >= 1,
+                    pending: getCount(item.id) < 1,
+                  }"
+                >
+                  <span class="num">#{{ item.num }}</span>
+                  <div
+                    v-if="getStickerPhotoForDisplay(item)"
+                    class="sticker-photo-wrap"
+                    :style="packGroupStyle(item)"
+                  >
+                    <img
+                      class="sticker-photo"
+                      :src="getStickerPhotoForDisplay(item)"
+                      :alt="`Foto de ${item.name}`"
+                      data-photo-index="0"
+                      loading="lazy"
+                      @error="onStickerPhotoError($event, item)"
+                    />
+                    <span class="sticker-flag">{{ item.icon }}</span>
+                  </div>
+                  <strong>{{ item.name }}</strong>
+                  <small>
+                    {{ getCount(item.id) >= 1 ? "Colada" : "Pendente" }}
+                  </small>
+                </article>
+              </div>
             </div>
           </article>
         </transition>
@@ -1159,17 +1297,6 @@ function goToNextFlipPage() {
         </div>
       </section>
     </main>
-
-    <footer class="footer">
-      <div v-if="isAuthenticated" class="user-row">
-        <span class="user-pill">Logado como {{ state.user.name }}</span>
-        <button type="button" @click="logout">Sair</button>
-      </div>
-      <div v-else class="user-row">
-        <button type="button" @click="openAuth('login')">Entrar</button>
-        <button type="button" @click="openAuth('register')">Cadastrar</button>
-      </div>
-    </footer>
 
     <div v-if="ui.packOpen" class="modal">
       <div
