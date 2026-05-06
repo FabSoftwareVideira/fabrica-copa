@@ -374,7 +374,7 @@ button:disabled {
 .sticker-photo {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 11;
+  aspect-ratio: 3 / 4;
   object-fit: cover;
 }
 

@@ -14,6 +14,7 @@ const argLimit = process.argv.find((arg) => arg.startsWith("--limit="));
 const argDelay = process.argv.find((arg) => arg.startsWith("--delay="));
 const argPlayer = process.argv.find((arg) => arg.startsWith("--player="));
 const argCookie = process.argv.find((arg) => arg.startsWith("--cookie="));
+const forceRefreshFound = process.argv.includes("--refresh-found");
 
 const maxItems = argLimit ? Number(argLimit.split("=")[1]) : null;
 const delayMs = argDelay ? Number(argDelay.split("=")[1]) : 350;
@@ -26,6 +27,19 @@ function sleep(ms) {
 
 function normalizePlayerName(name) {
     return String(name || "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeCompareName(name) {
+    return normalizePlayerName(name)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function playerCacheKey(player) {
+    const teamId = String(player?.teamId || "").toLowerCase();
+    const name = normalizeCompareName(player?.name || player?.player || "");
+    return `${teamId}::${name}`;
 }
 
 function resolveUrl(url, base) {
@@ -68,6 +82,37 @@ function collectPlayers(albumData) {
         });
     });
     return players;
+}
+
+function loadExistingFoundMap() {
+    if (!fs.existsSync(outputFilePath)) return new Map();
+
+    try {
+        const raw = fs.readFileSync(outputFilePath, "utf8");
+        const parsed = JSON.parse(raw);
+        const items = Array.isArray(parsed?.items) ? parsed.items : [];
+        const foundItems = items.filter((item) => item?.found && item?.imageUrl);
+
+        return new Map(foundItems.map((item) => [playerCacheKey(item), item]));
+    } catch {
+        return new Map();
+    }
+}
+
+function buildPayload(totalPlayers, items) {
+    const foundImages = items.filter((item) => item?.found).length;
+    return {
+        generatedAt: new Date().toISOString(),
+        source: "transfermarkt-modal-trigger",
+        totalPlayers,
+        foundImages,
+        notFoundImages: totalPlayers - foundImages,
+        items,
+    };
+}
+
+function writeOutputFile(payload) {
+    fs.writeFileSync(outputFilePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
 function buildTransfermarktSearchUrl(query) {
@@ -210,6 +255,7 @@ async function fetchPlayerImage(player) {
 async function main() {
     const albumData = loadAlbumData();
     const players = collectPlayers(albumData);
+    const existingFoundMap = loadExistingFoundMap();
 
     const filteredPlayers = playerFilter
         ? players.filter(
@@ -223,37 +269,54 @@ async function main() {
             : filteredPlayers;
 
     console.log(`Jogadores para processar: ${selectedPlayers.length}`);
+    if (forceRefreshFound) {
+        console.log("Modo refresh: jogadores com found=true tambem serao buscados novamente");
+    }
 
     const results = [];
-    let foundCount = 0;
+    let reusedCount = 0;
 
     for (let i = 0; i < selectedPlayers.length; i += 1) {
         const player = selectedPlayers[i];
-        const result = await fetchPlayerImage(player);
-        if (result.found) foundCount += 1;
+        const cacheKey = playerCacheKey(player);
+        const cached = existingFoundMap.get(cacheKey);
+
+        let result;
+        let status;
+
+        if (!forceRefreshFound && cached?.found && cached?.imageUrl) {
+            result = {
+                ...cached,
+                player: player.name,
+                teamId: player.teamId,
+                teamName: player.teamName,
+                groupId: player.groupId,
+            };
+            reusedCount += 1;
+            status = "CACHE";
+        } else {
+            result = await fetchPlayerImage(player);
+            status = result.found ? "OK" : "SEM_IMAGEM";
+        }
+
         results.push(result);
 
-        const status = result.found ? "OK" : "SEM_IMAGEM";
+        // Persistencia incremental: salva progresso a cada jogador.
+        writeOutputFile(buildPayload(selectedPlayers.length, results));
+
         console.log(`[${i + 1}/${selectedPlayers.length}] ${status} - ${player.name}`);
 
-        if (i < selectedPlayers.length - 1 && delayMs > 0) {
+        if (status !== "CACHE" && i < selectedPlayers.length - 1 && delayMs > 0) {
             await sleep(delayMs);
         }
     }
 
-    const payload = {
-        generatedAt: new Date().toISOString(),
-        source: "transfermarkt-modal-trigger",
-        totalPlayers: selectedPlayers.length,
-        foundImages: foundCount,
-        notFoundImages: selectedPlayers.length - foundCount,
-        items: results,
-    };
-
-    fs.writeFileSync(outputFilePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    const payload = buildPayload(selectedPlayers.length, results);
+    writeOutputFile(payload);
 
     console.log(`Concluido. Arquivo salvo em: ${outputFilePath}`);
-    console.log(`Com imagem: ${foundCount} | Sem imagem: ${selectedPlayers.length - foundCount}`);
+    console.log(`Com imagem: ${payload.foundImages} | Sem imagem: ${payload.notFoundImages}`);
+    console.log(`Reaproveitadas do cache: ${reusedCount}`);
 }
 
 main().catch((error) => {

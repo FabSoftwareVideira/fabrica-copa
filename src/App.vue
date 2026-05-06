@@ -5,6 +5,7 @@ import playerImagesData from "../js/player-images.json";
 const API_BASE_URL = "http://localhost:3001/api";
 const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
+const DEFAULT_PLAYER_IMAGE = "/player-default.svg";
 
 const GROUP_COLORS = {
   especial: "#f59e0b",
@@ -643,7 +644,7 @@ function stickerPhoto(item) {
 
   const lookupKey = `${String(item.name || "").toLowerCase()}::${item.teamId || ""}`;
   const record = playerImageMap.get(lookupKey);
-  const photo = record?.imageUrl || "";
+  const photo = record?.imageUrl || DEFAULT_PLAYER_IMAGE;
   stickerPhotoCache.set(key, photo);
   return photo;
 }

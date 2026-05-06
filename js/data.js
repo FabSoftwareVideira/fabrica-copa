@@ -34,19 +34,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "usa", name: "Estados Unidos", flag: "🇺🇸", abbr: "EUA",
-                    players: ["Christian Pulisic", "Tyler Adams", "Weston McKennie", "Gio Reyna", "Matt Turner"]
+                    players: ["Christian Pulisic", "Tyler Adams", "Weston McKennie", "Gio Reyna", "Matt Turner", "Folarin Balogun", "Yunus Musah", "Antonee Robinson", "Sergiño Dest", "Timothy Weah"]
                 },
                 {
                     id: "mar", name: "Marrocos", flag: "🇲🇦", abbr: "MAR",
-                    players: ["Achraf Hakimi", "Hakim Ziyech", "Youssef En-Nesyri", "Sofyan Amrabat", "Bono"]
+                    players: ["Achraf Hakimi", "Hakim Ziyech", "Youssef En-Nesyri", "Sofyan Amrabat", "Bono", "Azzedine Ounahi", "Nayef Aguerd", "Brahim Díaz", "Abde Ezzalzouli", "Amine Adli"]
                 },
                 {
                     id: "sui", name: "Suíça", flag: "🇨🇭", abbr: "SUI",
-                    players: ["Granit Xhaka", "Xherdan Shaqiri", "Yann Sommer", "Manuel Akanji", "Rubén Vargas"]
+                    players: ["Granit Xhaka", "Xherdan Shaqiri", "Yann Sommer", "Manuel Akanji", "Rubén Vargas", "Gregor Kobel", "Breel Embolo", "Denis Zakaria", "Remo Freuler", "Zeki Amdouni"]
                 },
                 {
                     id: "jor", name: "Jordânia", flag: "🇯🇴", abbr: "JOR",
-                    players: ["Musa Al-Tamari", "Yazan Al-Naimat", "Ahmad Salam", "Mahmoud Rashid", "Shadi Shaheen"]
+                    players: ["Musa Al-Tamari", "Yazan Al-Naimat", "Ali Olwan", "Noor Al-Rawabdeh", "Nizar Al-Rashdan", "Yazeed Abulaila", "Abdallah Nasib", "Ehsan Haddad", "Salem Al-Ajalin", "Mahmoud Al-Mardi"]
                 }
             ]
         },
@@ -56,19 +56,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "mex", name: "México", flag: "🇲🇽", abbr: "MEX",
-                    players: ["Hirving Lozano", "Edson Álvarez", "Raúl Jiménez", "Guillermo Ochoa", "Alexis Vega"]
+                    players: ["Hirving Lozano", "Edson Álvarez", "Santiago Giménez", "Guillermo Ochoa", "Luis Chávez", "César Montes", "Johan Vásquez", "Orbelín Pineda", "Uriel Antuna", "Julián Quiñones"]
                 },
                 {
                     id: "ksa", name: "Arábia Saudita", flag: "🇸🇦", abbr: "KSA",
-                    players: ["Salem Al-Dawsari", "Mohammed Al-Owais", "Firas Al-Buraikan", "Sami Al-Najei", "Ali Al-Bulaihi"]
+                    players: ["Salem Al-Dawsari", "Mohammed Al-Owais", "Firas Al-Buraikan", "Sami Al-Najei", "Ali Al-Bulaihi", "Saud Abdulhamid", "Abdulelah Al-Malki", "Mohamed Kanno", "Hassan Tambakti", "Abdulrahman Ghareeb"]
                 },
                 {
                     id: "den", name: "Dinamarca", flag: "🇩🇰", abbr: "DEN",
-                    players: ["Christian Eriksen", "Kasper Schmeichel", "Simon Kjær", "Andreas Christensen", "Rasmus Højlund"]
+                    players: ["Christian Eriksen", "Kasper Schmeichel", "Pierre-Emile Højbjerg", "Andreas Christensen", "Rasmus Højlund", "Joachim Andersen", "Alexander Bah", "Mikkel Damsgaard", "Morten Hjulmand", "Jonas Wind"]
                 },
                 {
                     id: "sen", name: "Senegal", flag: "🇸🇳", abbr: "SEN",
-                    players: ["Sadio Mané", "Édouard Mendy", "Kalidou Koulibaly", "Idrissa Gueye", "Ismaïla Sarr"]
+                    players: ["Sadio Mané", "Édouard Mendy", "Kalidou Koulibaly", "Idrissa Gueye", "Ismaïla Sarr", "Nicolas Jackson", "Pape Matar Sarr", "Lamine Camara", "Abdou Diallo", "Iliman Ndiaye"]
                 }
             ]
         },
@@ -78,19 +78,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "can", name: "Canadá", flag: "🇨🇦", abbr: "CAN",
-                    players: ["Alphonso Davies", "Jonathan David", "Tajon Buchanan", "Cyle Larin", "Milan Borjan"]
+                    players: ["Alphonso Davies", "Jonathan David", "Tajon Buchanan", "Cyle Larin", "Stephen Eustáquio", "Ismaël Koné", "Alistair Johnston", "Kamal Miller", "Jonathan Osorio", "Dayne St. Clair"]
                 },
                 {
                     id: "aus", name: "Austrália", flag: "🇦🇺", abbr: "AUS",
-                    players: ["Mitchell Duke", "Aaron Mooy", "Mat Ryan", "Martin Boyle", "Mathew Leckie"]
+                    players: ["Mat Ryan", "Harry Souttar", "Jackson Irvine", "Mitchell Duke", "Craig Goodwin", "Nestory Irankunda", "Connor Metcalfe", "Jordan Bos", "Keanu Baccus", "Alessandro Circati"]
                 },
                 {
                     id: "cro", name: "Croácia", flag: "🇭🇷", abbr: "CRO",
-                    players: ["Luka Modrić", "Mateo Kovačić", "Ivan Perišić", "Dominik Livaković", "Marcelo Brozović"]
+                    players: ["Luka Modrić", "Mateo Kovačić", "Joško Gvardiol", "Dominik Livaković", "Marcelo Brozović", "Andrej Kramarić", "Luka Sučić", "Lovro Majer", "Josip Šutalo", "Ivan Perišić"]
                 },
                 {
                     id: "per", name: "Peru", flag: "🇵🇪", abbr: "PER",
-                    players: ["Paolo Guerrero", "André Carrillo", "Jefferson Farfán", "Gianluca Lapadula", "Pedro Gallese"]
+                    players: ["Pedro Gallese", "Luis Advíncula", "Renato Tapia", "Gianluca Lapadula", "André Carrillo", "Piero Quispe", "Alexander Callens", "Marcos López", "Bryan Reyna", "Joao Grimaldo"]
                 }
             ]
         },
@@ -100,19 +100,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "bra", name: "Brasil", flag: "🇧🇷", abbr: "BRA",
-                    players: ["Vinícius Junior", "Rodrygo", "Casemiro", "Marquinhos", "Alisson"]
+                    players: ["Vinícius Junior", "Rodrygo", "Endrick", "Bruno Guimarães", "Lucas Paquetá", "Marquinhos", "Gabriel Magalhães", "Alisson", "Éder Militão", "Savinho"]
                 },
                 {
                     id: "kor", name: "Coreia do Sul", flag: "🇰🇷", abbr: "KOR",
-                    players: ["Son Heung-min", "Kim Min-jae", "Lee Kang-in", "Hwang Hee-chan", "Kim Seung-gyu"]
+                    players: ["Son Heung-min", "Kim Min-jae", "Lee Kang-in", "Hwang Hee-chan", "Lee Jae-sung", "Cho Gue-sung", "Hwang In-beom", "Seol Young-woo", "Kim Seung-gyu", "Paik Seung-ho"]
                 },
                 {
                     id: "sco", name: "Escócia", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", abbr: "SCO",
-                    players: ["Andy Robertson", "Scott McTominay", "Kieran Tierney", "John McGinn", "David Marshall"]
+                    players: ["Andy Robertson", "Scott McTominay", "John McGinn", "Billy Gilmour", "Kieran Tierney", "Lewis Ferguson", "Che Adams", "Angus Gunn", "Nathan Patterson", "Ryan Christie"]
                 },
                 {
                     id: "civ", name: "Costa do Marfim", flag: "🇨🇮", abbr: "CIV",
-                    players: ["Sébastien Haller", "Franck Kessié", "Simon Adingra", "Eric Bailly", "Yahia Fofana"]
+                    players: ["Sébastien Haller", "Franck Kessié", "Simon Adingra", "Ousmane Diomande", "Ibrahim Sangaré", "Evan Ndicka", "Seko Fofana", "Odilon Kossounou", "Yahia Fofana", "Wilfried Singo"]
                 }
             ]
         },
@@ -122,19 +122,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "arg", name: "Argentina", flag: "🇦🇷", abbr: "ARG",
-                    players: ["Lionel Messi", "Julián Álvarez", "Rodrigo De Paul", "Enzo Fernández", "Emiliano Martínez"]
+                    players: ["Lionel Messi", "Julián Álvarez", "Enzo Fernández", "Alexis Mac Allister", "Lautaro Martínez", "Rodrigo De Paul", "Cristian Romero", "Emiliano Martínez", "Alejandro Garnacho", "Lisandro Martínez"]
                 },
                 {
                     id: "jpn", name: "Japão", flag: "🇯🇵", abbr: "JPN",
-                    players: ["Takumi Minamino", "Kaoru Mitoma", "Takehiro Tomiyasu", "Maya Yoshida", "Shuichi Gonda"]
+                    players: ["Takefusa Kubo", "Kaoru Mitoma", "Wataru Endo", "Takehiro Tomiyasu", "Ritsu Doan", "Hidemasa Morita", "Ayase Ueda", "Keito Nakamura", "Hiroki Ito", "Zion Suzuki"]
                 },
                 {
                     id: "tur", name: "Turquia", flag: "🇹🇷", abbr: "TUR",
-                    players: ["Hakan Çalhanoğlu", "Arda Güler", "Kenan Yıldız", "Çağlar Söyüncü", "Mert Günok"]
+                    players: ["Arda Güler", "Hakan Çalhanoğlu", "Kenan Yıldız", "Ferdi Kadıoğlu", "Orkun Kökçü", "Barış Alper Yılmaz", "Kerem Aktürkoğlu", "Merih Demiral", "Çağlar Söyüncü", "Mert Günok"]
                 },
                 {
                     id: "nga", name: "Nigéria", flag: "🇳🇬", abbr: "NGA",
-                    players: ["Victor Osimhen", "Wilfred Ndidi", "Samuel Chukwueze", "Ademola Lookman", "Stanley Nwabali"]
+                    players: ["Victor Osimhen", "Ademola Lookman", "Victor Boniface", "Alex Iwobi", "Wilfred Ndidi", "Samuel Chukwueze", "Calvin Bassey", "Ola Aina", "Stanley Nwabali", "Terem Moffi"]
                 }
             ]
         },
@@ -144,19 +144,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "fra", name: "França", flag: "🇫🇷", abbr: "FRA",
-                    players: ["Kylian Mbappé", "Antoine Griezmann", "Aurélien Tchouaméni", "Ousmane Dembélé", "Mike Maignan"]
+                    players: ["Kylian Mbappé", "Antoine Griezmann", "Eduardo Camavinga", "Aurélien Tchouaméni", "William Saliba", "Ousmane Dembélé", "Mike Maignan", "Warren Zaïre-Emery", "Theo Hernández", "Bradley Barcola"]
                 },
                 {
                     id: "col", name: "Colômbia", flag: "🇨🇴", abbr: "COL",
-                    players: ["James Rodríguez", "Luis Díaz", "Falcao", "Davinson Sánchez", "Camilo Vargas"]
+                    players: ["Luis Díaz", "James Rodríguez", "Jhon Durán", "Richard Ríos", "Jefferson Lerma", "Daniel Muñoz", "Davinson Sánchez", "Carlos Cuesta", "Jhon Arias", "Camilo Vargas"]
                 },
                 {
                     id: "aut", name: "Áustria", flag: "🇦🇹", abbr: "AUT",
-                    players: ["David Alaba", "Marcel Sabitzer", "Marko Arnautovic", "Florian Grillitsch", "Patrick Pentz"]
+                    players: ["David Alaba", "Marcel Sabitzer", "Konrad Laimer", "Christoph Baumgartner", "Nicolas Seiwald", "Xaver Schlager", "Kevin Danso", "Michael Gregoritsch", "Patrick Wimmer", "Alexander Schlager"]
                 },
                 {
                     id: "irq", name: "Iraque", flag: "🇮🇶", abbr: "IRQ",
-                    players: ["Aymen Hussein", "Amjad Attwan", "Bashar Resan", "Mohanad Ali", "Jalal Hassan"]
+                    players: ["Aymen Hussein", "Ali Jasim", "Zidane Iqbal", "Ibrahim Bayesh", "Amir Al-Ammari", "Youssef Amyn", "Saad Natiq", "Rebin Sulaka", "Hussein Ali", "Jalal Hassan"]
                 }
             ]
         },
@@ -166,19 +166,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "ger", name: "Alemanha", flag: "🇩🇪", abbr: "GER",
-                    players: ["Florian Wirtz", "Jamal Musiala", "Thomas Müller", "Manuel Neuer", "Toni Kroos"]
+                    players: ["Florian Wirtz", "Jamal Musiala", "Kai Havertz", "Leroy Sané", "Joshua Kimmich", "İlkay Gündoğan", "Antonio Rüdiger", "Jonathan Tah", "Marc-André ter Stegen", "Niclas Füllkrug"]
                 },
                 {
                     id: "ecu", name: "Equador", flag: "🇪🇨", abbr: "ECU",
-                    players: ["Enner Valencia", "Moisés Caicedo", "Pervis Estupiñán", "Gonzalo Plata", "Hernán Galíndez"]
+                    players: ["Moisés Caicedo", "Pervis Estupiñán", "Enner Valencia", "Piero Hincapié", "Kendry Páez", "Willian Pacho", "Angelo Preciado", "Jeremy Sarmiento", "Kevin Rodríguez", "Hernán Galíndez"]
                 },
                 {
                     id: "egy", name: "Egito", flag: "🇪🇬", abbr: "EGY",
-                    players: ["Mohamed Salah", "Ahmed El-Shenawy", "Mohamed Elneny", "Trezeguet", "Omar Marmoush"]
+                    players: ["Mohamed Salah", "Omar Marmoush", "Mostafa Mohamed", "Trezeguet", "Mohamed Elneny", "Emam Ashour", "Ahmed Hegazi", "Mohamed Abdelmonem", "Hamdi Fathi", "Mohamed El Shenawy"]
                 },
                 {
                     id: "rou", name: "Romênia", flag: "🇷🇴", abbr: "ROU",
-                    players: ["Ianis Hagi", "Nicolae Stanciu", "Denis Drăguș", "Florin Tătărușanu", "Radu Drăgușin"]
+                    players: ["Radu Drăgușin", "Nicolae Stanciu", "Ianis Hagi", "Dennis Man", "Florinel Coman", "Răzvan Marin", "Denis Drăguș", "Andrei Rațiu", "Horațiu Moldovan", "Valentin Mihăilă"]
                 }
             ]
         },
@@ -188,19 +188,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "esp", name: "Espanha", flag: "🇪🇸", abbr: "ESP",
-                    players: ["Pedri", "Gavi", "Rodri", "Lamine Yamal", "Unai Simón"]
+                    players: ["Lamine Yamal", "Pedri", "Gavi", "Rodri", "Nico Williams", "Dani Olmo", "Pau Cubarsí", "Álex Grimaldo", "Dani Carvajal", "Unai Simón"]
                 },
                 {
                     id: "ven", name: "Venezuela", flag: "🇻🇪", abbr: "VEN",
-                    players: ["Salomón Rondón", "Tomás Rincón", "Jhon Chancellor", "Josef Martínez", "Wuilker Faríñez"]
+                    players: ["Salomón Rondón", "Yangel Herrera", "Yeferson Soteldo", "Jefferson Savarino", "Eduard Bello", "Nahuel Ferraresi", "Jon Aramburu", "José Martínez", "Darwin Machís", "Rafael Romo"]
                 },
                 {
                     id: "srb", name: "Sérvia", flag: "🇷🇸", abbr: "SRB",
-                    players: ["Dušan Vlahović", "Aleksandar Mitrović", "Sergej Milinković-Savić", "Predrag Rajković", "Dušan Tadić"]
+                    players: ["Dušan Vlahović", "Aleksandar Mitrović", "Sergej Milinković-Savić", "Lazar Samardžić", "Strahinja Pavlović", "Nikola Milenković", "Filip Kostić", "Dušan Tadić", "Andrija Živković", "Predrag Rajković"]
                 },
                 {
                     id: "dza", name: "Argélia", flag: "🇩🇿", abbr: "DZA",
-                    players: ["Riyad Mahrez", "Islam Slimani", "Ismaël Bennacer", "Andy Delort", "Rais M'Bolhi"]
+                    players: ["Riyad Mahrez", "Ismaël Bennacer", "Rayan Aït-Nouri", "Mohammed Amoura", "Farès Chaïbi", "Amine Gouiri", "Said Benrahma", "Aissa Mandi", "Anthony Mandrea", "Houssem Aouar"]
                 }
             ]
         },
@@ -210,19 +210,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "eng", name: "Inglaterra", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", abbr: "ENG",
-                    players: ["Jude Bellingham", "Harry Kane", "Bukayo Saka", "Phil Foden", "Jordan Pickford"]
+                    players: ["Jude Bellingham", "Harry Kane", "Bukayo Saka", "Phil Foden", "Declan Rice", "Cole Palmer", "Kobbie Mainoo", "John Stones", "Kyle Walker", "Jordan Pickford"]
                 },
                 {
                     id: "irn", name: "Irã", flag: "🇮🇷", abbr: "IRN",
-                    players: ["Mehdi Taremi", "Sardar Azmoun", "Alireza Jahanbakhsh", "Alireza Beiranvand", "Karim Ansarifard"]
+                    players: ["Mehdi Taremi", "Sardar Azmoun", "Alireza Jahanbakhsh", "Samman Ghoddos", "Mehdi Ghayedi", "Saeid Ezatolahi", "Milad Mohammadi", "Hossein Kanaanizadegan", "Ramin Rezaeian", "Alireza Beiranvand"]
                 },
                 {
                     id: "pol", name: "Polônia", flag: "🇵🇱", abbr: "POL",
-                    players: ["Robert Lewandowski", "Piotr Zieliński", "Wojciech Szczęsny", "Jakub Moder", "Arkadiusz Milik"]
+                    players: ["Robert Lewandowski", "Piotr Zieliński", "Nicola Zalewski", "Sebastian Szymański", "Jakub Kiwior", "Przemysław Frankowski", "Karol Świderski", "Kacper Urbański", "Jan Bednarek", "Łukasz Skorupski"]
                 },
                 {
                     id: "gha", name: "Gana", flag: "🇬🇭", abbr: "GHA",
-                    players: ["Mohammed Kudus", "Thomas Partey", "Jordan Ayew", "André Ayew", "Lawrence Ati-Zigi"]
+                    players: ["Mohammed Kudus", "Thomas Partey", "Iñaki Williams", "Antoine Semenyo", "Ernest Nuamah", "Jordan Ayew", "Salis Abdul Samed", "Mohammed Salisu", "Tariq Lamptey", "Lawrence Ati-Zigi"]
                 }
             ]
         },
@@ -232,19 +232,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "por", name: "Portugal", flag: "🇵🇹", abbr: "POR",
-                    players: ["Cristiano Ronaldo", "Bruno Fernandes", "Rafael Leão", "Rúben Dias", "Diogo Costa"]
+                    players: ["Cristiano Ronaldo", "Bruno Fernandes", "Rafael Leão", "Bernardo Silva", "João Neves", "Vitinha", "Rúben Dias", "João Cancelo", "Gonçalo Inácio", "Diogo Costa"]
                 },
                 {
                     id: "uru", name: "Uruguai", flag: "🇺🇾", abbr: "URU",
-                    players: ["Federico Valverde", "Darwin Núñez", "Luis Suárez", "José María Giménez", "Fernando Muslera"]
+                    players: ["Federico Valverde", "Darwin Núñez", "Facundo Pellistri", "Manuel Ugarte", "Nicolás de la Cruz", "Ronald Araújo", "Mathías Olivera", "José María Giménez", "Sergio Rochet", "Luciano Rodríguez"]
                 },
                 {
                     id: "ned", name: "Países Baixos", flag: "🇳🇱", abbr: "NED",
-                    players: ["Virgil van Dijk", "Memphis Depay", "Frenkie de Jong", "Cody Gakpo", "Bart Verbruggen"]
+                    players: ["Virgil van Dijk", "Frenkie de Jong", "Cody Gakpo", "Xavi Simons", "Jeremie Frimpong", "Micky van de Ven", "Nathan Aké", "Tijjani Reijnders", "Donyell Malen", "Bart Verbruggen"]
                 },
                 {
                     id: "rsa", name: "África do Sul", flag: "🇿🇦", abbr: "RSA",
-                    players: ["Percy Tau", "Bongani Zungu", "Ronwen Williams", "Lyle Foster", "Themba Zwane"]
+                    players: ["Percy Tau", "Teboho Mokoena", "Ronwen Williams", "Lyle Foster", "Themba Zwane", "Khuliso Mudau", "Mothobi Mvala", "Aubrey Modiba", "Evidence Makgopa", "Thapelo Morena"]
                 }
             ]
         },
@@ -254,19 +254,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "ita", name: "Itália", flag: "🇮🇹", abbr: "ITA",
-                    players: ["Gianluigi Donnarumma", "Federico Chiesa", "Nicolo Barella", "Ciro Immobile", "Marco Verratti"]
+                    players: ["Gianluigi Donnarumma", "Nicolò Barella", "Federico Chiesa", "Alessandro Bastoni", "Riccardo Calafiori", "Davide Frattesi", "Mateo Retegui", "Gianluca Scamacca", "Destiny Udogie", "Lorenzo Pellegrini"]
                 },
                 {
                     id: "bel", name: "Bélgica", flag: "🇧🇪", abbr: "BEL",
-                    players: ["Kevin De Bruyne", "Romelu Lukaku", "Thibaut Courtois", "Axel Witsel", "Toby Alderweireld"]
+                    players: ["Kevin De Bruyne", "Jeremy Doku", "Amadou Onana", "Lois Openda", "Leandro Trossard", "Johan Bakayoko", "Wout Faes", "Timothy Castagne", "Arthur Theate", "Koen Casteels"]
                 },
                 {
                     id: "pan", name: "Panamá", flag: "🇵🇦", abbr: "PAN",
-                    players: ["Ismael Díaz", "Adalberto Carrasquilla", "Aníbal Godoy", "Orlando Mosquera", "José Fajardo"]
+                    players: ["Adalberto Carrasquilla", "Ismael Díaz", "José Fajardo", "Orlando Mosquera", "Aníbal Godoy", "Éric Davis", "Michael Murillo", "Fidel Escobar", "José Córdoba", "Puma Rodríguez"]
                 },
                 {
                     id: "uzb", name: "Uzbequistão", flag: "🇺🇿", abbr: "UZB",
-                    players: ["Eldor Shomurodov", "Abbosbek Fayzullaev", "Jaloliddin Masharipov", "Dilshodbek Hamrobekov", "Otabek Shukurov"]
+                    players: ["Eldor Shomurodov", "Abbosbek Fayzullaev", "Otabek Shukurov", "Jaloliddin Masharipov", "Azizbek Turgunboev", "Odiljon Hamrobekov", "Rustam Ashurmatov", "Abdukodir Khusanov", "Sherzod Nasrullaev", "Utkir Yusupov"]
                 }
             ]
         },
@@ -276,19 +276,19 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "hon", name: "Honduras", flag: "🇭🇳", abbr: "HON",
-                    players: ["Anthony Lozano", "Romell Quioto", "Maynor Figueroa", "Luis Palma", "Harold Fonseca"]
+                    players: ["Anthony Lozano", "Luis Palma", "Edwin Rodríguez", "Deiby Flores", "Bryan Róchez", "Joseph Rosales", "Denil Maldonado", "Andy Najar", "Rigoberto Rivas", "Edrick Menjívar"]
                 },
                 {
                     id: "jam", name: "Jamaica", flag: "🇯🇲", abbr: "JAM",
-                    players: ["Leon Bailey", "Michail Antonio", "Bobby Reid", "Shamar Nicholson", "Andre Blake"]
+                    players: ["Leon Bailey", "Michail Antonio", "Bobby Reid", "Demarai Gray", "Ethan Pinnock", "Shamar Nicholson", "Joel Latibeaudiere", "Dexter Lembikisa", "Kasey Palmer", "Andre Blake"]
                 },
                 {
                     id: "cmr", name: "Camarões", flag: "🇨🇲", abbr: "CMR",
-                    players: ["André Onana", "Eric Maxim Choupo-Moting", "Bryan Mbeumo", "Vincent Aboubakar", "Nicolas Nkoulou"]
+                    players: ["André Onana", "Bryan Mbeumo", "Vincent Aboubakar", "Frank Anguissa", "Christopher Wooh", "Georges-Kevin Nkoudou", "Jean-Charles Castelletto", "Nouhou Tolo", "Faris Moumbagna", "Carlos Baleba"]
                 },
                 {
                     id: "nzl", name: "Nova Zelândia", flag: "🇳🇿", abbr: "NZL",
-                    players: ["Chris Wood", "Winston Reid", "Clayton Lewis", "Stefan Marinovic", "Liberato Cacace"]
+                    players: ["Chris Wood", "Liberato Cacace", "Sarpreet Singh", "Joe Bell", "Marko Stamenic", "Matthew Garbett", "Ben Waine", "Tyler Bindon", "Nando Pijnaker", "Alex Paulsen"]
                 }
             ]
         }
