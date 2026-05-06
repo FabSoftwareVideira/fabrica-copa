@@ -81,13 +81,25 @@ const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
 
+function normalizeNameKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\./g, "")
+    .replace(/\bjr\b/g, "junior")
+    .replace(/\s+/g, " ");
+}
+
+function playerImageKey(name, teamId) {
+  return `${normalizeNameKey(name)}::${String(teamId || "").toLowerCase()}`;
+}
+
 const playerImageMap = new Map(
   playerImageItems
     .filter((item) => item?.found && item?.player && item?.imageUrl)
-    .map((item) => [
-      `${item.player.toLowerCase()}::${item.teamId || ""}`,
-      item,
-    ]),
+    .map((item) => [playerImageKey(item.player, item.teamId), item]),
 );
 
 const state = reactive({
@@ -729,7 +741,7 @@ function stickerPhotoCandidates(item) {
   }
 
   if (item.type === "player") {
-    const lookupKey = `${String(item.name || "").toLowerCase()}::${item.teamId || ""}`;
+    const lookupKey = playerImageKey(item.name, item.teamId);
     const record = playerImageMap.get(lookupKey);
     return record?.imageUrl
       ? [record.imageUrl, DEFAULT_PLAYER_IMAGE]

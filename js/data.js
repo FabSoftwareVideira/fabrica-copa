@@ -222,7 +222,7 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "gha", name: "Gana", flag: "🇬🇭", abbr: "GHA",
-                    players: ["Mohammed Kudus", "Thomas Partey", "Iñaki Williams", "Antoine Semenyo", "Ernest Nuamah", "Jordan Ayew", "Salis Abdul Samed", "Mohammed Salisu", "Tariq Lamptey", "Lawrence Ati-Zigi"]
+                    players: ["Mohammed Kudus", "Thomas Partey", "Iñaki Williams", "Antoine Semenyo", "Ernest Nuamah", "Jordan Ayew", "Salis Abdul Samed", "Mohammed Salisu", "Tariq Lamptey", "Lawrence Ati Zigi"]
                 }
             ]
         },
@@ -262,11 +262,11 @@ const ALBUM_DATA = {
                 },
                 {
                     id: "pan", name: "Panamá", flag: "🇵🇦", abbr: "PAN",
-                    players: ["Adalberto Carrasquilla", "Ismael Díaz", "José Fajardo", "Orlando Mosquera", "Aníbal Godoy", "Éric Davis", "Michael Murillo", "Fidel Escobar", "José Córdoba", "Puma Rodríguez"]
+                    players: ["Adalberto Carrasquilla", "Ismael Díaz", "José Fajardo", "Orlando Mosquera", "Aníbal Godoy", "Éric Davis", "Amir Murillo", "Fidel Escobar", "José Córdoba", "Puma Rodríguez"]
                 },
                 {
                     id: "uzb", name: "Uzbequistão", flag: "🇺🇿", abbr: "UZB",
-                    players: ["Eldor Shomurodov", "Abbosbek Fayzullaev", "Otabek Shukurov", "Jaloliddin Masharipov", "Azizbek Turgunboev", "Odiljon Hamrobekov", "Rustam Ashurmatov", "Abdukodir Khusanov", "Sherzod Nasrullaev", "Utkir Yusupov"]
+                    players: ["Eldor Shomurodov", "Abbosbek Fayzullaev", "Otabek Shukurov", "Jaloliddin Masharipov", "Azizbek Turgunboev", "Odildzhon Khamrobekov", "Rustam Ashurmatov", "Abdukodir Khusanov", "Sherzod Nasrullaev", "Utkir Yusupov"]
                 }
             ]
         },
