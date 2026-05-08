@@ -2001,14 +2001,15 @@ button:disabled {
 }
 
 .landing-tournament {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0rem;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 99px;
   padding: 0.35rem 1rem;
-  margin-bottom: 1.75rem;
+  margin-bottom: 0.75rem;
   font-size: 0.8rem;
   color: var(--text-dimmed);
 }
@@ -2028,9 +2029,9 @@ button:disabled {
 .landing-title {
   font-size: clamp(2.2rem, 6vw, 3.4rem);
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.4;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

@@ -1113,8 +1113,8 @@ const filteredTradeAvailable = computed(() => {
       <div class="landing-hero">
         <div class="landing-hero-inner">
           <div class="landing-tournament">
-            <span class="landing-flags">🇺🇸 🇨🇦 🇲🇽</span>
             <span class="landing-event-label">FIFA World Cup 2026™</span>
+            <span class="landing-flags">🇺🇸 🇨🇦 🇲🇽</span>
           </div>
           <h1 class="landing-title">Album de Figurinhas</h1>
           <p class="landing-subtitle">
