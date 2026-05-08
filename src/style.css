@@ -2448,6 +2448,94 @@ button:disabled {
   gap: 0.6rem;
 }
 
+.manage-users-toolbar {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.admin-users-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.admin-users-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.admin-users-table th,
+.admin-users-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.admin-users-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #334155;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.admin-users-table td small {
+  display: block;
+  color: #64748b;
+  margin-top: 0.1rem;
+}
+
+.admin-users-table tr.selected {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.table-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.14rem 0.52rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.table-pill.active {
+  background: rgba(34, 197, 94, 0.18);
+  color: #166534;
+}
+
+.table-pill.blocked {
+  background: rgba(239, 68, 68, 0.18);
+  color: #b91c1c;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.admin-pagination small {
+  color: #475569;
+}
+
+.admin-pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.admin-pagination-actions span {
+  font-size: 0.8rem;
+  color: #334155;
+}
+
 .manage-user-card {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -2750,6 +2838,7 @@ button:disabled {
 
   .manage-panel-head,
   .manage-coupon-form,
+  .manage-users-toolbar,
   .manage-user-grid,
   .manage-user-actions,
   .manage-user-password {
@@ -2763,6 +2852,15 @@ button:disabled {
   .manage-user-password input {
     min-width: 0;
     width: 100%;
+  }
+
+  .admin-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-pagination-actions {
+    justify-content: space-between;
   }
 
   .admin-hero {

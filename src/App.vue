@@ -179,6 +179,12 @@ const authForm = reactive({
 const adminTools = reactive({
   targetUserId: "",
   packs: 1,
+  search: "",
+  roleFilter: "all",
+  statusFilter: "all",
+  page: 1,
+  pageSize: 8,
+  editingUserId: "",
 });
 
 const isAuthenticated = computed(() =>
@@ -195,6 +201,58 @@ const managedBlockedUsers = computed(
 const managedActiveUsers = computed(
   () => state.managedUsers.filter((u) => !u.isBlocked).length,
 );
+const filteredManagedUsers = computed(() => {
+  const query = String(adminTools.search || "")
+    .trim()
+    .toLowerCase();
+  return state.managedUsers.filter((u) => {
+    if (adminTools.roleFilter !== "all" && u.role !== adminTools.roleFilter) {
+      return false;
+    }
+    if (adminTools.statusFilter === "active" && u.isBlocked) return false;
+    if (adminTools.statusFilter === "blocked" && !u.isBlocked) return false;
+    if (!query) return true;
+    const name = String(u.name || "").toLowerCase();
+    const email = String(u.email || "").toLowerCase();
+    return name.includes(query) || email.includes(query);
+  });
+});
+const managedUsersPageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil(
+      filteredManagedUsers.value.length / Number(adminTools.pageSize || 8),
+    ),
+  ),
+);
+const managedUsersSafePage = computed(() =>
+  Math.min(
+    Math.max(1, Number(adminTools.page || 1)),
+    managedUsersPageCount.value,
+  ),
+);
+const managedUsersPaged = computed(() => {
+  const pageSize = Number(adminTools.pageSize || 8);
+  const start = (managedUsersSafePage.value - 1) * pageSize;
+  return filteredManagedUsers.value.slice(start, start + pageSize);
+});
+const managedUsersPageFrom = computed(() => {
+  if (!filteredManagedUsers.value.length) return 0;
+  return (
+    (managedUsersSafePage.value - 1) * Number(adminTools.pageSize || 8) + 1
+  );
+});
+const managedUsersPageTo = computed(() =>
+  Math.min(
+    managedUsersSafePage.value * Number(adminTools.pageSize || 8),
+    filteredManagedUsers.value.length,
+  ),
+);
+const editingManagedUser = computed(() => {
+  const id = Number(adminTools.editingUserId || 0);
+  if (!id) return null;
+  return state.managedUsers.find((u) => Number(u.id) === id) || null;
+});
 const total = computed(() => stickers.length);
 const collectedCount = computed(
   () =>
@@ -462,6 +520,11 @@ function clearAuth() {
   state.managedUsers = [];
   adminTools.targetUserId = "";
   adminTools.packs = 1;
+  adminTools.search = "";
+  adminTools.roleFilter = "all";
+  adminTools.statusFilter = "all";
+  adminTools.page = 1;
+  adminTools.editingUserId = "";
   ui.managePanelMsg = "";
   ui.couponPanelMsg = "";
   saveAuth();
@@ -564,11 +627,35 @@ async function loadManagedUsers() {
         (firstAvailable || state.managedUsers[0]).id,
       );
     }
+
+    if (
+      adminTools.editingUserId &&
+      !state.managedUsers.some(
+        (u) => Number(u.id) === Number(adminTools.editingUserId),
+      )
+    ) {
+      adminTools.editingUserId = "";
+    }
+
+    adminTools.page = 1;
   } catch (err) {
     ui.managePanelMsg = err.message || "Erro ao carregar usuarios";
   } finally {
     ui.managePanelLoading = false;
   }
+}
+
+function openManagedUserEditor(user) {
+  const id = Number(user?.id || 0);
+  adminTools.editingUserId = id ? String(id) : "";
+}
+
+function setManagedUsersPage(nextPage) {
+  const n = Number(nextPage || 1);
+  adminTools.page = Math.min(
+    Math.max(1, n),
+    Math.max(1, managedUsersPageCount.value),
+  );
 }
 
 async function generateManagedCoupon() {
@@ -1451,7 +1538,7 @@ const filteredTradeAvailable = computed(() => {
             ui.mobileMenuOpen = false;
           "
         >
-          Código Promocional
+          Resgatar Código
         </button>
         <button
           class="pack-btn"
@@ -1680,53 +1767,156 @@ const filteredTradeAvailable = computed(() => {
 
           <div v-if="isAdmin" class="manage-users-box">
             <h4>Gerenciar usuários</h4>
-            <div class="manage-users-list">
-              <article
-                v-for="u in state.managedUsers"
-                :key="u.id"
-                class="manage-user-card"
+            <div class="manage-users-toolbar">
+              <input
+                v-model.trim="adminTools.search"
+                type="search"
+                placeholder="Buscar por nome ou email"
+                @input="setManagedUsersPage(1)"
+              />
+              <select
+                v-model="adminTools.roleFilter"
+                @change="setManagedUsersPage(1)"
               >
-                <header>
-                  <strong>{{ u.name }}</strong>
-                  <small>{{ u.email }}</small>
-                </header>
-                <div class="manage-user-grid">
-                  <label>
-                    Perfil
-                    <select v-model="u.draftRole">
-                      <option value="admin">admin</option>
-                      <option value="professor">professor</option>
-                      <option value="jogador">jogador</option>
-                    </select>
-                  </label>
-                  <label class="manage-user-check">
-                    <input v-model="u.draftBlocked" type="checkbox" />
-                    Bloquear acesso
-                  </label>
-                </div>
-                <input
-                  v-if="u.draftBlocked"
-                  v-model="u.draftBlockedReason"
-                  type="text"
-                  placeholder="Motivo do bloqueio"
-                />
-                <div class="manage-user-actions">
-                  <button type="button" @click="saveManagedUser(u)">
-                    Salvar perfil
-                  </button>
-                </div>
-                <div class="manage-user-password">
-                  <input
-                    v-model="u.newPassword"
-                    type="password"
-                    placeholder="Nova senha (min. 6)"
-                  />
-                  <button type="button" @click="changeManagedUserPassword(u)">
-                    Alterar senha
-                  </button>
-                </div>
-              </article>
+                <option value="all">Todos os perfis</option>
+                <option value="admin">admin</option>
+                <option value="professor">professor</option>
+                <option value="jogador">jogador</option>
+              </select>
+              <select
+                v-model="adminTools.statusFilter"
+                @change="setManagedUsersPage(1)"
+              >
+                <option value="all">Todos os status</option>
+                <option value="active">Ativos</option>
+                <option value="blocked">Bloqueados</option>
+              </select>
             </div>
+
+            <div class="admin-users-table-wrap">
+              <table class="admin-users-table">
+                <thead>
+                  <tr>
+                    <th>Usuário</th>
+                    <th>Perfil</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="managedUsersPaged.length === 0">
+                    <td colspan="4">Nenhum usuário encontrado.</td>
+                  </tr>
+                  <tr
+                    v-for="u in managedUsersPaged"
+                    :key="u.id"
+                    :class="{
+                      selected:
+                        Number(adminTools.editingUserId) === Number(u.id),
+                    }"
+                  >
+                    <td>
+                      <strong>{{ u.name }}</strong>
+                      <small>{{ u.email }}</small>
+                    </td>
+                    <td>
+                      <span class="table-pill">{{ u.role }}</span>
+                    </td>
+                    <td>
+                      <span
+                        class="table-pill"
+                        :class="u.isBlocked ? 'blocked' : 'active'"
+                      >
+                        {{ u.isBlocked ? "bloqueado" : "ativo" }}
+                      </span>
+                    </td>
+                    <td>
+                      <button type="button" @click="openManagedUserEditor(u)">
+                        Editar
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="admin-pagination">
+              <small>
+                Exibindo {{ managedUsersPageFrom }}-{{ managedUsersPageTo }} de
+                {{ filteredManagedUsers.length }}
+              </small>
+              <div class="admin-pagination-actions">
+                <button
+                  type="button"
+                  :disabled="managedUsersSafePage <= 1"
+                  @click="setManagedUsersPage(managedUsersSafePage - 1)"
+                >
+                  Anterior
+                </button>
+                <span>
+                  Página {{ managedUsersSafePage }} de
+                  {{ managedUsersPageCount }}
+                </span>
+                <button
+                  type="button"
+                  :disabled="managedUsersSafePage >= managedUsersPageCount"
+                  @click="setManagedUsersPage(managedUsersSafePage + 1)"
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
+
+            <article v-if="editingManagedUser" class="manage-user-card">
+              <header>
+                <strong>{{ editingManagedUser.name }}</strong>
+                <small>{{ editingManagedUser.email }}</small>
+              </header>
+              <div class="manage-user-grid">
+                <label>
+                  Perfil
+                  <select v-model="editingManagedUser.draftRole">
+                    <option value="admin">admin</option>
+                    <option value="professor">professor</option>
+                    <option value="jogador">jogador</option>
+                  </select>
+                </label>
+                <label class="manage-user-check">
+                  <input
+                    v-model="editingManagedUser.draftBlocked"
+                    type="checkbox"
+                  />
+                  Bloquear acesso
+                </label>
+              </div>
+              <input
+                v-if="editingManagedUser.draftBlocked"
+                v-model="editingManagedUser.draftBlockedReason"
+                type="text"
+                placeholder="Motivo do bloqueio"
+              />
+              <div class="manage-user-actions">
+                <button
+                  type="button"
+                  @click="saveManagedUser(editingManagedUser)"
+                >
+                  Salvar perfil
+                </button>
+              </div>
+              <div class="manage-user-password">
+                <input
+                  v-model="editingManagedUser.newPassword"
+                  type="password"
+                  placeholder="Nova senha (min. 6)"
+                />
+                <button
+                  type="button"
+                  @click="changeManagedUserPassword(editingManagedUser)"
+                >
+                  Alterar senha
+                </button>
+              </div>
+            </article>
           </div>
         </div>
       </section>
