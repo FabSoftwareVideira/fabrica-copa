@@ -721,12 +721,10 @@ async function generateManagedCoupon() {
   ui.couponPanelMsg = "";
 
   const targetUserId = Number(adminTools.targetUserId || 0);
-  if (!targetUserId) {
-    ui.couponPanelMsg = "Selecione um usuário.";
-    return;
+  const payload = {};
+  if (targetUserId > 0) {
+    payload.targetUserId = targetUserId;
   }
-
-  const payload = { targetUserId };
   if (isAdmin.value) {
     payload.packs = Math.max(1, Number(adminTools.packs || 1));
   }
@@ -737,9 +735,11 @@ async function generateManagedCoupon() {
       body: JSON.stringify(payload),
     });
     const coupon = data.coupon || {};
-    ui.couponPanelMsg = `Cupom ${coupon.code} gerado para ${
-      coupon.targetUserName || "usuário"
-    } (${coupon.packs || 1} pacote).`;
+    ui.couponPanelMsg = coupon.isGeneric
+      ? `Cupom ${coupon.code} gerado para uso livre (${coupon.packs || 1} pacote).`
+      : `Cupom ${coupon.code} gerado para ${
+          coupon.targetUserName || "usuário"
+        } (${coupon.packs || 1} pacote).`;
   } catch (err) {
     ui.couponPanelMsg = err.message || "Erro ao gerar cupom";
   }
@@ -1794,7 +1794,7 @@ const filteredTradeAvailable = computed(() => {
             <h4>Gerar cupom para pacote</h4>
             <div class="manage-coupon-form">
               <select v-model="adminTools.targetUserId">
-                <option value="">Selecione um usuário</option>
+                <option value="">Cupom livre (qualquer usuário)</option>
                 <option
                   v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
                   :key="u.id"

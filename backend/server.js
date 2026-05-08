@@ -337,6 +337,7 @@ async function initDb() {
             target_user_id INTEGER NOT NULL,
             created_by_user_id INTEGER NOT NULL,
             packs_added INTEGER NOT NULL DEFAULT 1,
+            is_generic INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             redeemed_at TEXT,
@@ -344,6 +345,7 @@ async function initDb() {
             FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     `);
+    await ensureColumn("user_coupons", "is_generic", "INTEGER NOT NULL DEFAULT 0");
 
     await run(`
     CREATE TABLE IF NOT EXISTS pack_history (
@@ -590,9 +592,10 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
 
         if (!promo) {
             couponRow = await get(
-                `SELECT id, packs_added
+                `SELECT id, packs_added, is_generic
                  FROM user_coupons
-                 WHERE code = ? AND target_user_id = ? AND status = 'active'`,
+                 WHERE code = ? AND status = 'active'
+                   AND (target_user_id = ? OR is_generic = 1)`,
                 [code, req.user.sub]
             );
             if (couponRow) {
@@ -603,7 +606,10 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
 
         if (!promo) return res.status(400).json({ error: "Codigo invalido ou expirado" });
 
-        if (!isGeneratedCoupon) {
+        const isGenericGeneratedCoupon =
+            isGeneratedCoupon && Number(couponRow?.is_generic || 0) === 1;
+
+        if (!isGeneratedCoupon || isGenericGeneratedCoupon) {
             const already = await get("SELECT id FROM redeemed_codes WHERE user_id = ? AND code = ?", [req.user.sub, code]);
             if (already) return res.status(409).json({ error: "Este codigo ja foi resgatado" });
         }
@@ -613,7 +619,7 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
         usedCodes.push(code);
         const extraPacks = (state.extraPacks || 0) + promo.packs;
 
-        if (isGeneratedCoupon && couponRow) {
+        if (isGeneratedCoupon && couponRow && !isGenericGeneratedCoupon) {
             await run(
                 "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ? WHERE id = ?",
                 [nowSqlTimestamp(), couponRow.id]
@@ -666,34 +672,42 @@ app.get("/api/coupons/targets", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PR
 app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
     try {
         const targetUserId = Number(req.body?.targetUserId || 0);
-        if (!targetUserId) return res.status(400).json({ error: "targetUserId obrigatorio" });
-        if (targetUserId === req.user.sub) return res.status(400).json({ error: "Nao pode gerar cupom para si mesmo" });
+        const hasTargetUser = targetUserId > 0;
+        if (hasTargetUser && targetUserId === req.user.sub) {
+            return res.status(400).json({ error: "Nao pode gerar cupom para si mesmo" });
+        }
 
-        const targetUser = await get("SELECT id, name, is_blocked FROM users WHERE id = ?", [targetUserId]);
-        if (!targetUser) return res.status(404).json({ error: "Usuario alvo nao encontrado" });
-        if (Number(targetUser.is_blocked || 0) === 1) {
-            return res.status(400).json({ error: "Nao e possivel gerar cupom para usuario bloqueado" });
+        let targetUser = null;
+        if (hasTargetUser) {
+            targetUser = await get("SELECT id, name, is_blocked FROM users WHERE id = ?", [targetUserId]);
+            if (!targetUser) return res.status(404).json({ error: "Usuario alvo nao encontrado" });
+            if (Number(targetUser.is_blocked || 0) === 1) {
+                return res.status(400).json({ error: "Nao e possivel gerar cupom para usuario bloqueado" });
+            }
         }
 
         const requestedPacks = Number(req.body?.packs || 1);
         const packs = req.user.role === ROLE_ADMIN
             ? Math.max(1, Math.min(20, Number.isFinite(requestedPacks) ? requestedPacks : 1))
             : 1;
+        const isGeneric = hasTargetUser ? 0 : 1;
+        const couponTargetUserId = hasTargetUser ? targetUserId : req.user.sub;
 
         const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
         await run(
-            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, status, created_at)
-             VALUES(?, ?, ?, ?, 'active', ?)`,
-            [code, targetUserId, req.user.sub, packs, nowSqlTimestamp()]
+            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
+             VALUES(?, ?, ?, ?, ?, 'active', ?)`,
+            [code, couponTargetUserId, req.user.sub, packs, isGeneric, nowSqlTimestamp()]
         );
 
         return res.status(201).json({
             ok: true,
             coupon: {
                 code,
-                targetUserId,
-                targetUserName: targetUser.name,
+                targetUserId: hasTargetUser ? targetUserId : null,
+                targetUserName: hasTargetUser ? targetUser?.name : "qualquer usuário",
+                isGeneric: isGeneric === 1,
                 packs,
                 createdByRole: req.user.role,
             },
