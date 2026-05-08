@@ -189,6 +189,12 @@ const isAdmin = computed(() => userRole.value === "admin");
 const canManageCoupons = computed(() =>
   ["admin", "professor"].includes(userRole.value),
 );
+const managedBlockedUsers = computed(
+  () => state.managedUsers.filter((u) => u.isBlocked).length,
+);
+const managedActiveUsers = computed(
+  () => state.managedUsers.filter((u) => !u.isBlocked).length,
+);
 const total = computed(() => stickers.length);
 const collectedCount = computed(
   () =>
@@ -1028,6 +1034,14 @@ function goToNextFlipPage() {
   state.flipGroup = albumPages.value[idx + 1].key;
 }
 
+function openAdminPanelView() {
+  state.view = "admin";
+  ui.mobileMenuOpen = false;
+  if (canManageCoupons.value) {
+    loadManagedUsers();
+  }
+}
+
 // ─── Trade functions ─────────────────────────────────────────────────────────
 
 async function loadTradeUsers() {
@@ -1529,6 +1543,15 @@ const filteredTradeAvailable = computed(() => {
           tradeIncomingCount
         }}</span>
       </button>
+      <button
+        v-if="canManageCoupons"
+        type="button"
+        :class="{ active: state.view === 'admin' }"
+        class="tab-admin"
+        @click="openAdminPanelView"
+      >
+        Administração
+      </button>
     </nav>
 
     <main class="content">
@@ -1573,15 +1596,51 @@ const filteredTradeAvailable = computed(() => {
             </li>
           </ul>
         </div>
+      </section>
 
-        <div v-if="canManageCoupons" class="manage-panel">
-          <div class="manage-panel-head">
-            <h3>
-              {{ isAdmin ? "Painel de Administração" : "Painel do Professor" }}
-            </h3>
-            <button type="button" @click="loadManagedUsers">Atualizar</button>
+      <section
+        v-if="state.view === 'admin' && canManageCoupons"
+        class="panel panel-admin"
+      >
+        <div class="admin-hero">
+          <div>
+            <p class="admin-kicker">
+              {{ isAdmin ? "Controle total" : "Gestão de turma" }}
+            </p>
+            <h2>Painel de Administração</h2>
+            <p class="admin-subtitle">
+              Gere cupons, acompanhe usuários e mantenha o ambiente organizado.
+            </p>
           </div>
+          <button
+            type="button"
+            class="admin-refresh-btn"
+            @click="loadManagedUsers"
+          >
+            Atualizar dados
+          </button>
+        </div>
 
+        <div class="admin-stats-grid">
+          <article>
+            <small>Gerenciáveis</small>
+            <strong>{{ state.managedUsers.length }}</strong>
+          </article>
+          <article>
+            <small>Ativos</small>
+            <strong>{{ managedActiveUsers }}</strong>
+          </article>
+          <article>
+            <small>Bloqueados</small>
+            <strong>{{ managedBlockedUsers }}</strong>
+          </article>
+          <article>
+            <small>Seu perfil</small>
+            <strong>{{ userRole }}</strong>
+          </article>
+        </div>
+
+        <div class="manage-panel admin-panel-shell">
           <p v-if="ui.managePanelLoading" class="read-only-hint">
             Carregando usuários...
           </p>
