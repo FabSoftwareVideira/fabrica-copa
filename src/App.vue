@@ -370,9 +370,6 @@ const stickerPhotoCache = new Map();
 onMounted(async () => {
   if (isAuthenticated.value) {
     await bootstrapAuth();
-  } else {
-    ui.authOpen = true;
-    ui.authMode = "login";
   }
 });
 
@@ -505,7 +502,6 @@ async function bootstrapAuth() {
     await Promise.all([loadAlbumState(), loadPackHistory()]);
   } catch (_err) {
     clearAuth();
-    ui.authOpen = true;
   } finally {
     ui.loading = false;
   }
@@ -730,10 +726,8 @@ async function logout() {
     // logout local ainda deve ocorrer
   }
 
-  clearAuth();
-  ui.authOpen = true;
-  ui.authMode = "login";
   setToast("Sessao encerrada");
+  clearAuth();
 }
 
 function stickerBorder(item) {
@@ -872,7 +866,7 @@ function goToPreviousFlipPage() {
 function goToNextFlipPage() {
   if (!currentFlipPage.value) return;
   const idx = albumPages.value.findIndex(
-    (page) => page.key === currentFlipPage.value.kexy,
+    (page) => page.key === currentFlipPage.value.key,
   );
   if (idx < 0 || idx >= albumPages.value.length - 1) return;
   ui.flipDirection = "next";
@@ -1089,7 +1083,155 @@ const filteredTradeAvailable = computed(() => {
 </script>
 
 <template>
-  <div class="layout" :class="progressTheme.key">
+  <!-- ── Unauthenticated: Landing / Auth page ── -->
+  <div v-if="!isAuthenticated" class="auth-root">
+    <!-- Landing page -->
+    <div v-if="!ui.authOpen" class="landing">
+      <div class="landing-hero">
+        <div class="landing-hero-inner">
+          <div class="landing-tournament">
+            <span class="landing-flags">🇺🇸 🇨🇦 🇲🇽</span>
+            <span class="landing-event-label">FIFA World Cup 2026™</span>
+          </div>
+          <h1 class="landing-title">Album de Figurinhas</h1>
+          <p class="landing-subtitle">
+            Colecione, complete e troque figurinhas com outros fãs da Copa do
+            Mundo 2026. Abra pacotinhos diários e construa seu álbum!
+          </p>
+          <div class="landing-actions">
+            <button
+              type="button"
+              class="landing-btn-primary"
+              @click="openAuth('login')"
+            >
+              Entrar na Conta
+            </button>
+            <button
+              type="button"
+              class="landing-btn-secondary"
+              @click="openAuth('register')"
+            >
+              Criar Conta Grátis
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="landing-features">
+        <div class="landing-feature">
+          <span class="landing-feature-icon">📒</span>
+          <strong>Colecione</strong>
+          <p>
+            Abra pacotinhos diários e colecione {{ total }} figurinhas únicas
+            das 48 seleções
+          </p>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">🔄</span>
+          <strong>Troque</strong>
+          <p>
+            Negocie figurinhas repetidas com outros colecionadores da plataforma
+          </p>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">📊</span>
+          <strong>Acompanhe</strong>
+          <p>
+            Monitore seu progresso e descubra o que falta para completar o álbum
+          </p>
+        </div>
+      </div>
+      <footer class="landing-footer">
+        <p>
+          Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México ·
+          FIFA World Cup 2026™
+        </p>
+      </footer>
+    </div>
+
+    <!-- Auth form page -->
+    <div v-else class="auth-page">
+      <div class="auth-page-inner">
+        <div class="auth-page-brand">
+          <span class="auth-brand-flags">🇺🇸 🇨🇦 🇲🇽</span>
+          <h1>Album Copa 2026</h1>
+          <p>FIFA World Cup 2026™</p>
+        </div>
+        <div class="auth-card">
+          <div class="auth-card-tabs">
+            <button
+              type="button"
+              class="auth-tab"
+              :class="{ active: ui.authMode === 'login' }"
+              @click="ui.authMode = 'login'; ui.authMsg = ''"
+            >
+              Entrar
+            </button>
+            <button
+              type="button"
+              class="auth-tab"
+              :class="{ active: ui.authMode === 'register' }"
+              @click="ui.authMode = 'register'; ui.authMsg = ''"
+            >
+              Criar Conta
+            </button>
+          </div>
+          <form class="auth-form" @submit.prevent="submitAuth">
+            <div v-if="ui.authMode === 'register'" class="auth-field">
+              <label for="auth-name">Nome</label>
+              <input
+                id="auth-name"
+                v-model="authForm.name"
+                type="text"
+                placeholder="Seu nome completo"
+                autocomplete="name"
+                required
+              />
+            </div>
+            <div class="auth-field">
+              <label for="auth-email">Email</label>
+              <input
+                id="auth-email"
+                v-model="authForm.email"
+                type="email"
+                placeholder="seu@email.com"
+                autocomplete="email"
+                required
+              />
+            </div>
+            <div class="auth-field">
+              <label for="auth-password">Senha</label>
+              <input
+                id="auth-password"
+                v-model="authForm.password"
+                type="password"
+                placeholder="••••••••"
+                :autocomplete="
+                  ui.authMode === 'register' ? 'new-password' : 'current-password'
+                "
+                required
+              />
+            </div>
+            <p v-if="ui.authMsg" class="auth-error">{{ ui.authMsg }}</p>
+            <button type="submit" class="auth-submit-btn">
+              {{ ui.authMode === "register" ? "Criar Conta" : "Entrar" }}
+            </button>
+          </form>
+          <div class="auth-card-footer">
+            <button
+              type="button"
+              class="auth-back-link"
+              @click="ui.authOpen = false; ui.authMsg = ''"
+            >
+              ← Voltar ao início
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Authenticated app ── -->
+  <div v-else class="layout" :class="progressTheme.key">
     <div class="ambient-orb ambient-orb-a" aria-hidden="true" />
     <div class="ambient-orb ambient-orb-b" aria-hidden="true" />
 
@@ -2053,36 +2195,10 @@ const filteredTradeAvailable = computed(() => {
       </div>
     </div>
 
-    <div v-if="ui.authOpen" class="modal" @click.self="ui.authOpen = false">
-      <div class="modal-box">
-        <h2>{{ ui.authMode === "register" ? "Criar Conta" : "Entrar" }}</h2>
-        <input
-          v-if="ui.authMode === 'register'"
-          v-model="authForm.name"
-          type="text"
-          placeholder="Nome"
-        />
-        <input v-model="authForm.email" type="email" placeholder="Email" />
-        <input
-          v-model="authForm.password"
-          type="password"
-          placeholder="Senha"
-        />
-        <p>{{ ui.authMsg }}</p>
-        <button type="button" @click="submitAuth">
-          {{ ui.authMode === "register" ? "Criar" : "Entrar" }}
-        </button>
-        <button
-          type="button"
-          @click="
-            ui.authMode = ui.authMode === 'register' ? 'login' : 'register'
-          "
-        >
-          {{ ui.authMode === "register" ? "Ja tenho conta" : "Criar conta" }}
-        </button>
-      </div>
-    </div>
-
-    <div v-if="ui.toast" class="toast">{{ ui.toast }}</div>
   </div>
+
+  <!-- Toast global (visível em qualquer estado) -->
+  <Teleport to="body">
+    <div v-if="ui.toast" class="toast toast-teleport">{{ ui.toast }}</div>
+  </Teleport>
 </template>
