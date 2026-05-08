@@ -1168,6 +1168,16 @@ const filteredTradeAvailable = computed(() => {
           Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
           World Cup 2026™
         </p>
+        <p>
+          Projeto educacional desenvolvido pela
+          <a
+            href="https://fabrica.videira.ifc.edu.br"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Fábrica de Software - IFC Videira
+          </a>
+        </p>
       </footer>
     </div>
 
