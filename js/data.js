@@ -14,15 +14,15 @@ const ALBUM_DATA = {
         color: "#FFD700",
         stickers: [
             { num: 1, name: "Capa do Álbum", type: "cover", icon: "📖", image: "public/specials/especial_capa.png" },
-            { num: 2, name: "Troféu FIFA World Cup", type: "trophy", icon: "🏆" },
-            { num: 3, name: "Talisma Oficial", type: "mascot", icon: "🎭" },
-            { num: 4, name: "Bola Oficial", type: "ball", icon: "⚽" },
-            { num: 5, name: "Sede: Nova York / NJ", type: "stadium", icon: "🏟️" },
-            { num: 6, name: "Sede: Los Angeles", type: "stadium", icon: "🏟️" },
-            { num: 7, name: "Sede: Dallas", type: "stadium", icon: "🏟️" },
-            { num: 8, name: "Sede: Cidade do México", type: "stadium", icon: "🏟️" },
-            { num: 9, name: "Sede: Toronto", type: "stadium", icon: "🏟️" },
-            { num: 10, name: "Sede: Vancouver", type: "stadium", icon: "🏟️" },
+            { num: 2, name: "Troféu FIFA World Cup", type: "trophy", icon: "🏆", image: "public/specials/especial_trophy.png" },
+            { num: 3, name: "Talisma Oficial", type: "mascot", icon: "🎭", image: "public/specials/especial_mascot.png" },
+            { num: 4, name: "Bola Oficial", type: "ball", icon: "⚽", image: "public/specials/especial_ball.png" },
+            { num: 5, name: "Sede: Nova York / NJ", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_ny.png" },
+            { num: 6, name: "Sede: Los Angeles", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_la.png" },
+            { num: 7, name: "Sede: Dallas", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_dallas.png" },
+            { num: 8, name: "Sede: Cidade do México", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_mexico.png" },
+            { num: 9, name: "Sede: Toronto", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_toronto.png" },
+            { num: 10, name: "Sede: Vancouver", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_vancouver.png" },
         ]
     },
 
@@ -100,7 +100,7 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "bra", name: "Brasil", flag: "🇧🇷", abbr: "BRA",
-                    players: ["Vinícius Junior", "Rodrygo", "Endrick", "Bruno Guimarães", "Lucas Paquetá", "Marquinhos", "Gabriel Magalhães", "Alisson", "Éder Militão", "Savinho"]
+                    players: ["Vinícius Junior", "Neymar", "Endrick", "Bruno Guimarães", "Lucas Paquetá", "Marquinhos", "Gabriel Magalhães", "Alisson", "Éder Militão", "Savinho"]
                 },
                 {
                     id: "kor", name: "Coreia do Sul", flag: "🇰🇷", abbr: "KOR",

@@ -1283,6 +1283,7 @@ const filteredTradeAvailable = computed(() => {
       <div class="topbar-brand">
         <p class="eyebrow">World Cup Sticker Album</p>
         <h1>Album Copa 2026</h1>
+        <small class="eyebrow">EUA, Canadá e México</small>
       </div>
       <button
         class="topbar-menu-toggle"
@@ -1304,7 +1305,7 @@ const filteredTradeAvailable = computed(() => {
             ui.mobileMenuOpen = false;
           "
         >
-          Codigo Promocional
+          Código Promocional
         </button>
         <button
           class="pack-btn"
@@ -1321,47 +1322,8 @@ const filteredTradeAvailable = computed(() => {
               : `Abrir Pacotinho (${packsAvailable})`
           }}
         </button>
-        <div v-if="isAuthenticated" class="user-actions">
-          <span class="user-pill">{{ state.user.name }}</span>
-          <button
-            type="button"
-            class="logout-btn"
-            @click="
-              logout();
-              ui.mobileMenuOpen = false;
-            "
-          >
-            Sair
-          </button>
-        </div>
-        <div v-else class="user-actions">
-          <button
-            type="button"
-            class="auth-btn"
-            @click="
-              openAuth('login');
-              ui.mobileMenuOpen = false;
-            "
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            class="auth-btn register-btn"
-            @click="
-              openAuth('register');
-              ui.mobileMenuOpen = false;
-            "
-          >
-            Cadastrar
-          </button>
-        </div>
       </div>
     </header>
-
-    <div class="header-subtitle">
-      <p>EUA, Canada e Mexico · {{ progressTheme.label }}</p>
-    </div>
 
     <nav class="tabs" :class="{ open: ui.mobileMenuOpen }">
       <button
@@ -1570,7 +1532,6 @@ const filteredTradeAvailable = computed(() => {
       <section v-if="state.view === 'flip'" class="panel panel-flip">
         <div class="panel-head">
           <h2>Folhear Album</h2>
-          <span class="badge-chip">1 folha por grupo</span>
         </div>
 
         <div class="flip-nav">
@@ -2238,6 +2199,33 @@ const filteredTradeAvailable = computed(() => {
         <button type="button" @click="redeemPromo">Resgatar</button>
       </div>
     </div>
+
+    <footer class="landing-footer app-footer">
+      <div class="app-footer-session">
+        <span class="user-pill">Conectado como {{ state.user?.name }}</span>
+        <button
+          type="button"
+          class="logout-btn app-footer-logout"
+          @click="logout"
+        >
+          Sair
+        </button>
+      </div>
+      <p>
+        Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
+        World Cup 2026™
+      </p>
+      <p>
+        Projeto educacional desenvolvido pela
+        <a
+          href="https://fabrica.videira.ifc.edu.br"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Fábrica de Software - IFC Videira
+        </a>
+      </p>
+    </footer>
   </div>
 
   <!-- Toast global (visível em qualquer estado) -->
