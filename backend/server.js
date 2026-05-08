@@ -16,6 +16,7 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173,http://127
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const PACKS_PER_DAY = 1;
+const APP_TIMEZONE = "America/Sao_Paulo";
 
 const PROMO_CODES = {
     COPA2026: { packs: 3, label: "Bonus Copa 2026" },
@@ -90,18 +91,37 @@ function parseJSON(value, fallback) {
     }
 }
 
-function nowIso() {
-    return new Date().toISOString();
-}
-
 function todayStr() {
-    return new Date().toISOString().slice(0, 10);
+    return formatDateParts(new Date(), APP_TIMEZONE).date;
 }
 
 function addDaysISO(days) {
     const d = new Date();
     d.setDate(d.getDate() + days);
     return d.toISOString();
+}
+
+function formatDateParts(date, timeZone) {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+    }).formatToParts(date);
+
+    const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    return {
+        date: `${map.year}-${map.month}-${map.day}`,
+        dateTime: `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}:${map.second}`,
+    };
+}
+
+function nowSqlTimestamp() {
+    return formatDateParts(new Date(), APP_TIMEZONE).dateTime;
 }
 
 function normalizeCode(raw) {
@@ -151,11 +171,12 @@ async function createRefreshToken(userId) {
     const token = makeRefreshToken();
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = addDaysISO(REFRESH_TOKEN_TTL_DAYS);
+    const createdAt = nowSqlTimestamp();
 
     await run(
         `INSERT INTO refresh_tokens(user_id, token_hash, expires_at, revoked, created_at)
-     VALUES(?, ?, ?, 0, CURRENT_TIMESTAMP)`,
-        [userId, tokenHash, expiresAt]
+     VALUES(?, ?, ?, 0, ?)`,
+        [userId, tokenHash, expiresAt, createdAt]
     );
 
     return token;
@@ -447,6 +468,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
     try {
         const { row } = await getAlbumState(req.user.sub);
         const clientCollected = req.body?.collected || {};
+        const updatedAt = nowSqlTimestamp();
 
         await run(
             `
@@ -456,7 +478,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
           packs_used_today = ?,
           extra_packs = ?,
           used_codes_json = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = ?
       WHERE user_id = ?
       `,
             [
@@ -465,6 +487,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
                 row.packs_used_today || 0,
                 row.extra_packs || 0,
                 row.used_codes_json || "[]",
+                updatedAt,
                 req.user.sub,
             ]
         );
@@ -500,10 +523,10 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
         await run(
             `
       UPDATE album_states
-      SET extra_packs = ?, used_codes_json = ?, updated_at = CURRENT_TIMESTAMP
+        SET extra_packs = ?, used_codes_json = ?, updated_at = ?
       WHERE user_id = ?
       `,
-            [extraPacks, JSON.stringify(usedCodes), req.user.sub]
+            [extraPacks, JSON.stringify(usedCodes), nowSqlTimestamp(), req.user.sub]
         );
 
         return res.json({
@@ -566,6 +589,7 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
 
         const newCount = wasOwned.filter((x) => !x).length;
         const repeatCount = 5 - newCount;
+        const nowTimestamp = nowSqlTimestamp();
 
         await run(
             `
@@ -574,7 +598,7 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
           packs_used_date = ?,
           packs_used_today = ?,
           extra_packs = ?,
-          updated_at = CURRENT_TIMESTAMP
+          updated_at = ?
       WHERE user_id = ?
       `,
             [
@@ -582,13 +606,14 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
                 nextPacksUsedDate,
                 nextPacksUsedToday,
                 nextExtraPacks,
+                nowTimestamp,
                 req.user.sub,
             ]
         );
 
         await run(
-            "INSERT INTO pack_history(user_id, stickers_json, new_count, repeat_count, source) VALUES(?, ?, ?, ?, ?)",
-            [req.user.sub, JSON.stringify(pack), newCount, repeatCount, source]
+            "INSERT INTO pack_history(user_id, opened_at, stickers_json, new_count, repeat_count, source) VALUES(?, ?, ?, ?, ?, ?)",
+            [req.user.sub, nowTimestamp, JSON.stringify(pack), newCount, repeatCount, source]
         );
 
         return res.json({
@@ -730,10 +755,11 @@ app.post("/api/trade/offers", authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "O outro usuario nao tem essa figurinha repetida" });
         }
 
+        const nowTimestamp = nowSqlTimestamp();
         const result = await run(
             `INSERT INTO trade_offers(from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, status, created_at, updated_at)
-             VALUES(?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-            [req.user.sub, Number(toUserId), offeredStickerId, requestedStickerId]
+             VALUES(?, ?, ?, ?, 'pending', ?, ?)`,
+            [req.user.sub, Number(toUserId), offeredStickerId, requestedStickerId, nowTimestamp, nowTimestamp]
         );
 
         return res.status(201).json({ ok: true, offerId: result.lastID });
@@ -794,12 +820,13 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
         const { state: fromState } = await getAlbumState(offer.from_user_id);
         const { state: toState } = await getAlbumState(offer.to_user_id);
 
+        const nowTimestamp = nowSqlTimestamp();
         if ((fromState.collected[offer.offered_sticker_id] || 0) <= 1) {
-            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [offerId]);
+            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
             return res.status(409).json({ error: "O outro usuario nao tem mais essa figurinha repetida" });
         }
         if ((toState.collected[offer.requested_sticker_id] || 0) <= 1) {
-            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [offerId]);
+            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
             return res.status(409).json({ error: "Voce nao tem mais essa figurinha repetida" });
         }
 
@@ -812,26 +839,26 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
         toCollected[offer.offered_sticker_id] = (Number(toCollected[offer.offered_sticker_id]) || 0) + 1;
 
         await run(
-            "UPDATE album_states SET collected_json = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-            [JSON.stringify(fromCollected), offer.from_user_id]
+            "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
+            [JSON.stringify(fromCollected), nowTimestamp, offer.from_user_id]
         );
         await run(
-            "UPDATE album_states SET collected_json = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-            [JSON.stringify(toCollected), offer.to_user_id]
+            "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
+            [JSON.stringify(toCollected), nowTimestamp, offer.to_user_id]
         );
         await run(
-            "UPDATE trade_offers SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            [offerId]
+            "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ?",
+            [nowTimestamp, offerId]
         );
 
         // Register in trade history for both users
         await run(
-            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id) VALUES(?, ?, ?, ?, ?)",
-            [offer.from_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id]
+            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, completed_at) VALUES(?, ?, ?, ?, ?, ?)",
+            [offer.from_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
         );
         await run(
-            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id) VALUES(?, ?, ?, ?, ?)",
-            [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id]
+            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, completed_at) VALUES(?, ?, ?, ?, ?, ?)",
+            [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
         );
 
         const { state: newState } = await getAlbumState(req.user.sub);
@@ -852,8 +879,8 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, async (req, res) => {
 
         const newStatus = offer.to_user_id === req.user.sub ? "rejected" : "cancelled";
         await run(
-            "UPDATE trade_offers SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            [newStatus, offerId]
+            "UPDATE trade_offers SET status = ?, updated_at = ? WHERE id = ?",
+            [newStatus, nowSqlTimestamp(), offerId]
         );
         return res.json({ ok: true });
     } catch (err) {

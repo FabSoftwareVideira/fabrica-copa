@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
 import playerImagesData from "../js/player-images.json";
 
 const API_BASE_URL = "http://localhost:3001/api";
+const APP_TIMEZONE = "America/Sao_Paulo";
 const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
 const DEFAULT_PLAYER_IMAGE = "/player-default.png";
@@ -80,6 +81,13 @@ const stickerMap = new Map(stickers.map((item) => [item.id, item]));
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("pt-BR", { timeZone: APP_TIMEZONE });
+}
 
 function normalizeNameKey(value) {
   return String(value || "")
@@ -966,7 +974,8 @@ function closeTradeOffer() {
 }
 
 async function confirmTradeOffer() {
-  if (!ui.tradeTargetEntry || !ui.tradeTargetUser || !ui.tradeOfferSticker) return;
+  if (!ui.tradeTargetEntry || !ui.tradeTargetUser || !ui.tradeOfferSticker)
+    return;
   ui.tradeLoading = true;
   try {
     await apiFetch("/trade/offers", {
@@ -1046,7 +1055,11 @@ async function openTradeView() {
   state.tradeSubView = "available";
   ui.mobileMenuOpen = false;
   if (isAuthenticated.value) {
-    await Promise.all([loadTradeAvailable(), loadTradeUsers(), loadTradeOffers()]);
+    await Promise.all([
+      loadTradeAvailable(),
+      loadTradeUsers(),
+      loadTradeOffers(),
+    ]);
   }
 }
 
@@ -1060,11 +1073,14 @@ const filteredTradeAvailable = computed(() => {
   let list = state.tradeAvailable;
   if (state.tradeFilterUser !== "all") {
     const uid = Number(state.tradeFilterUser);
-    list = list.filter((entry) => entry.offeredBy.some((u) => u.userId === uid));
+    list = list.filter((entry) =>
+      entry.offeredBy.some((u) => u.userId === uid),
+    );
   }
   if (state.tradeFilterGroup !== "all") {
     list = list.filter((entry) => {
-      if (state.tradeFilterGroup === "especial") return entry.sticker.section === "especial";
+      if (state.tradeFilterGroup === "especial")
+        return entry.sticker.section === "especial";
       return entry.sticker.groupId === state.tradeFilterGroup;
     });
   }
@@ -1270,7 +1286,7 @@ const filteredTradeAvailable = computed(() => {
           </p>
           <ul v-else>
             <li v-for="item in state.recentPacks" :key="item.id">
-              <span>{{ new Date(item.openedAt).toLocaleString("pt-BR") }}</span>
+              <span>{{ formatDateTime(item.openedAt) }}</span>
               <span>{{ item.source === "bonus" ? "Bonus" : "Diario" }}</span>
               <span>{{ item.newCount }} novas</span>
               <span>{{ item.repeatCount }} repetidas</span>
@@ -1552,7 +1568,10 @@ const filteredTradeAvailable = computed(() => {
           <button
             type="button"
             :class="{ active: state.tradeSubView === 'incoming' }"
-            @click="state.tradeSubView = 'incoming'; loadTradeOffers()"
+            @click="
+              state.tradeSubView = 'incoming';
+              loadTradeOffers();
+            "
           >
             Recebidas
             <span
@@ -1564,14 +1583,20 @@ const filteredTradeAvailable = computed(() => {
           <button
             type="button"
             :class="{ active: state.tradeSubView === 'outgoing' }"
-            @click="state.tradeSubView = 'outgoing'; loadTradeOffers()"
+            @click="
+              state.tradeSubView = 'outgoing';
+              loadTradeOffers();
+            "
           >
             Enviadas
           </button>
           <button
             type="button"
             :class="{ active: state.tradeSubView === 'history' }"
-            @click="state.tradeSubView = 'history'; loadTradeHistory()"
+            @click="
+              state.tradeSubView = 'history';
+              loadTradeHistory();
+            "
           >
             Histórico
           </button>
@@ -1607,10 +1632,7 @@ const filteredTradeAvailable = computed(() => {
           <p v-if="ui.tradeAvailableLoading" class="trade-hint">
             Carregando...
           </p>
-          <p
-            v-else-if="filteredTradeAvailable.length === 0"
-            class="trade-hint"
-          >
+          <p v-else-if="filteredTradeAvailable.length === 0" class="trade-hint">
             Nenhuma figurinha disponível com os filtros selecionados.
           </p>
           <div v-else class="trade-available-list">
@@ -1618,7 +1640,9 @@ const filteredTradeAvailable = computed(() => {
               v-for="entry in filteredTradeAvailable"
               :key="entry.sticker.id"
               class="trade-available-row"
-              :style="{ borderLeftColor: stickerBorder(entry.sticker).backgroundColor }"
+              :style="{
+                borderLeftColor: stickerBorder(entry.sticker).backgroundColor,
+              }"
             >
               <div class="trade-row-main">
                 <span class="trade-row-num">#{{ entry.sticker.num }}</span>
@@ -1665,9 +1689,7 @@ const filteredTradeAvailable = computed(() => {
             >
               <div class="trade-offer-header">
                 <strong>{{ offer.fromUserName }}</strong>
-                <small>{{
-                  new Date(offer.createdAt).toLocaleString("pt-BR")
-                }}</small>
+                <small>{{ formatDateTime(offer.createdAt) }}</small>
               </div>
               <div class="trade-offer-stickers">
                 <div class="trade-offer-sticker">
@@ -1734,9 +1756,7 @@ const filteredTradeAvailable = computed(() => {
             >
               <div class="trade-offer-header">
                 <strong>Para: {{ offer.toUserName }}</strong>
-                <small>{{
-                  new Date(offer.createdAt).toLocaleString("pt-BR")
-                }}</small>
+                <small>{{ formatDateTime(offer.createdAt) }}</small>
               </div>
               <div class="trade-offer-stickers">
                 <div class="trade-offer-sticker">
@@ -1797,7 +1817,9 @@ const filteredTradeAvailable = computed(() => {
               <div class="trade-history-main">
                 <div class="trade-history-stickers">
                   <div class="trade-history-sticker">
-                    <small>Você {{ entry.iSent ? "ofereceu" : "recebeu" }}</small>
+                    <small
+                      >Você {{ entry.iSent ? "ofereceu" : "recebeu" }}</small
+                    >
                     <div
                       class="trade-history-sticker-info"
                       :style="stickerBorder(entry.offeredSticker)"
@@ -1822,10 +1844,11 @@ const filteredTradeAvailable = computed(() => {
                 </div>
                 <div class="trade-history-details">
                   <small class="trade-history-partner">
-                    {{ entry.iSent ? "para" : "de" }} <strong>{{ entry.partnerName }}</strong>
+                    {{ entry.iSent ? "para" : "de" }}
+                    <strong>{{ entry.partnerName }}</strong>
                   </small>
                   <small class="trade-history-date">
-                    {{ new Date(entry.completedAt).toLocaleString("pt-BR") }}
+                    {{ formatDateTime(entry.completedAt) }}
                   </small>
                 </div>
               </div>
@@ -1972,14 +1995,18 @@ const filteredTradeAvailable = computed(() => {
           </div>
         </div>
         <p class="trade-modal-subtitle">
-          Escolha uma repetida sua que {{ ui.tradeTargetUser?.userName || "o usuário" }} ainda não tem:
+          Escolha uma repetida sua que
+          {{ ui.tradeTargetUser?.userName || "o usuário" }} ainda não tem:
         </p>
-        <p v-if="ui.tradeOfferChoicesLoading" class="trade-hint">Carregando opções...</p>
+        <p v-if="ui.tradeOfferChoicesLoading" class="trade-hint">
+          Carregando opções...
+        </p>
         <p
           v-else-if="ui.tradeTargetUser && ui.tradeOfferChoices.length === 0"
           class="trade-hint"
         >
-          Você não tem repetidas que {{ ui.tradeTargetUser.userName }} precise no momento.
+          Você não tem repetidas que {{ ui.tradeTargetUser.userName }} precise
+          no momento.
         </p>
         <div class="trade-offer-picker">
           <article
@@ -2000,7 +2027,9 @@ const filteredTradeAvailable = computed(() => {
           <button
             type="button"
             class="trade-accept-btn"
-            :disabled="!ui.tradeTargetUser || !ui.tradeOfferSticker || ui.tradeLoading"
+            :disabled="
+              !ui.tradeTargetUser || !ui.tradeOfferSticker || ui.tradeLoading
+            "
             @click="confirmTradeOffer"
           >
             {{ ui.tradeLoading ? "Enviando..." : "Enviar Proposta" }}
