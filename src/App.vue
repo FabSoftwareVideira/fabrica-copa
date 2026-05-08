@@ -185,6 +185,8 @@ const adminTools = reactive({
   page: 1,
   pageSize: 8,
   editingUserId: "",
+  sortBy: "name",
+  sortDir: "asc",
 });
 
 const isAuthenticated = computed(() =>
@@ -195,6 +197,8 @@ const isAdmin = computed(() => userRole.value === "admin");
 const canManageCoupons = computed(() =>
   ["admin", "professor"].includes(userRole.value),
 );
+const collectionViews = ["album", "missing", "duplicates", "search", "flip"];
+const isCollectionView = computed(() => collectionViews.includes(state.view));
 const managedBlockedUsers = computed(
   () => state.managedUsers.filter((u) => u.isBlocked).length,
 );
@@ -217,11 +221,41 @@ const filteredManagedUsers = computed(() => {
     return name.includes(query) || email.includes(query);
   });
 });
+const managedUsersSorted = computed(() => {
+  const list = [...filteredManagedUsers.value];
+  const dir = adminTools.sortDir === "desc" ? -1 : 1;
+  const sortBy = adminTools.sortBy;
+
+  list.sort((a, b) => {
+    let aVal = "";
+    let bVal = "";
+
+    if (sortBy === "status") {
+      aVal = a.isBlocked ? "1" : "0";
+      bVal = b.isBlocked ? "1" : "0";
+    } else if (sortBy === "role") {
+      aVal = String(a.role || "").toLowerCase();
+      bVal = String(b.role || "").toLowerCase();
+    } else if (sortBy === "email") {
+      aVal = String(a.email || "").toLowerCase();
+      bVal = String(b.email || "").toLowerCase();
+    } else {
+      aVal = String(a.name || "").toLowerCase();
+      bVal = String(b.name || "").toLowerCase();
+    }
+
+    if (aVal < bVal) return -1 * dir;
+    if (aVal > bVal) return 1 * dir;
+    return 0;
+  });
+
+  return list;
+});
 const managedUsersPageCount = computed(() =>
   Math.max(
     1,
     Math.ceil(
-      filteredManagedUsers.value.length / Number(adminTools.pageSize || 8),
+      managedUsersSorted.value.length / Number(adminTools.pageSize || 8),
     ),
   ),
 );
@@ -234,10 +268,10 @@ const managedUsersSafePage = computed(() =>
 const managedUsersPaged = computed(() => {
   const pageSize = Number(adminTools.pageSize || 8);
   const start = (managedUsersSafePage.value - 1) * pageSize;
-  return filteredManagedUsers.value.slice(start, start + pageSize);
+  return managedUsersSorted.value.slice(start, start + pageSize);
 });
 const managedUsersPageFrom = computed(() => {
-  if (!filteredManagedUsers.value.length) return 0;
+  if (!managedUsersSorted.value.length) return 0;
   return (
     (managedUsersSafePage.value - 1) * Number(adminTools.pageSize || 8) + 1
   );
@@ -245,7 +279,7 @@ const managedUsersPageFrom = computed(() => {
 const managedUsersPageTo = computed(() =>
   Math.min(
     managedUsersSafePage.value * Number(adminTools.pageSize || 8),
-    filteredManagedUsers.value.length,
+    managedUsersSorted.value.length,
   ),
 );
 const editingManagedUser = computed(() => {
@@ -656,6 +690,30 @@ function setManagedUsersPage(nextPage) {
     Math.max(1, n),
     Math.max(1, managedUsersPageCount.value),
   );
+}
+
+function setManagedUsersPageSize(nextSize) {
+  const n = Number(nextSize || 8);
+  adminTools.pageSize = [5, 8, 10, 20].includes(n) ? n : 8;
+  adminTools.page = 1;
+}
+
+function setManagedUsersSort(sortBy) {
+  const allowed = ["name", "email", "role", "status"];
+  if (!allowed.includes(sortBy)) return;
+  if (adminTools.sortBy === sortBy) {
+    adminTools.sortDir = adminTools.sortDir === "asc" ? "desc" : "asc";
+  } else {
+    adminTools.sortBy = sortBy;
+    adminTools.sortDir = "asc";
+  }
+  adminTools.page = 1;
+}
+
+function openCollectionView(view) {
+  if (!collectionViews.includes(view)) return;
+  state.view = view;
+  ui.mobileMenuOpen = false;
 }
 
 async function generateManagedCoupon() {
@@ -1571,53 +1629,10 @@ const filteredTradeAvailable = computed(() => {
       </button>
       <button
         type="button"
-        :class="{ active: state.view === 'album' }"
-        @click="
-          state.view = 'album';
-          ui.mobileMenuOpen = false;
-        "
+        :class="{ active: isCollectionView }"
+        @click="openCollectionView('flip')"
       >
-        Album
-      </button>
-      <button
-        type="button"
-        :class="{ active: state.view === 'missing' }"
-        @click="
-          state.view = 'missing';
-          ui.mobileMenuOpen = false;
-        "
-      >
-        Faltando
-      </button>
-      <button
-        type="button"
-        :class="{ active: state.view === 'duplicates' }"
-        @click="
-          state.view = 'duplicates';
-          ui.mobileMenuOpen = false;
-        "
-      >
-        Repetidas
-      </button>
-      <button
-        type="button"
-        :class="{ active: state.view === 'flip' }"
-        @click="
-          state.view = 'flip';
-          ui.mobileMenuOpen = false;
-        "
-      >
-        Folhear
-      </button>
-      <button
-        type="button"
-        :class="{ active: state.view === 'search' }"
-        @click="
-          state.view = 'search';
-          ui.mobileMenuOpen = false;
-        "
-      >
-        Buscar
+        Album & Folhear
       </button>
       <button
         type="button"
@@ -1642,6 +1657,46 @@ const filteredTradeAvailable = computed(() => {
     </nav>
 
     <main class="content">
+      <div v-if="isCollectionView" class="collection-tabs-wrap">
+        <div class="collection-tabs">
+          <button
+            type="button"
+            :class="{ active: state.view === 'flip' }"
+            @click="openCollectionView('flip')"
+          >
+            Folhear
+          </button>
+          <button
+            type="button"
+            :class="{ active: state.view === 'album' }"
+            @click="openCollectionView('album')"
+          >
+            Catálogo
+          </button>
+          <button
+            type="button"
+            :class="{ active: state.view === 'missing' }"
+            @click="openCollectionView('missing')"
+          >
+            Faltando
+          </button>
+          <button
+            type="button"
+            :class="{ active: state.view === 'duplicates' }"
+            @click="openCollectionView('duplicates')"
+          >
+            Repetidas
+          </button>
+          <button
+            type="button"
+            :class="{ active: state.view === 'search' }"
+            @click="openCollectionView('search')"
+          >
+            Buscar
+          </button>
+        </div>
+      </div>
+
       <section v-if="state.view === 'dashboard'" class="panel">
         <div class="panel-head">
           <h2>Visao Geral</h2>
@@ -1797,9 +1852,30 @@ const filteredTradeAvailable = computed(() => {
               <table class="admin-users-table">
                 <thead>
                   <tr>
-                    <th>Usuário</th>
-                    <th>Perfil</th>
-                    <th>Status</th>
+                    <th>
+                      <button
+                        type="button"
+                        @click="setManagedUsersSort('name')"
+                      >
+                        Usuário
+                      </button>
+                    </th>
+                    <th>
+                      <button
+                        type="button"
+                        @click="setManagedUsersSort('role')"
+                      >
+                        Perfil
+                      </button>
+                    </th>
+                    <th>
+                      <button
+                        type="button"
+                        @click="setManagedUsersSort('status')"
+                      >
+                        Status
+                      </button>
+                    </th>
                     <th>Ações</th>
                   </tr>
                 </thead>
@@ -1841,10 +1917,25 @@ const filteredTradeAvailable = computed(() => {
             </div>
 
             <div class="admin-pagination">
-              <small>
-                Exibindo {{ managedUsersPageFrom }}-{{ managedUsersPageTo }} de
-                {{ filteredManagedUsers.length }}
-              </small>
+              <div>
+                <small>
+                  Exibindo {{ managedUsersPageFrom }}-{{ managedUsersPageTo }}
+                  de
+                  {{ managedUsersSorted.length }}
+                </small>
+                <label class="page-size-label">
+                  Itens por página
+                  <select
+                    :value="adminTools.pageSize"
+                    @change="setManagedUsersPageSize($event.target.value)"
+                  >
+                    <option :value="5">5</option>
+                    <option :value="8">8</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                  </select>
+                </label>
+              </div>
               <div class="admin-pagination-actions">
                 <button
                   type="button"

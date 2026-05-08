@@ -341,6 +341,32 @@ button:disabled {
   font-weight: 700;
 }
 
+.collection-tabs-wrap {
+  margin-bottom: 0.8rem;
+}
+
+.collection-tabs {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.1rem;
+}
+
+.collection-tabs button {
+  border-radius: 999px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+}
+
+.collection-tabs button.active {
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  border-color: rgba(37, 99, 235, 0.85);
+  color: #fff;
+}
+
 .content {
   margin-top: 1rem;
 }
@@ -2483,6 +2509,17 @@ button:disabled {
   background: rgba(148, 163, 184, 0.12);
 }
 
+.admin-users-table th button {
+  all: unset;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.admin-users-table th button:hover {
+  color: #0f172a;
+}
+
 .admin-users-table td small {
   display: block;
   color: #64748b;
@@ -2523,6 +2560,19 @@ button:disabled {
 
 .admin-pagination small {
   color: #475569;
+}
+
+.page-size-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  color: #334155;
+  margin-top: 0.25rem;
+}
+
+.page-size-label select {
+  width: 76px;
 }
 
 .admin-pagination-actions {
@@ -2861,6 +2911,10 @@ button:disabled {
 
   .admin-pagination-actions {
     justify-content: space-between;
+  }
+
+  .collection-tabs {
+    padding-bottom: 0.2rem;
   }
 
   .admin-hero {
