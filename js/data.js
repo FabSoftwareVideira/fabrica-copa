@@ -13,7 +13,7 @@ const ALBUM_DATA = {
         name: "Especial",
         color: "#FFD700",
         stickers: [
-            { num: 1, name: "Capa do Álbum", type: "cover", icon: "📖" },
+            { num: 1, name: "Capa do Álbum", type: "cover", icon: "📖", image: "public/specials/especial_capa.png" },
             { num: 2, name: "Troféu FIFA World Cup", type: "trophy", icon: "🏆" },
             { num: 3, name: "Talisma Oficial", type: "mascot", icon: "🎭" },
             { num: 4, name: "Bola Oficial", type: "ball", icon: "⚽" },
@@ -324,6 +324,7 @@ function generateAllStickers() {
             sectionName: "Especial",
             type: s.type,
             icon: s.icon,
+            image: s.image || "",
             teamId: null,
             teamName: null,
             groupId: null,

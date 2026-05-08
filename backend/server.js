@@ -53,6 +53,7 @@ function loadStickersFromFrontend() {
         sectionName: s.sectionName,
         type: s.type,
         groupId: s.groupId,
+        image: s.image,
     }));
 }
 

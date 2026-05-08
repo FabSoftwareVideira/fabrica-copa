@@ -8,6 +8,7 @@ const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
 const DEFAULT_PLAYER_IMAGE = "/player-default.png";
 const DEFAULT_TEAM_IMAGE = "/teams/default.png";
+const DEFAULT_SPECIAL_IMAGE = "/specials/especial_default.png";
 const TEAM_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "svg"];
 const TEAM_IMAGE_CODES = {
   usa: "us",
@@ -770,6 +771,14 @@ function buildImageVariants(basePath) {
   return TEAM_IMAGE_EXTENSIONS.map((ext) => `${trimmed}.${ext}`);
 }
 
+function normalizePublicAssetPath(path) {
+  const value = String(path || "").trim();
+  if (!value) return "";
+  if (value.startsWith("public/")) return `/${value.slice(7)}`;
+  if (value.startsWith("/public/")) return value.slice(7);
+  return value;
+}
+
 function getTeamImageCandidates(item) {
   const candidates = [];
 
@@ -792,6 +801,13 @@ function getTeamImageCandidates(item) {
 
 function stickerPhotoCandidates(item) {
   if (!item) return [];
+
+  if (item.section === "especial") {
+    const specialImage = normalizePublicAssetPath(item.image);
+    return specialImage
+      ? [specialImage, DEFAULT_SPECIAL_IMAGE]
+      : [DEFAULT_SPECIAL_IMAGE];
+  }
 
   if (item.type === "badge") {
     return getTeamImageCandidates(item);
@@ -821,6 +837,9 @@ function stickerPhoto(item) {
 function getStickerPhotoForDisplay(item) {
   const isCollected = getCount(item.id) >= 1;
   if (!isCollected) {
+    if (item.section === "especial") {
+      return DEFAULT_SPECIAL_IMAGE;
+    }
     if (item.type === "player") {
       return DEFAULT_PLAYER_IMAGE;
     } else if (item.type === "badge") {
@@ -1146,8 +1165,8 @@ const filteredTradeAvailable = computed(() => {
       </div>
       <footer class="landing-footer">
         <p>
-          Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México ·
-          FIFA World Cup 2026™
+          Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
+          World Cup 2026™
         </p>
       </footer>
     </div>
@@ -1166,7 +1185,10 @@ const filteredTradeAvailable = computed(() => {
               type="button"
               class="auth-tab"
               :class="{ active: ui.authMode === 'login' }"
-              @click="ui.authMode = 'login'; ui.authMsg = ''"
+              @click="
+                ui.authMode = 'login';
+                ui.authMsg = '';
+              "
             >
               Entrar
             </button>
@@ -1174,7 +1196,10 @@ const filteredTradeAvailable = computed(() => {
               type="button"
               class="auth-tab"
               :class="{ active: ui.authMode === 'register' }"
-              @click="ui.authMode = 'register'; ui.authMsg = ''"
+              @click="
+                ui.authMode = 'register';
+                ui.authMsg = '';
+              "
             >
               Criar Conta
             </button>
@@ -1210,7 +1235,9 @@ const filteredTradeAvailable = computed(() => {
                 type="password"
                 placeholder="••••••••"
                 :autocomplete="
-                  ui.authMode === 'register' ? 'new-password' : 'current-password'
+                  ui.authMode === 'register'
+                    ? 'new-password'
+                    : 'current-password'
                 "
                 required
               />
@@ -1224,7 +1251,10 @@ const filteredTradeAvailable = computed(() => {
             <button
               type="button"
               class="auth-back-link"
-              @click="ui.authOpen = false; ui.authMsg = ''"
+              @click="
+                ui.authOpen = false;
+                ui.authMsg = '';
+              "
             >
               ← Voltar ao início
             </button>
@@ -2198,7 +2228,6 @@ const filteredTradeAvailable = computed(() => {
         <button type="button" @click="redeemPromo">Resgatar</button>
       </div>
     </div>
-
   </div>
 
   <!-- Toast global (visível em qualquer estado) -->
