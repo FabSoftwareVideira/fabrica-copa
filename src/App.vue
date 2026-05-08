@@ -521,39 +521,19 @@ async function loadPackHistory() {
   state.recentPacks = Array.isArray(data.history) ? data.history : [];
 }
 
-async function openPack() {
+function openPack() {
   if (!isAuthenticated.value) {
     ui.authMode = "login";
     ui.authOpen = true;
     return;
   }
 
-  if (ui.openingPack) return;
-  ui.openingPack = true;
+  if (ui.openingPack || ui.packOpen) return;
 
-  try {
-    const data = await apiFetch("/packs/open", { method: "POST" });
-    state.collected = data.state?.collected || state.collected;
-    state.packsUsedDate = data.state?.packsUsedDate || state.packsUsedDate;
-    state.packsUsedToday = Number(
-      data.state?.packsUsedToday ?? state.packsUsedToday,
-    );
-    state.extraPacks = Number(data.state?.extraPacks ?? state.extraPacks);
-    state.usedCodes = Array.isArray(data.state?.usedCodes)
-      ? data.state.usedCodes
-      : state.usedCodes;
-
-    ui.pack = Array.isArray(data.pack) ? data.pack : [];
-    ui.wasOwned = Array.isArray(data.wasOwned) ? data.wasOwned : [];
-    resetPackOpeningState();
-    ui.packOpen = true;
-
-    await loadPackHistory();
-  } catch (err) {
-    setToast(err.message || "Falha ao abrir pacote");
-  } finally {
-    ui.openingPack = false;
-  }
+  resetPackOpeningState();
+  ui.pack = [];
+  ui.wasOwned = [];
+  ui.packOpen = true;
 }
 
 function closePackModal() {
@@ -630,8 +610,32 @@ function revealPackFromDrag() {
   ui.packStage = "opening";
   ui.packDragActive = false;
   ui.packDragProgress = 100;
+  ui.openingPack = true;
   removePackDragListeners();
   clearPackRevealTimer();
+
+  apiFetch("/packs/open", { method: "POST" })
+    .then((data) => {
+      state.collected = data.state?.collected || state.collected;
+      state.packsUsedDate = data.state?.packsUsedDate || state.packsUsedDate;
+      state.packsUsedToday = Number(
+        data.state?.packsUsedToday ?? state.packsUsedToday,
+      );
+      state.extraPacks = Number(data.state?.extraPacks ?? state.extraPacks);
+      state.usedCodes = Array.isArray(data.state?.usedCodes)
+        ? data.state.usedCodes
+        : state.usedCodes;
+      ui.pack = Array.isArray(data.pack) ? data.pack : [];
+      ui.wasOwned = Array.isArray(data.wasOwned) ? data.wasOwned : [];
+      return loadPackHistory();
+    })
+    .catch((err) => {
+      setToast(err.message || "Falha ao abrir pacote");
+      closePackModal();
+    })
+    .finally(() => {
+      ui.openingPack = false;
+    });
 
   packRevealTimer = setTimeout(() => {
     ui.packStage = "opened";
