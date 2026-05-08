@@ -2304,6 +2304,104 @@ button:disabled {
   transition: all 160ms ease;
 }
 
+.manage-panel {
+  margin-top: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: color-mix(in srgb, var(--card-strong) 84%, var(--accent) 3%);
+  display: grid;
+  gap: 0.7rem;
+}
+
+.manage-panel h3,
+.manage-panel h4 {
+  margin: 0;
+}
+
+.manage-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.manage-coupon-box,
+.manage-users-box {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.manage-coupon-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.manage-coupon-form select {
+  flex: 2;
+  min-width: 220px;
+}
+
+.manage-coupon-form input {
+  width: 120px;
+}
+
+.manage-users-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.manage-user-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.manage-user-card header {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.manage-user-card header small {
+  color: #64748b;
+}
+
+.manage-user-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.manage-user-grid label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.manage-user-check {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.manage-user-actions,
+.manage-user-password {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.manage-user-password input {
+  flex: 1;
+  min-width: 180px;
+}
+
 /* ── Auth page ───────────────────────────────────────────── */
 .auth-page {
   min-height: 100vh;
@@ -2552,6 +2650,23 @@ button:disabled {
   .app-footer-session .app-footer-logout {
     width: 100%;
     max-width: 280px;
+  }
+
+  .manage-panel-head,
+  .manage-coupon-form,
+  .manage-user-grid,
+  .manage-user-actions,
+  .manage-user-password {
+    flex-direction: column;
+    display: flex;
+    align-items: stretch;
+  }
+
+  .manage-coupon-form select,
+  .manage-coupon-form input,
+  .manage-user-password input {
+    min-width: 0;
+    width: 100%;
   }
 
   .auth-page {

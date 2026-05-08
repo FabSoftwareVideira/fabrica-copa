@@ -134,6 +134,7 @@ const state = reactive({
   tradeIncoming: [],
   tradeOutgoing: [],
   tradeHistory: [],
+  managedUsers: [],
 });
 
 const ui = reactive({
@@ -164,6 +165,9 @@ const ui = reactive({
   tradeOfferChoicesLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
+  managePanelLoading: false,
+  managePanelMsg: "",
+  couponPanelMsg: "",
 });
 
 const authForm = reactive({
@@ -172,8 +176,18 @@ const authForm = reactive({
   password: "",
 });
 
+const adminTools = reactive({
+  targetUserId: "",
+  packs: 1,
+});
+
 const isAuthenticated = computed(() =>
   Boolean(state.user?.id && state.accessToken),
+);
+const userRole = computed(() => String(state.user?.role || "jogador"));
+const isAdmin = computed(() => userRole.value === "admin");
+const canManageCoupons = computed(() =>
+  ["admin", "professor"].includes(userRole.value),
 );
 const total = computed(() => stickers.length);
 const collectedCount = computed(
@@ -439,6 +453,11 @@ function clearAuth() {
   state.extraPacks = 0;
   state.usedCodes = [];
   state.recentPacks = [];
+  state.managedUsers = [];
+  adminTools.targetUserId = "";
+  adminTools.packs = 1;
+  ui.managePanelMsg = "";
+  ui.couponPanelMsg = "";
   saveAuth();
 }
 
@@ -487,6 +506,7 @@ async function tryRefreshToken() {
     state.refreshToken = data.refreshToken;
     state.user = data.user;
     saveAuth();
+    await loadManagedUsers();
     return true;
   } catch {
     clearAuth();
@@ -501,10 +521,121 @@ async function bootstrapAuth() {
     state.user = me.user;
     saveAuth();
     await Promise.all([loadAlbumState(), loadPackHistory()]);
+    await loadManagedUsers();
   } catch (_err) {
     clearAuth();
   } finally {
     ui.loading = false;
+  }
+}
+
+async function loadManagedUsers() {
+  if (!isAuthenticated.value || !canManageCoupons.value) {
+    state.managedUsers = [];
+    return;
+  }
+
+  ui.managePanelLoading = true;
+  ui.managePanelMsg = "";
+  try {
+    const path = isAdmin.value ? "/admin/users" : "/coupons/targets";
+    const data = await apiFetch(path);
+    const users = Array.isArray(data.users) ? data.users : [];
+    state.managedUsers = users
+      .filter((u) => Number(u.id) !== Number(state.user?.id))
+      .map((u) => ({
+        ...u,
+        isBlocked: Boolean(u.isBlocked),
+        draftRole: String(u.role || "jogador"),
+        draftBlocked: Boolean(u.isBlocked),
+        draftBlockedReason: String(u.blockedReason || ""),
+        newPassword: "",
+      }));
+
+    if (!adminTools.targetUserId && state.managedUsers.length > 0) {
+      const firstAvailable = state.managedUsers.find((u) => !u.isBlocked);
+      adminTools.targetUserId = String(
+        (firstAvailable || state.managedUsers[0]).id,
+      );
+    }
+  } catch (err) {
+    ui.managePanelMsg = err.message || "Erro ao carregar usuarios";
+  } finally {
+    ui.managePanelLoading = false;
+  }
+}
+
+async function generateManagedCoupon() {
+  if (!canManageCoupons.value) return;
+  ui.couponPanelMsg = "";
+
+  const targetUserId = Number(adminTools.targetUserId || 0);
+  if (!targetUserId) {
+    ui.couponPanelMsg = "Selecione um usuário.";
+    return;
+  }
+
+  const payload = { targetUserId };
+  if (isAdmin.value) {
+    payload.packs = Math.max(1, Number(adminTools.packs || 1));
+  }
+
+  try {
+    const data = await apiFetch("/coupons/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const coupon = data.coupon || {};
+    ui.couponPanelMsg = `Cupom ${coupon.code} gerado para ${
+      coupon.targetUserName || "usuário"
+    } (${coupon.packs || 1} pacote).`;
+  } catch (err) {
+    ui.couponPanelMsg = err.message || "Erro ao gerar cupom";
+  }
+}
+
+async function saveManagedUser(user) {
+  if (!isAdmin.value || !user?.id) return;
+  ui.managePanelMsg = "";
+  try {
+    const payload = {
+      role: user.draftRole,
+      isBlocked: Boolean(user.draftBlocked),
+      blockedReason: user.draftBlocked ? user.draftBlockedReason : "",
+    };
+    const data = await apiFetch(`/admin/users/${user.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    const updated = data.user || {};
+    user.role = updated.role;
+    user.isBlocked = Boolean(updated.isBlocked);
+    user.blockedReason = updated.blockedReason || "";
+    user.draftRole = user.role;
+    user.draftBlocked = user.isBlocked;
+    user.draftBlockedReason = user.blockedReason;
+    ui.managePanelMsg = `Usuário ${user.name} atualizado.`;
+  } catch (err) {
+    ui.managePanelMsg = err.message || "Erro ao atualizar usuário";
+  }
+}
+
+async function changeManagedUserPassword(user) {
+  if (!isAdmin.value || !user?.id) return;
+  const password = String(user.newPassword || "");
+  if (password.length < 6) {
+    ui.managePanelMsg = "Nova senha deve ter ao menos 6 caracteres.";
+    return;
+  }
+  try {
+    await apiFetch(`/admin/users/${user.id}/password`, {
+      method: "PUT",
+      body: JSON.stringify({ password }),
+    });
+    user.newPassword = "";
+    ui.managePanelMsg = `Senha do usuário ${user.name} alterada.`;
+  } catch (err) {
+    ui.managePanelMsg = err.message || "Erro ao alterar senha";
   }
 }
 
@@ -712,6 +843,7 @@ async function submitAuth() {
 
     ui.authOpen = false;
     await Promise.all([loadAlbumState(), loadPackHistory()]);
+    await loadManagedUsers();
     setToast(ui.authMode === "register" ? "Conta criada" : "Login realizado");
   } catch (err) {
     ui.authMsg = err.message || "Erro de autenticacao";
@@ -1440,6 +1572,103 @@ const filteredTradeAvailable = computed(() => {
               <span>{{ item.repeatCount }} repetidas</span>
             </li>
           </ul>
+        </div>
+
+        <div v-if="canManageCoupons" class="manage-panel">
+          <div class="manage-panel-head">
+            <h3>
+              {{ isAdmin ? "Painel de Administração" : "Painel do Professor" }}
+            </h3>
+            <button type="button" @click="loadManagedUsers">Atualizar</button>
+          </div>
+
+          <p v-if="ui.managePanelLoading" class="read-only-hint">
+            Carregando usuários...
+          </p>
+          <p v-if="ui.managePanelMsg" class="read-only-hint">
+            {{ ui.managePanelMsg }}
+          </p>
+
+          <div class="manage-coupon-box">
+            <h4>Gerar cupom para pacote</h4>
+            <div class="manage-coupon-form">
+              <select v-model="adminTools.targetUserId">
+                <option value="">Selecione um usuário</option>
+                <option
+                  v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
+                  :key="u.id"
+                  :value="String(u.id)"
+                >
+                  {{ u.name }} ({{ u.role }})
+                </option>
+              </select>
+              <input
+                v-if="isAdmin"
+                v-model.number="adminTools.packs"
+                type="number"
+                min="1"
+                max="20"
+                placeholder="Pacotes"
+              />
+              <button type="button" @click="generateManagedCoupon">
+                Gerar Cupom
+              </button>
+            </div>
+            <p v-if="ui.couponPanelMsg" class="read-only-hint">
+              {{ ui.couponPanelMsg }}
+            </p>
+          </div>
+
+          <div v-if="isAdmin" class="manage-users-box">
+            <h4>Gerenciar usuários</h4>
+            <div class="manage-users-list">
+              <article
+                v-for="u in state.managedUsers"
+                :key="u.id"
+                class="manage-user-card"
+              >
+                <header>
+                  <strong>{{ u.name }}</strong>
+                  <small>{{ u.email }}</small>
+                </header>
+                <div class="manage-user-grid">
+                  <label>
+                    Perfil
+                    <select v-model="u.draftRole">
+                      <option value="admin">admin</option>
+                      <option value="professor">professor</option>
+                      <option value="jogador">jogador</option>
+                    </select>
+                  </label>
+                  <label class="manage-user-check">
+                    <input v-model="u.draftBlocked" type="checkbox" />
+                    Bloquear acesso
+                  </label>
+                </div>
+                <input
+                  v-if="u.draftBlocked"
+                  v-model="u.draftBlockedReason"
+                  type="text"
+                  placeholder="Motivo do bloqueio"
+                />
+                <div class="manage-user-actions">
+                  <button type="button" @click="saveManagedUser(u)">
+                    Salvar perfil
+                  </button>
+                </div>
+                <div class="manage-user-password">
+                  <input
+                    v-model="u.newPassword"
+                    type="password"
+                    placeholder="Nova senha (min. 6)"
+                  />
+                  <button type="button" @click="changeManagedUserPassword(u)">
+                    Alterar senha
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -2202,7 +2431,9 @@ const filteredTradeAvailable = computed(() => {
 
     <footer class="landing-footer app-footer">
       <div class="app-footer-session">
-        <span class="user-pill">Conectado como {{ state.user?.name }}</span>
+        <span class="user-pill"
+          >Conectado como {{ state.user?.name }} · {{ userRole }}</span
+        >
         <button
           type="button"
           class="logout-btn app-footer-logout"

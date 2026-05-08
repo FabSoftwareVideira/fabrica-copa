@@ -17,6 +17,10 @@ const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const PACKS_PER_DAY = 1;
 const APP_TIMEZONE = "America/Sao_Paulo";
+const ROLE_ADMIN = "admin";
+const ROLE_PROFESSOR = "professor";
+const ROLE_PLAYER = "jogador";
+const ALLOWED_ROLES = new Set([ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]);
 
 const PROMO_CODES = {
     COPA2026: { packs: 3, label: "Bonus Copa 2026" },
@@ -134,7 +138,7 @@ function normalizeCode(raw) {
 }
 
 function signAccessToken(user) {
-    return jwt.sign({ sub: user.id, email: user.email, name: user.name }, JWT_SECRET, {
+    return jwt.sign({ sub: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, {
         expiresIn: ACCESS_TOKEN_TTL,
     });
 }
@@ -188,14 +192,29 @@ async function revokeRefreshToken(rawToken) {
     await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (!token) return res.status(401).json({ error: "Token ausente", code: "TOKEN_MISSING" });
 
     try {
         const payload = jwt.verify(token, JWT_SECRET);
-        req.user = payload;
+        const dbUser = await get(
+            "SELECT id, name, email, role, is_blocked FROM users WHERE id = ?",
+            [payload.sub]
+        );
+        if (!dbUser) return res.status(401).json({ error: "Usuario nao encontrado", code: "USER_NOT_FOUND" });
+        if (Number(dbUser.is_blocked || 0) === 1) {
+            return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador.", code: "USER_BLOCKED" });
+        }
+
+        req.user = {
+            sub: dbUser.id,
+            email: dbUser.email,
+            name: dbUser.name,
+            role: dbUser.role || ROLE_PLAYER,
+        };
+        req.dbUser = dbUser;
         return next();
     } catch (err) {
         if (err && err.name === "TokenExpiredError") {
@@ -203,6 +222,34 @@ function authMiddleware(req, res, next) {
         }
         return res.status(401).json({ error: "Token invalido", code: "TOKEN_INVALID" });
     }
+}
+
+function requireRoles(...roles) {
+    return (req, res, next) => {
+        const role = req.user?.role;
+        if (!role || !roles.includes(role)) {
+            return res.status(403).json({ error: "Sem permissao para esta acao" });
+        }
+        return next();
+    };
+}
+
+async function ensureColumn(table, column, sqlDefinition) {
+    const cols = await all(`PRAGMA table_info(${table})`);
+    const exists = cols.some((c) => c.name === column);
+    if (!exists) {
+        await run(`ALTER TABLE ${table} ADD COLUMN ${column} ${sqlDefinition}`);
+    }
+}
+
+function sanitizeUser(row) {
+    return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        role: row.role || ROLE_PLAYER,
+        isBlocked: Number(row.is_blocked || 0) === 1,
+    };
 }
 
 async function getAlbumState(userId) {
@@ -235,9 +282,16 @@ async function initDb() {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'jogador',
+            is_blocked INTEGER NOT NULL DEFAULT 0,
+            blocked_reason TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+    await ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'jogador'");
+    await ensureColumn("users", "is_blocked", "INTEGER NOT NULL DEFAULT 0");
+    await ensureColumn("users", "blocked_reason", "TEXT NOT NULL DEFAULT ''");
 
     await run(`
     CREATE TABLE IF NOT EXISTS album_states (
@@ -275,6 +329,21 @@ async function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+    await run(`
+        CREATE TABLE IF NOT EXISTS user_coupons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            target_user_id INTEGER NOT NULL,
+            created_by_user_id INTEGER NOT NULL,
+            packs_added INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            redeemed_at TEXT,
+            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
 
     await run(`
     CREATE TABLE IF NOT EXISTS pack_history (
@@ -342,16 +411,20 @@ app.post("/api/auth/register", async (req, res) => {
         const existing = await get("SELECT id FROM users WHERE email = ?", [cleanEmail]);
         if (existing) return res.status(409).json({ error: "Email ja cadastrado" });
 
+        const usersCountRow = await get("SELECT COUNT(*) AS total FROM users");
+        const role = Number(usersCountRow?.total || 0) === 0 ? ROLE_ADMIN : ROLE_PLAYER;
+
         const passwordHash = await bcrypt.hash(cleanPassword, 10);
-        const created = await run("INSERT INTO users(name, email, password_hash) VALUES(?, ?, ?)", [
+        const created = await run("INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)", [
             cleanName,
             cleanEmail,
             passwordHash,
+            role,
         ]);
 
         await run("INSERT INTO album_states(user_id) VALUES(?)", [created.lastID]);
 
-        const user = { id: created.lastID, name: cleanName, email: cleanEmail };
+        const user = { id: created.lastID, name: cleanName, email: cleanEmail, role };
         const accessToken = signAccessToken(user);
         const refreshToken = await createRefreshToken(user.id);
 
@@ -373,13 +446,16 @@ app.post("/api/auth/login", async (req, res) => {
         const cleanEmail = String(email || "").trim().toLowerCase();
         const cleanPassword = String(password || "");
 
-        const userRow = await get("SELECT id, name, email, password_hash FROM users WHERE email = ?", [cleanEmail]);
+        const userRow = await get("SELECT id, name, email, password_hash, role, is_blocked FROM users WHERE email = ?", [cleanEmail]);
         if (!userRow) return res.status(401).json({ error: "Credenciais invalidas" });
+        if (Number(userRow.is_blocked || 0) === 1) {
+            return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
+        }
 
         const ok = await bcrypt.compare(cleanPassword, userRow.password_hash);
         if (!ok) return res.status(401).json({ error: "Credenciais invalidas" });
 
-        const user = { id: userRow.id, name: userRow.name, email: userRow.email };
+        const user = { id: userRow.id, name: userRow.name, email: userRow.email, role: userRow.role || ROLE_PLAYER };
         const accessToken = signAccessToken(user);
         const refreshToken = await createRefreshToken(user.id);
 
@@ -402,7 +478,7 @@ app.post("/api/auth/refresh", async (req, res) => {
 
         const tokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
         const row = await get(
-            `SELECT rt.user_id, rt.expires_at, rt.revoked, u.name, u.email
+            `SELECT rt.user_id, rt.expires_at, rt.revoked, u.name, u.email, u.role, u.is_blocked
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.token_hash = ?`,
@@ -416,9 +492,13 @@ app.post("/api/auth/refresh", async (req, res) => {
             await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
             return res.status(401).json({ error: "Refresh token expirado", code: "REFRESH_EXPIRED" });
         }
+        if (Number(row.is_blocked || 0) === 1) {
+            await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
+            return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador.", code: "USER_BLOCKED" });
+        }
 
         await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
-        const user = { id: row.user_id, name: row.name, email: row.email };
+        const user = { id: row.user_id, name: row.name, email: row.email, role: row.role || ROLE_PLAYER };
         const accessToken = signAccessToken(user);
         const newRefreshToken = await createRefreshToken(user.id);
 
@@ -448,9 +528,9 @@ app.post("/api/auth/logout", async (req, res) => {
 
 app.get("/api/auth/me", authMiddleware, async (req, res) => {
     try {
-        const row = await get("SELECT id, name, email FROM users WHERE id = ?", [req.user.sub]);
+        const row = await get("SELECT id, name, email, role, is_blocked FROM users WHERE id = ?", [req.user.sub]);
         if (!row) return res.status(404).json({ error: "Usuario nao encontrado" });
-        return res.json({ user: row });
+        return res.json({ user: sanitizeUser(row) });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao buscar usuario", detail: err.message });
     }
@@ -504,22 +584,47 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
         const code = normalizeCode(req.body?.code);
         if (!code) return res.status(400).json({ error: "Codigo obrigatorio" });
 
-        const promo = PROMO_CODES[code];
+        let promo = PROMO_CODES[code];
+        let isGeneratedCoupon = false;
+        let couponRow = null;
+
+        if (!promo) {
+            couponRow = await get(
+                `SELECT id, packs_added
+                 FROM user_coupons
+                 WHERE code = ? AND target_user_id = ? AND status = 'active'`,
+                [code, req.user.sub]
+            );
+            if (couponRow) {
+                promo = { packs: Number(couponRow.packs_added || 1), label: "Cupom de professor/admin" };
+                isGeneratedCoupon = true;
+            }
+        }
+
         if (!promo) return res.status(400).json({ error: "Codigo invalido ou expirado" });
 
-        const already = await get("SELECT id FROM redeemed_codes WHERE user_id = ? AND code = ?", [req.user.sub, code]);
-        if (already) return res.status(409).json({ error: "Este codigo ja foi resgatado" });
+        if (!isGeneratedCoupon) {
+            const already = await get("SELECT id FROM redeemed_codes WHERE user_id = ? AND code = ?", [req.user.sub, code]);
+            if (already) return res.status(409).json({ error: "Este codigo ja foi resgatado" });
+        }
 
         const { state } = await getAlbumState(req.user.sub);
         const usedCodes = Array.isArray(state.usedCodes) ? state.usedCodes : [];
         usedCodes.push(code);
         const extraPacks = (state.extraPacks || 0) + promo.packs;
 
-        await run("INSERT INTO redeemed_codes(user_id, code, packs_added) VALUES(?, ?, ?)", [
-            req.user.sub,
-            code,
-            promo.packs,
-        ]);
+        if (isGeneratedCoupon && couponRow) {
+            await run(
+                "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ? WHERE id = ?",
+                [nowSqlTimestamp(), couponRow.id]
+            );
+        } else {
+            await run("INSERT INTO redeemed_codes(user_id, code, packs_added) VALUES(?, ?, ?)", [
+                req.user.sub,
+                code,
+                promo.packs,
+            ]);
+        }
 
         await run(
             `
@@ -540,6 +645,148 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
         });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao resgatar codigo", detail: err.message });
+    }
+});
+
+app.get("/api/coupons/targets", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    try {
+        const users = await all(
+            `SELECT id, name, email, role, is_blocked
+             FROM users
+             WHERE id != ?
+             ORDER BY name ASC`,
+            [req.user.sub]
+        );
+        return res.json({ users: users.map(sanitizeUser) });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar usuarios", detail: err.message });
+    }
+});
+
+app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    try {
+        const targetUserId = Number(req.body?.targetUserId || 0);
+        if (!targetUserId) return res.status(400).json({ error: "targetUserId obrigatorio" });
+        if (targetUserId === req.user.sub) return res.status(400).json({ error: "Nao pode gerar cupom para si mesmo" });
+
+        const targetUser = await get("SELECT id, name, is_blocked FROM users WHERE id = ?", [targetUserId]);
+        if (!targetUser) return res.status(404).json({ error: "Usuario alvo nao encontrado" });
+        if (Number(targetUser.is_blocked || 0) === 1) {
+            return res.status(400).json({ error: "Nao e possivel gerar cupom para usuario bloqueado" });
+        }
+
+        const requestedPacks = Number(req.body?.packs || 1);
+        const packs = req.user.role === ROLE_ADMIN
+            ? Math.max(1, Math.min(20, Number.isFinite(requestedPacks) ? requestedPacks : 1))
+            : 1;
+
+        const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+
+        await run(
+            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, status, created_at)
+             VALUES(?, ?, ?, ?, 'active', ?)`,
+            [code, targetUserId, req.user.sub, packs, nowSqlTimestamp()]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            coupon: {
+                code,
+                targetUserId,
+                targetUserName: targetUser.name,
+                packs,
+                createdByRole: req.user.role,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao gerar cupom", detail: err.message });
+    }
+});
+
+app.get("/api/admin/users", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const users = await all(
+            `SELECT id, name, email, role, is_blocked, blocked_reason, created_at
+             FROM users
+             ORDER BY id ASC`
+        );
+        return res.json({
+            users: users.map((u) => ({
+                ...sanitizeUser(u),
+                blockedReason: u.blocked_reason || "",
+                createdAt: u.created_at,
+            })),
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao listar usuarios", detail: err.message });
+    }
+});
+
+app.put("/api/admin/users/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const userId = Number(req.params.id || 0);
+        if (!userId) return res.status(400).json({ error: "id invalido" });
+
+        const target = await get("SELECT id, role, is_blocked FROM users WHERE id = ?", [userId]);
+        if (!target) return res.status(404).json({ error: "Usuario nao encontrado" });
+
+        if (userId === req.user.sub && req.body?.role && req.body.role !== ROLE_ADMIN) {
+            return res.status(400).json({ error: "Admin nao pode remover seu proprio papel admin" });
+        }
+        if (userId === req.user.sub && Number(req.body?.isBlocked) === 1) {
+            return res.status(400).json({ error: "Admin nao pode bloquear a si mesmo" });
+        }
+
+        const nextRole = req.body?.role ? String(req.body.role) : target.role;
+        if (!ALLOWED_ROLES.has(nextRole)) {
+            return res.status(400).json({ error: "Perfil invalido" });
+        }
+
+        const nextBlocked = req.body?.isBlocked === undefined
+            ? Number(target.is_blocked || 0)
+            : Number(req.body.isBlocked ? 1 : 0);
+
+        const blockedReason = nextBlocked ? String(req.body?.blockedReason || "Bloqueado pelo administrador").trim() : "";
+
+        await run(
+            "UPDATE users SET role = ?, is_blocked = ?, blocked_reason = ? WHERE id = ?",
+            [nextRole, nextBlocked, blockedReason, userId]
+        );
+
+        const updated = await get(
+            "SELECT id, name, email, role, is_blocked, blocked_reason, created_at FROM users WHERE id = ?",
+            [userId]
+        );
+
+        return res.json({
+            ok: true,
+            user: {
+                ...sanitizeUser(updated),
+                blockedReason: updated.blocked_reason || "",
+                createdAt: updated.created_at,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao atualizar usuario", detail: err.message });
+    }
+});
+
+app.put("/api/admin/users/:id/password", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const userId = Number(req.params.id || 0);
+        const password = String(req.body?.password || "");
+        if (!userId) return res.status(400).json({ error: "id invalido" });
+        if (password.length < 6) return res.status(400).json({ error: "Senha deve ter 6+ caracteres" });
+
+        const target = await get("SELECT id FROM users WHERE id = ?", [userId]);
+        if (!target) return res.status(404).json({ error: "Usuario nao encontrado" });
+
+        const passwordHash = await bcrypt.hash(password, 10);
+        await run("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, userId]);
+
+        return res.json({ ok: true });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao alterar senha", detail: err.message });
     }
 });
 
@@ -668,7 +915,7 @@ app.get("/api/stickers/:id", authMiddleware, async (req, res) => {
 
 app.get("/api/trade/users", authMiddleware, async (req, res) => {
     try {
-        const users = await all("SELECT id, name FROM users WHERE id != ?", [req.user.sub]);
+        const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
         const result = [];
         for (const user of users) {
             const { state } = await getAlbumState(user.id);
