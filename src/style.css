@@ -362,8 +362,12 @@ button:disabled {
 }
 
 .collection-tabs button.active {
-  background: linear-gradient(135deg, #0ea5e9, #2563eb);
-  border-color: rgba(37, 99, 235, 0.85);
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 60%, #ffffff)
+  );
+  border-color: var(--accent);
   color: #fff;
 }
 
