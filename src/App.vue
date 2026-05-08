@@ -150,7 +150,9 @@ const ui = reactive({
   tradeTargetEntry: null,
   tradeTargetUser: null,
   tradeOfferSticker: null,
+  tradeOfferChoices: [],
   tradeLoading: false,
+  tradeOfferChoicesLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
 });
@@ -920,11 +922,39 @@ async function loadTradeHistory() {
   }
 }
 
+async function loadTradeOfferChoices(userId) {
+  if (!userId) {
+    ui.tradeOfferChoices = [];
+    return;
+  }
+
+  ui.tradeOfferChoicesLoading = true;
+  try {
+    const data = await apiFetch(`/trade/users/${userId}/wanted-from-me`);
+    ui.tradeOfferChoices = Array.isArray(data.stickers) ? data.stickers : [];
+  } catch (err) {
+    ui.tradeOfferChoices = [];
+    setToast(err.message || "Erro ao carregar opções para oferta");
+  } finally {
+    ui.tradeOfferChoicesLoading = false;
+  }
+}
+
+async function selectTradeTargetUser(user) {
+  ui.tradeTargetUser = user;
+  ui.tradeOfferSticker = null;
+  await loadTradeOfferChoices(user?.userId);
+}
+
 function openTradeOffer(entry) {
   ui.tradeTargetEntry = entry;
   ui.tradeTargetUser = entry.offeredBy.length === 1 ? entry.offeredBy[0] : null;
   ui.tradeOfferSticker = null;
+  ui.tradeOfferChoices = [];
   ui.tradeOfferOpen = true;
+  if (ui.tradeTargetUser?.userId) {
+    loadTradeOfferChoices(ui.tradeTargetUser.userId);
+  }
 }
 
 function closeTradeOffer() {
@@ -932,6 +962,7 @@ function closeTradeOffer() {
   ui.tradeTargetEntry = null;
   ui.tradeTargetUser = null;
   ui.tradeOfferSticker = null;
+  ui.tradeOfferChoices = [];
 }
 
 async function confirmTradeOffer() {
@@ -1933,7 +1964,7 @@ const filteredTradeAvailable = computed(() => {
               type="button"
               class="trade-user-select-btn"
               :class="{ selected: ui.tradeTargetUser?.userId === u.userId }"
-              @click="ui.tradeTargetUser = u"
+              @click="selectTradeTargetUser(u)"
             >
               {{ u.userName }}
               <span class="trade-count-badge">{{ u.count }}x</span>
@@ -1941,11 +1972,18 @@ const filteredTradeAvailable = computed(() => {
           </div>
         </div>
         <p class="trade-modal-subtitle">
-          Escolha qual figurinha repetida você quer oferecer:
+          Escolha uma repetida sua que {{ ui.tradeTargetUser?.userName || "o usuário" }} ainda não tem:
+        </p>
+        <p v-if="ui.tradeOfferChoicesLoading" class="trade-hint">Carregando opções...</p>
+        <p
+          v-else-if="ui.tradeTargetUser && ui.tradeOfferChoices.length === 0"
+          class="trade-hint"
+        >
+          Você não tem repetidas que {{ ui.tradeTargetUser.userName }} precise no momento.
         </p>
         <div class="trade-offer-picker">
           <article
-            v-for="item in myDuplicatesForOffer"
+            v-for="item in ui.tradeOfferChoices"
             :key="item.id"
             class="trade-picker-card"
             :class="{ selected: ui.tradeOfferSticker?.id === item.id }"
@@ -1955,7 +1993,7 @@ const filteredTradeAvailable = computed(() => {
             <span class="num">#{{ item.num }}</span>
             <strong>{{ item.name }}</strong>
             <small>{{ groupLabel(item) }}</small>
-            <small class="trade-count-badge">{{ getCount(item.id) }}x</small>
+            <small class="trade-count-badge">{{ item.count }}x</small>
           </article>
         </div>
         <div class="trade-modal-actions">

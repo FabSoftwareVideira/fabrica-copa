@@ -677,6 +677,29 @@ app.get("/api/trade/users/:userId/duplicates", authMiddleware, async (req, res) 
     }
 });
 
+app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, res) => {
+    try {
+        const userId = Number(req.params.userId);
+        if (!userId) return res.status(400).json({ error: "userId invalido" });
+        if (userId === req.user.sub) return res.status(400).json({ error: "Nao pode consultar a si mesmo" });
+
+        const user = await get("SELECT id, name FROM users WHERE id = ?", [userId]);
+        if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
+
+        const { state: myState } = await getAlbumState(req.user.sub);
+        const { state: targetState } = await getAlbumState(userId);
+
+        const wantedFromMe = STICKERS
+            .filter((s) => (myState.collected[s.id] || 0) > 1 && (targetState.collected[s.id] || 0) < 1)
+            .map((s) => ({ ...s, count: Number(myState.collected[s.id]) }))
+            .sort((a, b) => a.num - b.num);
+
+        return res.json({ user: { id: user.id, name: user.name }, stickers: wantedFromMe });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao buscar figurinhas desejadas", detail: err.message });
+    }
+});
+
 app.post("/api/trade/offers", authMiddleware, async (req, res) => {
     try {
         const { toUserId, offeredStickerId, requestedStickerId } = req.body || {};
