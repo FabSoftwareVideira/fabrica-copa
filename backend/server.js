@@ -266,6 +266,36 @@ async function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+    await run(`
+    CREATE TABLE IF NOT EXISTS trade_offers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      from_user_id INTEGER NOT NULL,
+      to_user_id INTEGER NOT NULL,
+      offered_sticker_id TEXT NOT NULL,
+      requested_sticker_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+    await run(`
+    CREATE TABLE IF NOT EXISTS trade_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      from_user_id INTEGER NOT NULL,
+      to_user_id INTEGER NOT NULL,
+      offered_sticker_id TEXT NOT NULL,
+      requested_sticker_id TEXT NOT NULL,
+      completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 app.use(cors(corsOptions));
@@ -607,6 +637,285 @@ app.get("/api/stickers/:id", authMiddleware, async (req, res) => {
     if (!sticker) return res.status(404).json({ error: "Figurinha nao encontrada" });
     return res.json({ sticker });
 });
+
+// ─── Trade endpoints ────────────────────────────────────────────────────────
+
+app.get("/api/trade/users", authMiddleware, async (req, res) => {
+    try {
+        const users = await all("SELECT id, name FROM users WHERE id != ?", [req.user.sub]);
+        const result = [];
+        for (const user of users) {
+            const { state } = await getAlbumState(user.id);
+            const duplicateCount = Object.values(state.collected).reduce(
+                (acc, count) => acc + Math.max(0, Number(count) - 1),
+                0
+            );
+            result.push({ id: user.id, name: user.name, duplicateCount });
+        }
+        return res.json({ users: result });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao listar usuarios", detail: err.message });
+    }
+});
+
+app.get("/api/trade/users/:userId/duplicates", authMiddleware, async (req, res) => {
+    try {
+        const userId = Number(req.params.userId);
+        if (!userId) return res.status(400).json({ error: "userId invalido" });
+
+        const user = await get("SELECT id, name FROM users WHERE id = ?", [userId]);
+        if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
+
+        const { state } = await getAlbumState(userId);
+        const duplicates = STICKERS
+            .filter((s) => (state.collected[s.id] || 0) > 1)
+            .map((s) => ({ ...s, count: Number(state.collected[s.id]) }));
+
+        return res.json({ user: { id: user.id, name: user.name }, duplicates });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao buscar repetidas", detail: err.message });
+    }
+});
+
+app.post("/api/trade/offers", authMiddleware, async (req, res) => {
+    try {
+        const { toUserId, offeredStickerId, requestedStickerId } = req.body || {};
+
+        if (!toUserId || !offeredStickerId || !requestedStickerId) {
+            return res.status(400).json({ error: "Campos obrigatorios: toUserId, offeredStickerId, requestedStickerId" });
+        }
+        if (Number(toUserId) === req.user.sub) {
+            return res.status(400).json({ error: "Nao pode trocar com si mesmo" });
+        }
+        if (!STICKER_BY_ID.has(offeredStickerId)) {
+            return res.status(400).json({ error: "Figurinha oferecida nao encontrada" });
+        }
+        if (!STICKER_BY_ID.has(requestedStickerId)) {
+            return res.status(400).json({ error: "Figurinha solicitada nao encontrada" });
+        }
+
+        const { state: fromState } = await getAlbumState(req.user.sub);
+        if ((fromState.collected[offeredStickerId] || 0) <= 1) {
+            return res.status(400).json({ error: "Voce precisa ter ao menos uma figurinha repetida para oferecer" });
+        }
+
+        const toUserRow = await get("SELECT id FROM users WHERE id = ?", [Number(toUserId)]);
+        if (!toUserRow) return res.status(404).json({ error: "Usuario destino nao encontrado" });
+
+        const { state: toState } = await getAlbumState(Number(toUserId));
+        if ((toState.collected[requestedStickerId] || 0) <= 1) {
+            return res.status(400).json({ error: "O outro usuario nao tem essa figurinha repetida" });
+        }
+
+        const result = await run(
+            `INSERT INTO trade_offers(from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, status, created_at, updated_at)
+             VALUES(?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+            [req.user.sub, Number(toUserId), offeredStickerId, requestedStickerId]
+        );
+
+        return res.status(201).json({ ok: true, offerId: result.lastID });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao criar oferta", detail: err.message });
+    }
+});
+
+app.get("/api/trade/offers", authMiddleware, async (req, res) => {
+    try {
+        const incomingRows = await all(
+            `SELECT o.id, o.from_user_id, o.offered_sticker_id, o.requested_sticker_id, o.status, o.created_at,
+                    u.name AS from_user_name
+             FROM trade_offers o
+             JOIN users u ON u.id = o.from_user_id
+             WHERE o.to_user_id = ? AND o.status = 'pending'
+             ORDER BY o.created_at DESC`,
+            [req.user.sub]
+        );
+
+        const outgoingRows = await all(
+            `SELECT o.id, o.to_user_id, o.offered_sticker_id, o.requested_sticker_id, o.status, o.created_at,
+                    u.name AS to_user_name
+             FROM trade_offers o
+             JOIN users u ON u.id = o.to_user_id
+             WHERE o.from_user_id = ? AND o.status = 'pending'
+             ORDER BY o.created_at DESC`,
+            [req.user.sub]
+        );
+
+        const mapOffer = (r, extra) => ({
+            id: r.id,
+            offeredSticker: STICKER_BY_ID.get(r.offered_sticker_id) || { id: r.offered_sticker_id },
+            requestedSticker: STICKER_BY_ID.get(r.requested_sticker_id) || { id: r.requested_sticker_id },
+            status: r.status,
+            createdAt: r.created_at,
+            ...extra,
+        });
+
+        return res.json({
+            incoming: incomingRows.map((r) => mapOffer(r, { fromUserId: r.from_user_id, fromUserName: r.from_user_name })),
+            outgoing: outgoingRows.map((r) => mapOffer(r, { toUserId: r.to_user_id, toUserName: r.to_user_name })),
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao buscar ofertas", detail: err.message });
+    }
+});
+
+app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
+    try {
+        const offerId = Number(req.params.id);
+        const offer = await get(
+            "SELECT * FROM trade_offers WHERE id = ? AND to_user_id = ? AND status = 'pending'",
+            [offerId, req.user.sub]
+        );
+        if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
+
+        const { state: fromState } = await getAlbumState(offer.from_user_id);
+        const { state: toState } = await getAlbumState(offer.to_user_id);
+
+        if ((fromState.collected[offer.offered_sticker_id] || 0) <= 1) {
+            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [offerId]);
+            return res.status(409).json({ error: "O outro usuario nao tem mais essa figurinha repetida" });
+        }
+        if ((toState.collected[offer.requested_sticker_id] || 0) <= 1) {
+            await run("UPDATE trade_offers SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [offerId]);
+            return res.status(409).json({ error: "Voce nao tem mais essa figurinha repetida" });
+        }
+
+        const fromCollected = { ...fromState.collected };
+        fromCollected[offer.offered_sticker_id] = Number(fromCollected[offer.offered_sticker_id]) - 1;
+        fromCollected[offer.requested_sticker_id] = (Number(fromCollected[offer.requested_sticker_id]) || 0) + 1;
+
+        const toCollected = { ...toState.collected };
+        toCollected[offer.requested_sticker_id] = Number(toCollected[offer.requested_sticker_id]) - 1;
+        toCollected[offer.offered_sticker_id] = (Number(toCollected[offer.offered_sticker_id]) || 0) + 1;
+
+        await run(
+            "UPDATE album_states SET collected_json = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            [JSON.stringify(fromCollected), offer.from_user_id]
+        );
+        await run(
+            "UPDATE album_states SET collected_json = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            [JSON.stringify(toCollected), offer.to_user_id]
+        );
+        await run(
+            "UPDATE trade_offers SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [offerId]
+        );
+
+        // Register in trade history for both users
+        await run(
+            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id) VALUES(?, ?, ?, ?, ?)",
+            [offer.from_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id]
+        );
+        await run(
+            "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id) VALUES(?, ?, ?, ?, ?)",
+            [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id]
+        );
+
+        const { state: newState } = await getAlbumState(req.user.sub);
+        return res.json({ ok: true, state: newState });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
+    }
+});
+
+app.post("/api/trade/offers/:id/reject", authMiddleware, async (req, res) => {
+    try {
+        const offerId = Number(req.params.id);
+        const offer = await get(
+            `SELECT * FROM trade_offers WHERE id = ? AND (to_user_id = ? OR from_user_id = ?) AND status = 'pending'`,
+            [offerId, req.user.sub, req.user.sub]
+        );
+        if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
+
+        const newStatus = offer.to_user_id === req.user.sub ? "rejected" : "cancelled";
+        await run(
+            "UPDATE trade_offers SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            [newStatus, offerId]
+        );
+        return res.json({ ok: true });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao recusar oferta", detail: err.message });
+    }
+});
+
+app.get("/api/trade/available", authMiddleware, async (req, res) => {
+    try {
+        const { state: myState } = await getAlbumState(req.user.sub);
+        const myCollected = myState.collected || {};
+
+        const users = await all("SELECT id, name FROM users WHERE id != ?", [req.user.sub]);
+
+        const stickerOffers = new Map();
+
+        for (const user of users) {
+            const { state: userState } = await getAlbumState(user.id);
+            const userCollected = userState.collected || {};
+
+            for (const sticker of STICKERS) {
+                const userCount = Number(userCollected[sticker.id] || 0);
+                const myCount = Number(myCollected[sticker.id] || 0);
+
+                if (userCount > 1 && myCount < 1) {
+                    if (!stickerOffers.has(sticker.id)) {
+                        stickerOffers.set(sticker.id, { sticker, offeredBy: [] });
+                    }
+                    stickerOffers.get(sticker.id).offeredBy.push({
+                        userId: user.id,
+                        userName: user.name,
+                        count: userCount,
+                    });
+                }
+            }
+        }
+
+        const available = [...stickerOffers.values()].sort((a, b) => a.sticker.num - b.sticker.num);
+        return res.json({ available });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao buscar figurinhas disponíveis", detail: err.message });
+    }
+});
+
+app.get("/api/trade/history", authMiddleware, async (req, res) => {
+    try {
+        const history = await all(
+            "SELECT * FROM trade_history WHERE user_id = ? ORDER BY completed_at DESC",
+            [req.user.sub]
+        );
+
+        const enriched = history.map((h) => ({
+            id: h.id,
+            completedAt: h.completed_at,
+            partnerName: h.from_user_id === req.user.sub ?
+                (h.to_user_id ? "..." : "Desconhecido") :
+                (h.from_user_id ? "..." : "Desconhecido"),
+            partnerUserId: h.from_user_id === req.user.sub ? h.to_user_id : h.from_user_id,
+            offeredSticker: STICKER_BY_ID.get(h.offered_sticker_id) || { id: h.offered_sticker_id, name: "Desconhecida" },
+            requestedSticker: STICKER_BY_ID.get(h.requested_sticker_id) || { id: h.requested_sticker_id, name: "Desconhecida" },
+            iSent: h.from_user_id === req.user.sub,
+        }));
+
+        // Get partner names
+        if (enriched.length > 0) {
+            const partnerIds = [...new Set(enriched.map(h => h.partnerUserId).filter(Boolean))];
+            if (partnerIds.length > 0) {
+                const placeholders = partnerIds.map(() => "?").join(",");
+                const partners = await all(`SELECT id, name FROM users WHERE id IN (${placeholders})`, partnerIds);
+                const partnerMap = new Map(partners.map(p => [p.id, p.name]));
+                enriched.forEach(h => {
+                    if (h.partnerUserId && partnerMap.has(h.partnerUserId)) {
+                        h.partnerName = partnerMap.get(h.partnerUserId);
+                    }
+                });
+            }
+        }
+
+        return res.json({ history: enriched });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao buscar histórico de trocas", detail: err.message });
+    }
+});
+
+// ─── End Trade endpoints ─────────────────────────────────────────────────────
 
 initDb()
     .then(() => {
