@@ -65,6 +65,19 @@ const TEAM_IMAGE_CODES = {
   nzl: "nz",
 };
 
+const ADMIN_ICON_OPTIONS = [
+  { value: "🎟️", label: "🎟️ Figurinha" },
+  { value: "⭐", label: "⭐ Estrela" },
+  { value: "🏆", label: "🏆 Troféu" },
+  { value: "⚽", label: "⚽ Bola" },
+  { value: "🔥", label: "🔥 Destaque" },
+  { value: "🧤", label: "🧤 Goleiro" },
+  { value: "🛡️", label: "🛡️ Defesa" },
+  { value: "🎯", label: "🎯 Ataque" },
+  { value: "👑", label: "👑 Lendário" },
+  { value: "💎", label: "💎 Raro" },
+];
+
 const GROUP_COLORS = {
   especial: "#f59e0b",
   A: "#ef4444",
@@ -213,6 +226,7 @@ const adminStickerForm = reactive({
   name: "",
   icon: "🎟️",
   image: "",
+  imageFileName: "",
   teamId: "",
   type: "custom",
 });
@@ -336,7 +350,9 @@ const editingManagedUser = computed(() => {
   if (!id) return null;
   return state.managedUsers.find((u) => Number(u.id) === id) || null;
 });
-const catalogStickerIds = computed(() => new Set(stickers.map((item) => item.id)));
+const catalogStickerIds = computed(
+  () => new Set(stickers.map((item) => item.id)),
+);
 const total = computed(() => stickers.length);
 const collectedCount = computed(
   () =>
@@ -1052,13 +1068,65 @@ async function createCustomSticker() {
 
     ui.stickerCreateMsg = `Figurinha #${data.sticker?.num || "?"} criada com sucesso.`;
     setToast("Nova figurinha criada e publicada");
-    adminStickerForm.name = "";
-    adminStickerForm.image = "";
-    adminStickerForm.teamId = "";
+    resetAdminStickerForm();
     await loadRecentCreatedStickers();
   } catch (err) {
     ui.stickerCreateMsg = err.message || "Erro ao criar figurinha";
   }
+}
+
+function resetAdminStickerForm() {
+  adminStickerForm.name = "";
+  adminStickerForm.icon = "🎟️";
+  adminStickerForm.image = "";
+  adminStickerForm.imageFileName = "";
+  adminStickerForm.teamId = "";
+}
+
+function clearAdminStickerImage() {
+  adminStickerForm.image = "";
+  adminStickerForm.imageFileName = "";
+}
+
+function handleAdminStickerImageUpload(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) {
+    clearAdminStickerImage();
+    return;
+  }
+
+  if (!String(file.type || "").startsWith("image/")) {
+    ui.stickerCreateMsg = "Selecione um arquivo de imagem válido.";
+    clearAdminStickerImage();
+    event.target.value = "";
+    return;
+  }
+
+  const maxBytes = 5 * 1024 * 1024;
+  if (Number(file.size || 0) > maxBytes) {
+    ui.stickerCreateMsg = "A imagem deve ter no máximo 5MB.";
+    clearAdminStickerImage();
+    event.target.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = String(reader.result || "");
+    if (!result.startsWith("data:image/")) {
+      ui.stickerCreateMsg = "Não foi possível processar a imagem selecionada.";
+      clearAdminStickerImage();
+      return;
+    }
+    adminStickerForm.image = result;
+    adminStickerForm.imageFileName = file.name;
+    ui.stickerCreateMsg = "";
+  };
+  reader.onerror = () => {
+    ui.stickerCreateMsg = "Falha ao ler o arquivo de imagem.";
+    clearAdminStickerImage();
+  };
+  reader.readAsDataURL(file);
 }
 
 async function loadRecentCreatedStickers() {
@@ -2425,12 +2493,15 @@ const filteredTradeAvailable = computed(() => {
                 type="text"
                 placeholder="Nome da figurinha"
               />
-              <input
-                v-model.trim="adminStickerForm.icon"
-                type="text"
-                maxlength="4"
-                placeholder="Ícone"
-              />
+              <select v-model="adminStickerForm.icon">
+                <option
+                  v-for="opt in ADMIN_ICON_OPTIONS"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </option>
+              </select>
               <select v-model="adminStickerForm.teamId">
                 <option value="">Especial (sem time)</option>
                 <option
@@ -2442,12 +2513,25 @@ const filteredTradeAvailable = computed(() => {
                 </option>
               </select>
               <input
-                v-model.trim="adminStickerForm.image"
-                type="text"
-                placeholder="Caminho da imagem (opcional)"
+                type="file"
+                accept="image/*"
+                @change="handleAdminStickerImageUpload"
               />
               <button type="button" @click="createCustomSticker">
                 Criar Figurinha
+              </button>
+            </div>
+            <div v-if="adminStickerForm.image" class="manage-sticker-upload-preview">
+              <img
+                :src="adminStickerForm.image"
+                alt="Preview da figurinha"
+                class="manage-sticker-upload-thumb"
+              />
+              <small>
+                {{ adminStickerForm.imageFileName || "Imagem selecionada" }}
+              </small>
+              <button type="button" @click="clearAdminStickerImage">
+                Remover imagem
               </button>
             </div>
             <p v-if="ui.stickerCreateMsg" class="read-only-hint">
@@ -2792,10 +2876,22 @@ const filteredTradeAvailable = computed(() => {
         </div>
         <h3>Figurinhas faltando ({{ missingList.length }})</h3>
         <div class="list">
-          <article v-for="item in missingList" :key="item.id">
-            <span>#{{ item.num }}</span>
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.teamName || groupLabel(item) }}</small>
+          <article
+            v-for="item in missingList"
+            :key="item.id"
+            class="detail-list-item"
+            :style="stickerBorder(item)"
+          >
+            <div class="detail-list-main">
+              <span class="num">#{{ item.num }}</span>
+              <strong>{{ item.name }}</strong>
+              <p>{{ item.teamName || groupLabel(item) }}</p>
+            </div>
+            <div class="detail-list-meta">
+              <span class="detail-chip">{{ item.sectionName }}</span>
+              <span class="detail-chip detail-chip-muted">{{ item.type }}</span>
+              <span class="detail-chip detail-chip-alert">Faltando</span>
+            </div>
           </article>
         </div>
       </section>
@@ -2807,10 +2903,27 @@ const filteredTradeAvailable = computed(() => {
         </div>
         <h3>Figurinhas repetidas ({{ duplicatesList.length }})</h3>
         <div class="list">
-          <article v-for="item in duplicatesList" :key="item.id">
-            <span>#{{ item.num }}</span>
-            <strong>{{ item.name }}</strong>
-            <small>{{ getCount(item.id) }}x</small>
+          <article
+            v-for="item in duplicatesList"
+            :key="item.id"
+            class="detail-list-item"
+            :style="stickerBorder(item)"
+          >
+            <div class="detail-list-main">
+              <span class="num">#{{ item.num }}</span>
+              <strong>{{ item.name }}</strong>
+              <p>{{ item.teamName || groupLabel(item) }}</p>
+            </div>
+            <div class="detail-list-meta">
+              <span class="detail-chip">{{ item.sectionName }}</span>
+              <span class="detail-chip detail-chip-muted">{{ item.type }}</span>
+              <span class="detail-chip detail-chip-success">
+                {{ getCount(item.id) }}x coladas
+              </span>
+              <span class="detail-chip detail-chip-alert">
+                +{{ Math.max(0, getCount(item.id) - 1) }} repetidas
+              </span>
+            </div>
           </article>
         </div>
       </section>
@@ -2944,32 +3057,28 @@ const filteredTradeAvailable = computed(() => {
         <p v-if="state.searchQuery.trim().length < 2">
           Digite pelo menos 2 caracteres.
         </p>
-        <div v-else class="cards">
+        <div v-else class="list search-list">
           <article
             v-for="item in searchResults"
             :key="item.id"
-            class="card"
+            class="detail-list-item"
             :style="stickerBorder(item)"
           >
-            <span class="num">#{{ item.num }}</span>
-            <div
-              v-if="stickerPhoto(item)"
-              class="sticker-photo-wrap"
-              :style="packGroupStyle(item)"
-            >
-              <img
-                class="sticker-photo"
-                :src="stickerPhoto(item)"
-                :alt="`Foto de ${item.name}`"
-                data-photo-index="0"
-                loading="lazy"
-                @error="onStickerPhotoError($event, item)"
-              />
-              <span class="sticker-flag">{{ item.icon }}</span>
+            <div class="detail-list-main">
+              <span class="num">#{{ item.num }}</span>
+              <strong>{{ item.name }}</strong>
+              <p>{{ item.teamName || groupLabel(item) }}</p>
             </div>
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.teamName || groupLabel(item) }}</small>
-            <small>{{ stickerStatus(item) }}</small>
+            <div class="detail-list-meta">
+              <span class="detail-chip">{{ item.sectionName }}</span>
+              <span class="detail-chip detail-chip-muted">{{ item.type }}</span>
+              <span class="detail-chip detail-chip-status">
+                {{ stickerStatus(item) }}
+              </span>
+              <span class="detail-chip detail-chip-muted">
+                {{ getCount(item.id) }} no álbum
+              </span>
+            </div>
           </article>
         </div>
       </section>

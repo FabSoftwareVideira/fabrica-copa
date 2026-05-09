@@ -499,7 +499,7 @@ async function initDb() {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "8mb" }));
 
 app.get("/api/health", (_req, res) => {
     res.json({ ok: true, service: "album-backend", stickers: STICKERS.length });
@@ -932,6 +932,10 @@ app.post("/api/admin/stickers", authMiddleware, requireRoles(ROLE_ADMIN), async 
         const type = String(req.body?.type || "custom").trim() || "custom";
         const image = String(req.body?.image || "").trim();
         const teamIdRaw = String(req.body?.teamId || "").trim();
+
+        if (image.startsWith("data:image/") && image.length > 7_000_000) {
+            return res.status(400).json({ error: "Imagem muito grande. Use uma imagem menor que 5MB." });
+        }
 
         if (name.length < 2) {
             return res.status(400).json({ error: "Nome da figurinha invalido" });
