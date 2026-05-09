@@ -309,6 +309,206 @@ button:disabled {
   font-weight: 700;
 }
 
+/* ── Notification bell ── */
+.notif-bell-btn {
+  position: relative;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  width: 2.4rem;
+  height: 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+  padding: 0;
+  color: inherit;
+}
+.notif-bell-btn:hover {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+.notif-bell-btn.active {
+  background: rgba(0, 0, 0, 0.1);
+}
+.notif-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0 0.18em;
+  pointer-events: none;
+}
+
+/* ── Notifications overlay + panel ── */
+.notif-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 4.5rem 1rem 0;
+}
+.notif-panel {
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.22);
+  width: 360px;
+  max-width: 95vw;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.notif-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem 0.7rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.notif-panel-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.notif-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #64748b;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+  line-height: 1;
+}
+.notif-close-btn:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+.notif-panel-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0.4rem 0;
+}
+.notif-empty {
+  text-align: center;
+  color: #94a3b8;
+  padding: 2rem 1rem;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.12s;
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item:hover {
+  background: #f8fafc;
+}
+.notif-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.notif-content {
+  flex: 1;
+  min-width: 0;
+}
+.notif-content strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 0.15rem;
+}
+.notif-content p {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  color: #475569;
+  word-break: break-word;
+}
+.notif-content small {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.notif-type-coupon_created .notif-icon {
+  filter: drop-shadow(0 0 2px #fbbf24);
+}
+.notif-type-sticker_created .notif-icon {
+  filter: drop-shadow(0 0 2px #60a5fa);
+}
+.notif-type-pack_opened .notif-icon {
+  filter: drop-shadow(0 0 2px #34d399);
+}
+.notif-type-trade_offer_created .notif-icon {
+  filter: drop-shadow(0 0 2px #a78bfa);
+}
+.notif-type-trade_accepted .notif-icon {
+  filter: drop-shadow(0 0 2px #10b981);
+}
+.notif-type-trade_rejected .notif-icon {
+  filter: drop-shadow(0 0 2px #ef4444);
+}
+.notif-type-trade_cancelled .notif-icon {
+  filter: drop-shadow(0 0 2px #f97316);
+}
+.notif-type-trade_accepted_self .notif-icon {
+  filter: drop-shadow(0 0 2px #10b981);
+}
+.notif-type-trade_rejected_self .notif-icon {
+  filter: drop-shadow(0 0 2px #ef4444);
+}
+.notif-type-trade_cancelled_self .notif-icon {
+  filter: drop-shadow(0 0 2px #f97316);
+}
+.notif-panel-foot {
+  border-top: 1px solid #e2e8f0;
+  padding: 0.6rem 1.1rem;
+  text-align: right;
+}
+.notif-clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.3rem;
+}
+.notif-clear-btn:hover {
+  background: #fee2e2;
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -755,6 +955,41 @@ button:disabled {
 
 .pack-modal-box {
   width: min(760px, 100%);
+}
+
+.pack-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pack-close-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.pack-close-btn:hover {
+  background: rgba(15, 23, 42, 0.14);
+  transform: scale(1.04);
+}
+
+.pack-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .pack-instruction {
@@ -1837,6 +2072,33 @@ button:disabled {
 }
 
 /* Trade offer modal */
+/* Trade offer modal */
+.trade-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: white;
+  min-width: 120px;
+  text-align: center;
+}
+
+.trade-status-badge[data-status="accepted"] {
+  background-color: #10b981;
+}
+
+.trade-status-badge[data-status="rejected"] {
+  background-color: #ef4444;
+}
+
+.trade-status-badge[data-status="cancelled"] {
+  background-color: #f97316;
+}
+
+/* Trade offer modal */
 
 .trade-offer-modal {
   max-width: 560px;
@@ -2458,6 +2720,83 @@ button:disabled {
   gap: 0.55rem;
 }
 
+.manage-create-sticker-box {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: rgba(240, 249, 255, 0.7);
+}
+
+.manage-create-sticker-form {
+  display: grid;
+  grid-template-columns: 1.35fr 0.55fr 1.2fr 1.4fr auto;
+  gap: 0.45rem;
+}
+
+.manage-create-sticker-form input,
+.manage-create-sticker-form select {
+  min-width: 0;
+}
+
+.manage-created-stickers-box {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid rgba(2, 132, 199, 0.18);
+  border-radius: 10px;
+  padding: 0.65rem;
+  background: rgba(248, 250, 252, 0.7);
+}
+
+.recent-stickers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.recent-sticker-item {
+  display: grid;
+  gap: 0.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.9);
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+}
+
+.recent-sticker-item small {
+  grid-column: 1;
+}
+
+.recent-sticker-delete-btn {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem 0.3rem;
+  border-radius: 0.3rem;
+  opacity: 0.55;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
+  align-self: center;
+}
+.recent-sticker-delete-btn:hover {
+  opacity: 1;
+  background: #fee2e2;
+}
+
+.recent-sticker-main {
+  font-weight: 700;
+}
+
 .manage-coupon-form {
   display: flex;
   gap: 0.5rem;
@@ -2471,6 +2810,53 @@ button:disabled {
 
 .manage-coupon-form input {
   width: 120px;
+}
+
+.coupon-feedback-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.coupon-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.62rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.coupon-kind-badge.generic {
+  background: rgba(2, 132, 199, 0.16);
+  color: #0c4a6e;
+  border: 1px solid rgba(2, 132, 199, 0.35);
+}
+
+.coupon-kind-badge.targeted {
+  background: rgba(34, 197, 94, 0.16);
+  color: #14532d;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.coupon-kind-badge.error {
+  background: rgba(239, 68, 68, 0.14);
+  color: #991b1b;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.coupon-code-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.16rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #0f172a;
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px dashed rgba(15, 23, 42, 0.35);
 }
 
 .manage-users-list {
@@ -2892,6 +3278,7 @@ button:disabled {
 
   .manage-panel-head,
   .manage-coupon-form,
+  .manage-create-sticker-form,
   .manage-users-toolbar,
   .manage-user-grid,
   .manage-user-actions,
@@ -2903,6 +3290,8 @@ button:disabled {
 
   .manage-coupon-form select,
   .manage-coupon-form input,
+  .manage-create-sticker-form select,
+  .manage-create-sticker-form input,
   .manage-user-password input {
     min-width: 0;
     width: 100%;

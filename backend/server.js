@@ -36,8 +36,10 @@ const PROMO_CODES = {
 const dbPath = path.join(__dirname, "album.db");
 const db = new sqlite3.Database(dbPath);
 
-const STICKERS = loadStickersFromFrontend();
-const STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
+const BASE_STICKERS = loadStickersFromFrontend();
+let CUSTOM_STICKERS = [];
+let STICKERS = [...BASE_STICKERS];
+let STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
 
 function loadStickersFromFrontend() {
     const dataFile = path.join(__dirname, "..", "js", "data.js");
@@ -58,7 +60,77 @@ function loadStickersFromFrontend() {
         type: s.type,
         groupId: s.groupId,
         image: s.image,
+        section: s.section || (s.groupId ? `grupo-${s.groupId}` : "especial"),
     }));
+}
+
+function normalizeSticker(raw) {
+    return {
+        id: String(raw.id || ""),
+        num: Number(raw.num || 0),
+        name: String(raw.name || ""),
+        icon: String(raw.icon || "🎟️"),
+        teamId: raw.teamId || null,
+        teamName: raw.teamName || null,
+        teamImage: raw.teamImage || null,
+        sectionName: String(raw.sectionName || "Especial"),
+        type: String(raw.type || "custom"),
+        groupId: raw.groupId || null,
+        image: raw.image || "",
+        section: raw.section || "especial",
+        createdAt: raw.createdAt || null,
+        createdByUserId: raw.createdByUserId || null,
+    };
+}
+
+function rebuildStickerCatalog() {
+    STICKERS = [...BASE_STICKERS, ...CUSTOM_STICKERS]
+        .map(normalizeSticker)
+        .sort((a, b) => Number(a.num) - Number(b.num));
+    STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
+}
+
+function findTeamMeta(teamId) {
+    const id = String(teamId || "").trim().toLowerCase();
+    if (!id) return null;
+    const found = STICKERS.find(
+        (s) => String(s.teamId || "").toLowerCase() === id && s.groupId && s.teamName
+    );
+    if (!found) return null;
+    return {
+        teamId: found.teamId,
+        teamName: found.teamName,
+        teamImage: found.teamImage || null,
+        groupId: found.groupId,
+        sectionName: found.sectionName || `Grupo ${found.groupId}`,
+    };
+}
+
+async function loadCustomStickersFromDb() {
+    const rows = await all(
+        `SELECT id, num, name, icon, team_id, team_name, team_image, section_name, type, group_id, image, created_by_user_id, created_at
+         FROM custom_stickers
+         ORDER BY num ASC`
+    );
+
+    CUSTOM_STICKERS = rows.map((r) => ({
+        id: r.id,
+        num: Number(r.num),
+        name: r.name,
+        icon: r.icon,
+        teamId: r.team_id,
+        teamName: r.team_name,
+        teamImage: r.team_image,
+        sectionName: r.section_name,
+        type: r.type,
+        groupId: r.group_id,
+        image: r.image,
+        section: r.group_id ? `grupo-${r.group_id}` : "especial",
+        createdAt: r.created_at,
+        createdByUserId: r.created_by_user_id,
+    }));
+
+    rebuildStickerCatalog();
 }
 
 function run(sql, params = []) {
@@ -348,6 +420,40 @@ async function initDb() {
     await ensureColumn("user_coupons", "is_generic", "INTEGER NOT NULL DEFAULT 0");
 
     await run(`
+        CREATE TABLE IF NOT EXISTS custom_stickers (
+            id TEXT PRIMARY KEY,
+            num INTEGER NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '🎟️',
+            team_id TEXT,
+            team_name TEXT,
+            team_image TEXT,
+            section_name TEXT NOT NULL DEFAULT 'Especial',
+            type TEXT NOT NULL DEFAULT 'custom',
+            group_id TEXT,
+            image TEXT,
+            created_by_user_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    await run(`
+        CREATE TABLE IF NOT EXISTS system_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            payload_json TEXT,
+            created_by_user_id INTEGER,
+            target_user_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+    await ensureColumn("system_events", "target_user_id", "INTEGER");
+
+    await run(`
     CREATE TABLE IF NOT EXISTS pack_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -397,6 +503,10 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (_req, res) => {
     res.json({ ok: true, service: "album-backend", stickers: STICKERS.length });
+});
+
+app.get("/api/stickers/catalog", async (_req, res) => {
+    return res.json({ stickers: STICKERS, total: STICKERS.length });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -695,11 +805,22 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
 
         const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
+        const couponCreatedAt = nowSqlTimestamp();
         await run(
             `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
              VALUES(?, ?, ?, ?, ?, 'active', ?)`,
-            [code, couponTargetUserId, req.user.sub, packs, isGeneric, nowSqlTimestamp()]
+            [code, couponTargetUserId, req.user.sub, packs, isGeneric, couponCreatedAt]
         );
+
+        if (hasTargetUser) {
+            const eventMessage = `Você recebeu um cupom de ${packs} pacote(s) de ${req.user.name}.`;
+            const eventPayload = { code, packs, createdByName: req.user.name, createdByRole: req.user.role };
+            await run(
+                `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                 VALUES('coupon_created', ?, ?, ?, ?, ?)`,
+                [eventMessage, JSON.stringify(eventPayload), req.user.sub, targetUserId, couponCreatedAt]
+            );
+        }
 
         return res.status(201).json({
             ok: true,
@@ -801,6 +922,217 @@ app.put("/api/admin/users/:id/password", authMiddleware, requireRoles(ROLE_ADMIN
         return res.json({ ok: true });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao alterar senha", detail: err.message });
+    }
+});
+
+app.post("/api/admin/stickers", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const name = String(req.body?.name || "").trim();
+        const icon = String(req.body?.icon || "🎟️").trim() || "🎟️";
+        const type = String(req.body?.type || "custom").trim() || "custom";
+        const image = String(req.body?.image || "").trim();
+        const teamIdRaw = String(req.body?.teamId || "").trim();
+
+        if (name.length < 2) {
+            return res.status(400).json({ error: "Nome da figurinha invalido" });
+        }
+
+        const teamMeta = teamIdRaw ? findTeamMeta(teamIdRaw) : null;
+        if (teamIdRaw && !teamMeta) {
+            return res.status(400).json({ error: "Time invalido para esta figurinha" });
+        }
+
+        const maxNumRow = await get("SELECT MAX(num) AS maxNum FROM custom_stickers");
+        const baseMaxNum = STICKERS.reduce((acc, s) => Math.max(acc, Number(s.num || 0)), 0);
+        const nextNum = Math.max(Number(maxNumRow?.maxNum || 0), baseMaxNum) + 1;
+        const stickerId = `custom-${Date.now()}-${crypto.randomBytes(2).toString("hex")}`;
+        const createdAt = nowSqlTimestamp();
+
+        const sectionName = teamMeta ? teamMeta.sectionName : "Especial";
+        const groupId = teamMeta ? teamMeta.groupId : null;
+        const teamId = teamMeta ? teamMeta.teamId : null;
+        const teamName = teamMeta ? teamMeta.teamName : null;
+        const teamImage = teamMeta ? teamMeta.teamImage : null;
+
+        await run(
+            `INSERT INTO custom_stickers(
+                id, num, name, icon, team_id, team_name, team_image, section_name, type, group_id, image, created_by_user_id, created_at
+             )
+             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                stickerId,
+                nextNum,
+                name,
+                icon,
+                teamId,
+                teamName,
+                teamImage,
+                sectionName,
+                type,
+                groupId,
+                image,
+                req.user.sub,
+                createdAt,
+            ]
+        );
+
+        const sticker = normalizeSticker({
+            id: stickerId,
+            num: nextNum,
+            name,
+            icon,
+            teamId,
+            teamName,
+            teamImage,
+            sectionName,
+            type,
+            groupId,
+            image,
+            section: groupId ? `grupo-${groupId}` : "especial",
+            createdAt,
+            createdByUserId: req.user.sub,
+        });
+
+        CUSTOM_STICKERS.push(sticker);
+        rebuildStickerCatalog();
+
+        const eventPayload = {
+            stickerId: sticker.id,
+            stickerName: sticker.name,
+            num: sticker.num,
+            icon: sticker.icon,
+            image: sticker.image,
+            type: sticker.type,
+            teamId: sticker.teamId,
+            teamName: sticker.teamName,
+            groupId: sticker.groupId,
+            sectionName: sticker.sectionName,
+            teamImage: sticker.teamImage,
+            createdByName: req.user.name,
+        };
+        const message = `${req.user.name} criou a figurinha #${sticker.num} (${sticker.name})`;
+
+        const eventInsert = await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, created_at)
+             VALUES('sticker_created', ?, ?, ?, ?)`,
+            [message, JSON.stringify(eventPayload), req.user.sub, createdAt]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            sticker,
+            event: {
+                id: eventInsert.lastID,
+                type: "sticker_created",
+                message,
+                payload: eventPayload,
+                createdAt,
+                createdByUserId: req.user.sub,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao criar figurinha", detail: err.message });
+    }
+});
+
+app.get("/api/admin/stickers/recent", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    try {
+        const limit = Math.max(1, Math.min(50, Number(req.query.limit || 20)));
+        const rows = await all(
+            `SELECT cs.id, cs.num, cs.name, cs.icon, cs.team_id, cs.team_name, cs.team_image, cs.section_name, cs.type, cs.group_id, cs.image, cs.created_at, cs.created_by_user_id,
+                    u.name AS created_by_user_name
+             FROM custom_stickers cs
+             LEFT JOIN users u ON u.id = cs.created_by_user_id
+             ORDER BY cs.created_at DESC
+             LIMIT ?`,
+            [limit]
+        );
+
+        const stickers = rows.map((r) => ({
+            id: r.id,
+            num: Number(r.num),
+            name: r.name,
+            icon: r.icon,
+            teamId: r.team_id,
+            teamName: r.team_name,
+            teamImage: r.team_image,
+            sectionName: r.section_name,
+            type: r.type,
+            groupId: r.group_id,
+            image: r.image,
+            section: r.group_id ? `grupo-${r.group_id}` : "especial",
+            createdAt: r.created_at,
+            createdByUserId: r.created_by_user_id,
+            createdByUserName: r.created_by_user_name || "Admin",
+        }));
+
+        return res.json({ stickers });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar figurinhas criadas", detail: err.message });
+    }
+});
+
+app.delete("/api/admin/stickers/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const stickerId = String(req.params.id || "").trim();
+        if (!stickerId) return res.status(400).json({ error: "ID invalido" });
+
+        const existing = await get("SELECT id, num, name FROM custom_stickers WHERE id = ?", [stickerId]);
+        if (!existing) return res.status(404).json({ error: "Figurinha nao encontrada" });
+
+        await run("DELETE FROM custom_stickers WHERE id = ?", [stickerId]);
+
+        // remove from in-memory catalog
+        CUSTOM_STICKERS = CUSTOM_STICKERS.filter((s) => s.id !== stickerId);
+        rebuildStickerCatalog();
+
+        const message = `${req.user.name} removeu a figurinha #${existing.num} (${existing.name})`;
+        const deletedAt = nowSqlTimestamp();
+        const eventInsert = await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, created_at)
+             VALUES('sticker_deleted', ?, ?, ?, ?)`,
+            [message, JSON.stringify({ stickerId, num: existing.num, stickerName: existing.name, createdByName: req.user.name }), req.user.sub, deletedAt]
+        );
+
+        return res.json({
+            ok: true,
+            stickerId,
+            event: { id: eventInsert.lastID, type: "sticker_deleted", message, createdAt: deletedAt },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao excluir figurinha", detail: err.message });
+    }
+});
+
+app.get("/api/system/events", authMiddleware, async (req, res) => {
+    try {
+        const sinceId = Math.max(0, Number(req.query.sinceId || 0));
+        const limit = Math.max(1, Math.min(100, Number(req.query.limit || 30)));
+
+        const rows = await all(
+            `SELECT id, event_type, message, payload_json, created_by_user_id, target_user_id, created_at
+             FROM system_events
+             WHERE id > ?
+               AND (target_user_id IS NULL OR target_user_id = ?)
+             ORDER BY id ASC
+             LIMIT ?`,
+            [sinceId, req.user.sub, limit]
+        );
+
+        const events = rows.map((r) => ({
+            id: r.id,
+            type: r.event_type,
+            message: r.message,
+            payload: parseJSON(r.payload_json || "{}", {}),
+            createdByUserId: r.created_by_user_id,
+            targetUserId: r.target_user_id || null,
+            createdAt: r.created_at,
+        }));
+
+        const lastEventId = events.length ? events[events.length - 1].id : sinceId;
+        return res.json({ events, lastEventId });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar notificacoes", detail: err.message });
     }
 });
 
@@ -1024,6 +1356,26 @@ app.post("/api/trade/offers", authMiddleware, async (req, res) => {
             [req.user.sub, Number(toUserId), offeredStickerId, requestedStickerId, nowTimestamp, nowTimestamp]
         );
 
+        // Emit notification event to the recipient
+        const offeredSticker = STICKER_BY_ID.get(offeredStickerId);
+        const requestedSticker = STICKER_BY_ID.get(requestedStickerId);
+        const eventMessage = `${req.user.name} enviou uma oferta de troca: ${offeredSticker?.name || "figurinha"} por ${requestedSticker?.name || "figurinha"}`;
+        const eventPayload = {
+            offerId: result.lastID,
+            fromUserId: req.user.sub,
+            fromUserName: req.user.name,
+            toUserId: Number(toUserId),
+            offeredStickerId,
+            offeredStickerName: offeredSticker?.name,
+            requestedStickerId,
+            requestedStickerName: requestedSticker?.name,
+        };
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_offer_created', ?, ?, ?, ?, ?)`,
+            [eventMessage, JSON.stringify(eventPayload), req.user.sub, Number(toUserId), nowTimestamp]
+        );
+
         return res.status(201).json({ ok: true, offerId: result.lastID });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao criar oferta", detail: err.message });
@@ -1123,6 +1475,30 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
             [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
         );
 
+        // Emit notification to the offer creator
+        const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
+        const requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
+        const creatorUser = await get("SELECT name FROM users WHERE id = ?", [offer.from_user_id]);
+        const acceptorUser = await get("SELECT name FROM users WHERE id = ?", [offer.to_user_id]);
+        const eventMessage = `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}`;
+        const eventPayload = {
+            offerId: offerId,
+            fromUserId: offer.from_user_id,
+            toUserId: offer.to_user_id,
+            toUserName: acceptorUser?.name,
+            offeredStickerId: offer.offered_sticker_id,
+            offeredStickerNum: offeredSticker?.num,
+            offeredStickerName: offeredSticker?.name,
+            requestedStickerId: offer.requested_sticker_id,
+            requestedStickerNum: requestedSticker?.num,
+            requestedStickerName: requestedSticker?.name,
+        };
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_accepted', ?, ?, ?, ?, ?)`,
+            [eventMessage, JSON.stringify(eventPayload), offer.to_user_id, offer.from_user_id, nowTimestamp]
+        );
+
         const { state: newState } = await getAlbumState(req.user.sub);
         return res.json({ ok: true, state: newState });
     } catch (err) {
@@ -1140,10 +1516,47 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, async (req, res) => {
         if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
 
         const newStatus = offer.to_user_id === req.user.sub ? "rejected" : "cancelled";
+        const nowTimestamp = nowSqlTimestamp();
         await run(
             "UPDATE trade_offers SET status = ?, updated_at = ? WHERE id = ?",
-            [newStatus, nowSqlTimestamp(), offerId]
+            [newStatus, nowTimestamp, offerId]
         );
+
+        // Emit notification event
+        if (offer.to_user_id === req.user.sub) {
+            // Receiver rejected -> notify offerer
+            const rejectorUser = await get("SELECT name FROM users WHERE id = ?", [req.user.sub]);
+            const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
+            const eventMessage = `${rejectorUser?.name || "Usuário"} rejeitou sua troca!`;
+            const eventPayload = {
+                offerId: offerId,
+                fromUserId: offer.from_user_id,
+                toUserId: offer.to_user_id,
+                toUserName: rejectorUser?.name,
+                offeredStickerId: offer.offered_sticker_id,
+                requestedStickerId: offer.requested_sticker_id,
+            };
+            await run(
+                `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                 VALUES('trade_rejected', ?, ?, ?, ?, ?)`,
+                [eventMessage, JSON.stringify(eventPayload), req.user.sub, offer.from_user_id, nowTimestamp]
+            );
+        } else {
+            // Offerer cancelled -> notify receiver
+            const cancellatorUser = await get("SELECT name FROM users WHERE id = ?", [req.user.sub]);
+            const eventMessage = `${cancellatorUser?.name || "Usuário"} cancelou a troca pendente!`;
+            const eventPayload = {
+                offerId: offerId,
+                fromUserId: offer.from_user_id,
+                toUserId: offer.to_user_id,
+                fromUserName: cancellatorUser?.name,
+            };
+            await run(
+                `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                 VALUES('trade_cancelled', ?, ?, ?, ?, ?)`,
+                [eventMessage, JSON.stringify(eventPayload), req.user.sub, offer.to_user_id, nowTimestamp]
+            );
+        }
         return res.json({ ok: true });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao recusar oferta", detail: err.message });
@@ -1230,7 +1643,8 @@ app.get("/api/trade/history", authMiddleware, async (req, res) => {
 // ─── End Trade endpoints ─────────────────────────────────────────────────────
 
 initDb()
-    .then(() => {
+    .then(async () => {
+        await loadCustomStickersFromDb();
         app.listen(PORT, () => {
             console.log(`Backend do album rodando em http://localhost:${PORT}`);
         });

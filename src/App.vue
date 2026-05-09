@@ -6,6 +6,10 @@ const API_BASE_URL = "http://localhost:3001/api";
 const APP_TIMEZONE = "America/Sao_Paulo";
 const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
+const SYSTEM_EVENTS_CURSOR_KEY = "album-system-events-cursor";
+const NOTIFICATIONS_LIMIT = 50;
+const NOTIFICATIONS_KEY_PREFIX = "album-notifications";
+const NOTIFICATIONS_UNREAD_KEY_PREFIX = "album-notifications-unread";
 const DEFAULT_PLAYER_IMAGE = "/player-default.png";
 const DEFAULT_TEAM_IMAGE = "/teams/default.png";
 const DEFAULT_SPECIAL_IMAGE = "/specials/especial_default.png";
@@ -77,8 +81,9 @@ const GROUP_COLORS = {
   L: "#78716c",
 };
 
-const stickers = Array.isArray(window.ALL_STICKERS) ? window.ALL_STICKERS : [];
-const stickerMap = new Map(stickers.map((item) => [item.id, item]));
+const stickers = reactive(
+  Array.isArray(window.ALL_STICKERS) ? [...window.ALL_STICKERS] : [],
+);
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
@@ -135,6 +140,13 @@ const state = reactive({
   tradeOutgoing: [],
   tradeHistory: [],
   managedUsers: [],
+  recentCreatedStickers: [],
+  newStickersUnread: 0,
+  notifications: [],
+  notificationsUnread: 0,
+  systemLastEventId: Number(
+    localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
+  ),
 });
 
 const ui = reactive({
@@ -168,7 +180,15 @@ const ui = reactive({
   managePanelLoading: false,
   managePanelMsg: "",
   couponPanelMsg: "",
+  couponPanelKind: "",
+  couponPanelCode: "",
+  stickerCreateMsg: "",
+  recentStickersLoading: false,
+  recentStickersMsg: "",
+  notificationsOpen: false,
 });
+
+restoreNotificationsFromStorage();
 
 const authForm = reactive({
   name: "",
@@ -189,6 +209,14 @@ const adminTools = reactive({
   sortDir: "asc",
 });
 
+const adminStickerForm = reactive({
+  name: "",
+  icon: "🎟️",
+  image: "",
+  teamId: "",
+  type: "custom",
+});
+
 const isAuthenticated = computed(() =>
   Boolean(state.user?.id && state.accessToken),
 );
@@ -199,6 +227,27 @@ const canManageCoupons = computed(() =>
 );
 const collectionViews = ["album", "missing", "duplicates", "search", "flip"];
 const isCollectionView = computed(() => collectionViews.includes(state.view));
+const adminTeamOptions = computed(() => {
+  const map = new Map();
+  for (const item of stickers) {
+    if (!item?.teamId || !item?.groupId || !item?.teamName) continue;
+    if (map.has(item.teamId)) continue;
+    map.set(item.teamId, {
+      teamId: item.teamId,
+      teamName: item.teamName,
+      groupId: item.groupId,
+      sectionName: item.sectionName || `Grupo ${item.groupId}`,
+    });
+  }
+  return [...map.values()].sort((a, b) => {
+    const aName = String(a.teamName || "").toLowerCase();
+    const bName = String(b.teamName || "").toLowerCase();
+    return aName.localeCompare(bName, "pt-BR");
+  });
+});
+const hasNewStickerAlerts = computed(
+  () => Number(state.newStickersUnread || 0) > 0,
+);
 const managedBlockedUsers = computed(
   () => state.managedUsers.filter((u) => u.isBlocked).length,
 );
@@ -287,22 +336,26 @@ const editingManagedUser = computed(() => {
   if (!id) return null;
   return state.managedUsers.find((u) => Number(u.id) === id) || null;
 });
+const catalogStickerIds = computed(() => new Set(stickers.map((item) => item.id)));
 const total = computed(() => stickers.length);
 const collectedCount = computed(
   () =>
-    Object.values(state.collected).filter((count) => Number(count) >= 1).length,
+    Object.entries(state.collected).filter(
+      ([stickerId, count]) =>
+        Number(count) >= 1 && catalogStickerIds.value.has(String(stickerId)),
+    ).length,
 );
 const duplicates = computed(() =>
-  Object.values(state.collected).reduce(
-    (acc, count) => acc + Math.max(0, Number(count) - 1),
-    0,
-  ),
+  Object.entries(state.collected).reduce((acc, [stickerId, count]) => {
+    if (!catalogStickerIds.value.has(String(stickerId))) return acc;
+    return acc + Math.max(0, Number(count) - 1);
+  }, 0),
 );
-const missing = computed(() => total.value - collectedCount.value);
+const missing = computed(() => Math.max(0, total.value - collectedCount.value));
 const percent = computed(() =>
   total.value === 0
     ? 0
-    : Math.round((collectedCount.value / total.value) * 100),
+    : Math.min(100, Math.round((collectedCount.value / total.value) * 100)),
 );
 const progressTheme = computed(() => {
   if (percent.value >= 76) {
@@ -478,18 +531,148 @@ const packDragStyle = computed(() => ({
 }));
 
 let packRevealTimer = null;
+let systemEventsTimer = null;
 const stickerPhotoCache = new Map();
 
+function handleGlobalKeydown(event) {
+  if (event.key === "Escape" && ui.packOpen) {
+    closePackModal();
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener("keydown", handleGlobalKeydown);
   if (isAuthenticated.value) {
     await bootstrapAuth();
   }
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleGlobalKeydown);
   removePackDragListeners();
   clearPackRevealTimer();
+  stopSystemEventsPolling();
 });
+
+function saveSystemEventsCursor() {
+  localStorage.setItem(
+    SYSTEM_EVENTS_CURSOR_KEY,
+    String(state.systemLastEventId || 0),
+  );
+}
+
+function notificationsStorageKey(userId = state.user?.id) {
+  return `${NOTIFICATIONS_KEY_PREFIX}-${userId || "anon"}`;
+}
+
+function notificationsUnreadStorageKey(userId = state.user?.id) {
+  return `${NOTIFICATIONS_UNREAD_KEY_PREFIX}-${userId || "anon"}`;
+}
+
+function saveNotificationsToStorage() {
+  const userId = state.user?.id;
+  if (!userId) return;
+
+  const safeList = Array.isArray(state.notifications)
+    ? state.notifications.slice(0, NOTIFICATIONS_LIMIT)
+    : [];
+
+  localStorage.setItem(
+    notificationsStorageKey(userId),
+    JSON.stringify(safeList),
+  );
+  localStorage.setItem(
+    notificationsUnreadStorageKey(userId),
+    String(Number(state.notificationsUnread || 0)),
+  );
+}
+
+function restoreNotificationsFromStorage() {
+  const userId = state.user?.id;
+  if (!userId) {
+    state.notifications = [];
+    state.notificationsUnread = 0;
+    return;
+  }
+
+  try {
+    const rawNotifications = localStorage.getItem(
+      notificationsStorageKey(userId),
+    );
+    const parsed = JSON.parse(rawNotifications || "[]");
+    state.notifications = Array.isArray(parsed)
+      ? parsed
+          .filter((n) => n && typeof n === "object" && n.id)
+          .slice(0, NOTIFICATIONS_LIMIT)
+      : [];
+  } catch {
+    state.notifications = [];
+  }
+
+  state.notificationsUnread = Number(
+    localStorage.getItem(notificationsUnreadStorageKey(userId)) || 0,
+  );
+}
+
+function stopSystemEventsPolling() {
+  if (!systemEventsTimer) return;
+  clearInterval(systemEventsTimer);
+  systemEventsTimer = null;
+}
+
+function startSystemEventsPolling() {
+  stopSystemEventsPolling();
+  if (!isAuthenticated.value) return;
+  systemEventsTimer = setInterval(() => {
+    loadSystemEvents(false);
+  }, 30000);
+}
+
+function normalizeStickerForUi(raw) {
+  return {
+    ...raw,
+    id: String(raw?.id || ""),
+    num: Number(raw?.num || 0),
+    name: String(raw?.name || ""),
+    section:
+      raw?.section || (raw?.groupId ? `grupo-${raw.groupId}` : "especial"),
+    sectionName:
+      raw?.sectionName || (raw?.groupId ? `Grupo ${raw.groupId}` : "Especial"),
+    icon: raw?.icon || "🎟️",
+    type: raw?.type || "custom",
+    image: raw?.image || "",
+    teamId: raw?.teamId || null,
+    teamName: raw?.teamName || null,
+    teamImage: raw?.teamImage || null,
+    groupId: raw?.groupId || null,
+  };
+}
+
+function replaceStickerCatalog(nextList) {
+  const normalized = (Array.isArray(nextList) ? nextList : [])
+    .map(normalizeStickerForUi)
+    .filter((s) => s.id);
+
+  normalized.sort((a, b) => Number(a.num) - Number(b.num));
+  stickers.splice(0, stickers.length, ...normalized);
+}
+
+function upsertStickerIntoCatalog(rawSticker) {
+  const sticker = normalizeStickerForUi(rawSticker);
+  if (!sticker.id) return;
+  const idx = stickers.findIndex((s) => s.id === sticker.id);
+  if (idx >= 0) {
+    stickers[idx] = { ...stickers[idx], ...sticker };
+  } else {
+    stickers.push(sticker);
+  }
+  stickers.sort((a, b) => Number(a.num) - Number(b.num));
+}
+
+function removeStickerFromCatalog(stickerId) {
+  const idx = stickers.findIndex((s) => s.id === String(stickerId));
+  if (idx >= 0) stickers.splice(idx, 1);
+}
 
 function parseUser() {
   const raw = localStorage.getItem("album-user");
@@ -552,6 +735,18 @@ function clearAuth() {
   state.usedCodes = [];
   state.recentPacks = [];
   state.managedUsers = [];
+  state.recentCreatedStickers = [];
+  state.newStickersUnread = 0;
+  state.notifications = [];
+  state.notificationsUnread = 0;
+  state.tradeUsers = [];
+  state.tradeAvailable = [];
+  state.tradeIncoming = [];
+  state.tradeOutgoing = [];
+  state.tradeHistory = [];
+  state.tradeFilterUser = "all";
+  state.tradeFilterGroup = "all";
+  state.tradeSubView = "available";
   adminTools.targetUserId = "";
   adminTools.packs = 1;
   adminTools.search = "";
@@ -561,7 +756,178 @@ function clearAuth() {
   adminTools.editingUserId = "";
   ui.managePanelMsg = "";
   ui.couponPanelMsg = "";
+  ui.couponPanelKind = "";
+  ui.couponPanelCode = "";
+  ui.stickerCreateMsg = "";
+  ui.recentStickersMsg = "";
+  ui.tradeOfferOpen = false;
+  ui.tradeTargetEntry = null;
+  ui.tradeTargetUser = null;
+  ui.tradeOfferSticker = null;
+  ui.tradeOfferChoices = [];
+  ui.tradeLoading = false;
+  ui.notificationsOpen = false;
+  state.systemLastEventId = 0;
+  localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
+  stopSystemEventsPolling();
   saveAuth();
+}
+
+async function loadStickerCatalog() {
+  const data = await apiFetch("/stickers/catalog");
+  replaceStickerCatalog(data.stickers || []);
+}
+
+async function loadSystemEvents(silent = false) {
+  if (!isAuthenticated.value) return;
+  try {
+    const sinceId = Number(state.systemLastEventId || 0);
+    const data = await apiFetch(`/system/events?sinceId=${sinceId}&limit=40`);
+    const events = Array.isArray(data.events) ? data.events : [];
+
+    for (const evt of events) {
+      const isOwnAction =
+        Number(evt.createdByUserId || 0) === Number(state.user?.id || 0);
+
+      if (evt?.type === "sticker_created" && evt?.payload?.stickerId) {
+        const groupId = evt.payload.groupId || null;
+        upsertStickerIntoCatalog({
+          id: evt.payload.stickerId,
+          num: evt.payload.num,
+          name: evt.payload.stickerName,
+          section: groupId ? `grupo-${groupId}` : "especial",
+          sectionName:
+            evt.payload.sectionName ||
+            (groupId ? `Grupo ${groupId}` : "Especial"),
+          type: evt.payload.type || "custom",
+          icon: evt.payload.icon || "🎟️",
+          image: evt.payload.image || "",
+          teamId: evt.payload.teamId || null,
+          teamName: evt.payload.teamName || null,
+          teamImage: evt.payload.teamImage || null,
+          groupId,
+        });
+
+        if (!silent && !isOwnAction) {
+          state.newStickersUnread = Number(state.newStickersUnread || 0) + 1;
+          pushNotification({
+            id: evt.id,
+            type: "sticker_created",
+            icon: "⭐",
+            title: "Nova figurinha no álbum!",
+            message: `#${evt.payload.num} ${evt.payload.stickerName} foi adicionada ao álbum por ${evt.payload.createdByName || "Admin"}.`,
+            createdAt: evt.createdAt,
+          });
+        }
+      }
+
+      if (evt?.type === "sticker_deleted" && evt?.payload?.stickerId) {
+        removeStickerFromCatalog(evt.payload.stickerId);
+        // also remove from recent list
+        const rIdx = state.recentCreatedStickers.findIndex(
+          (s) => s.id === evt.payload.stickerId,
+        );
+        if (rIdx >= 0) state.recentCreatedStickers.splice(rIdx, 1);
+      }
+
+      // coupon_created: always notify regardless of silent (targeted to current user)
+      if (evt?.type === "coupon_created") {
+        pushNotification({
+          id: evt.id,
+          type: "coupon_created",
+          icon: "🎟️",
+          title: "Você recebeu um cupom!",
+          message: `${evt.message}${evt.payload?.code ? ` Código: ${evt.payload.code}` : ""}`,
+          createdAt: evt.createdAt,
+        });
+      }
+
+      // trade events
+      if (evt?.type === "trade_offer_created" && !silent) {
+        pushNotification({
+          id: evt.id,
+          type: "trade_offer_created",
+          icon: "🤝",
+          title: "Oferta de troca recebida!",
+          message: `${evt.payload?.fromUserName || "Usuário"} quer trocar #${evt.payload?.offeredStickerNum || "?"} ${evt.payload?.offeredStickerName || "figurinha"} pela sua #${evt.payload?.requestedStickerNum || "?"} ${evt.payload?.requestedStickerName || "figurinha"}.`,
+          createdAt: evt.createdAt,
+        });
+      }
+
+      if (evt?.type === "trade_accepted" && !silent) {
+        pushNotification({
+          id: evt.id,
+          type: "trade_accepted",
+          icon: "✅",
+          title: "Troca aceita!",
+          message: `${evt.message}`,
+          createdAt: evt.createdAt,
+        });
+      }
+
+      if (evt?.type === "trade_rejected" && !silent) {
+        pushNotification({
+          id: evt.id,
+          type: "trade_rejected",
+          icon: "❌",
+          title: "Troca rejeitada",
+          message: `${evt.message}`,
+          createdAt: evt.createdAt,
+        });
+      }
+
+      if (evt?.type === "trade_cancelled" && !silent) {
+        pushNotification({
+          id: evt.id,
+          type: "trade_cancelled",
+          icon: "⏹️",
+          title: "Troca cancelada",
+          message: `${evt.message}`,
+          createdAt: evt.createdAt,
+        });
+      }
+    }
+
+    state.systemLastEventId = Math.max(
+      Number(data.lastEventId || 0),
+      ...events.map((e) => Number(e.id || 0)),
+      sinceId,
+    );
+    saveSystemEventsCursor();
+  } catch (_err) {
+    // poll errors are non-fatal
+  }
+}
+
+function pushNotification(notif, { toast = true } = {}) {
+  // deduplicate by id
+  if (state.notifications.some((n) => n.id === notif.id)) return;
+  state.notifications.unshift(notif);
+  if (state.notifications.length > NOTIFICATIONS_LIMIT)
+    state.notifications.splice(NOTIFICATIONS_LIMIT);
+  if (!ui.notificationsOpen) {
+    state.notificationsUnread = Number(state.notificationsUnread || 0) + 1;
+  }
+  saveNotificationsToStorage();
+  if (toast) setToast(notif.message);
+}
+
+function openNotifications() {
+  ui.notificationsOpen = true;
+  state.notificationsUnread = 0;
+  state.newStickersUnread = 0;
+  ui.mobileMenuOpen = false;
+  saveNotificationsToStorage();
+}
+
+function closeNotifications() {
+  ui.notificationsOpen = false;
+}
+
+function clearNotifications() {
+  state.notifications = [];
+  state.notificationsUnread = 0;
+  saveNotificationsToStorage();
 }
 
 async function apiFetch(path, options = {}, retry = true) {
@@ -623,12 +989,130 @@ async function bootstrapAuth() {
     const me = await apiFetch("/auth/me");
     state.user = me.user;
     saveAuth();
-    await Promise.all([loadAlbumState(), loadPackHistory()]);
+    restoreNotificationsFromStorage();
+    await Promise.all([
+      loadStickerCatalog(),
+      loadAlbumState(),
+      loadPackHistory(),
+    ]);
     await loadManagedUsers();
+    await loadSystemEvents(true);
+    startSystemEventsPolling();
   } catch (_err) {
     clearAuth();
   } finally {
     ui.loading = false;
+  }
+}
+
+async function createCustomSticker() {
+  if (!isAdmin.value) return;
+  ui.stickerCreateMsg = "";
+  const name = String(adminStickerForm.name || "").trim();
+  if (name.length < 2) {
+    ui.stickerCreateMsg = "Nome da figurinha deve ter pelo menos 2 caracteres.";
+    return;
+  }
+
+  try {
+    const payload = {
+      name,
+      icon: String(adminStickerForm.icon || "🎟️").trim() || "🎟️",
+      image: String(adminStickerForm.image || "").trim(),
+      teamId: String(adminStickerForm.teamId || "").trim() || undefined,
+      type: String(adminStickerForm.type || "custom"),
+    };
+    const data = await apiFetch("/admin/stickers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    if (data.sticker) {
+      upsertStickerIntoCatalog(data.sticker);
+    }
+    if (data.event?.id) {
+      state.systemLastEventId = Math.max(
+        state.systemLastEventId,
+        Number(data.event.id),
+      );
+      saveSystemEventsCursor();
+    }
+
+    // notify the admin immediately (poll skips own actions)
+    if (data.sticker) {
+      pushNotification({
+        id: data.event?.id ? `se-${data.event.id}` : `sticker-${Date.now()}`,
+        type: "sticker_created",
+        icon: "⭐",
+        title: "Nova figurinha publicada!",
+        message: `#${data.sticker.num} ${data.sticker.name} foi adicionada ao álbum para todos.`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    ui.stickerCreateMsg = `Figurinha #${data.sticker?.num || "?"} criada com sucesso.`;
+    setToast("Nova figurinha criada e publicada");
+    adminStickerForm.name = "";
+    adminStickerForm.image = "";
+    adminStickerForm.teamId = "";
+    await loadRecentCreatedStickers();
+  } catch (err) {
+    ui.stickerCreateMsg = err.message || "Erro ao criar figurinha";
+  }
+}
+
+async function loadRecentCreatedStickers() {
+  if (!isAuthenticated.value || !canManageCoupons.value) {
+    state.recentCreatedStickers = [];
+    return;
+  }
+
+  ui.recentStickersLoading = true;
+  ui.recentStickersMsg = "";
+  try {
+    const data = await apiFetch("/admin/stickers/recent?limit=10");
+    state.recentCreatedStickers = Array.isArray(data.stickers)
+      ? data.stickers
+      : [];
+  } catch (err) {
+    ui.recentStickersMsg =
+      err.message || "Erro ao carregar figurinhas recentes";
+  } finally {
+    ui.recentStickersLoading = false;
+  }
+}
+
+async function deleteCustomSticker(stickerId, stickerName) {
+  if (!isAdmin.value) return;
+  if (
+    !confirm(
+      `Excluir a figurinha "${stickerName}"? Essa ação não pode ser desfeita.`,
+    )
+  )
+    return;
+  try {
+    const data = await apiFetch(
+      `/admin/stickers/${encodeURIComponent(stickerId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+    if (data.ok) {
+      removeStickerFromCatalog(stickerId);
+      state.recentCreatedStickers = state.recentCreatedStickers.filter(
+        (s) => s.id !== stickerId,
+      );
+      if (data.event?.id) {
+        state.systemLastEventId = Math.max(
+          state.systemLastEventId,
+          Number(data.event.id),
+        );
+        saveSystemEventsCursor();
+      }
+      setToast(`Figurinha "${stickerName}" excluída.`);
+    }
+  } catch (err) {
+    setToast(err.message || "Erro ao excluir figurinha");
   }
 }
 
@@ -714,11 +1198,14 @@ function openCollectionView(view) {
   if (!collectionViews.includes(view)) return;
   state.view = view;
   ui.mobileMenuOpen = false;
+  state.newStickersUnread = 0;
 }
 
 async function generateManagedCoupon() {
   if (!canManageCoupons.value) return;
   ui.couponPanelMsg = "";
+  ui.couponPanelKind = "";
+  ui.couponPanelCode = "";
 
   const targetUserId = Number(adminTools.targetUserId || 0);
   const payload = {};
@@ -735,13 +1222,16 @@ async function generateManagedCoupon() {
       body: JSON.stringify(payload),
     });
     const coupon = data.coupon || {};
+    ui.couponPanelCode = String(coupon.code || "");
     ui.couponPanelMsg = coupon.isGeneric
       ? `Cupom ${coupon.code} gerado para uso livre (${coupon.packs || 1} pacote).`
       : `Cupom ${coupon.code} gerado para ${
           coupon.targetUserName || "usuário"
         } (${coupon.packs || 1} pacote).`;
+    ui.couponPanelKind = coupon.isGeneric ? "generic" : "targeted";
   } catch (err) {
     ui.couponPanelMsg = err.message || "Erro ao gerar cupom";
+    ui.couponPanelKind = "error";
   }
 }
 
@@ -910,6 +1400,35 @@ function revealPackFromDrag() {
         : state.usedCodes;
       ui.pack = Array.isArray(data.pack) ? data.pack : [];
       ui.wasOwned = Array.isArray(data.wasOwned) ? data.wasOwned : [];
+
+      // notify user about the stickers received
+      const pack = ui.pack;
+      const wasOwned = ui.wasOwned;
+      const novas = pack.filter((_, i) => !wasOwned[i]);
+      const repetidas = pack.filter((_, i) => wasOwned[i]);
+      const partes = [];
+      if (novas.length > 0)
+        partes.push(
+          `${novas.length} nova${novas.length > 1 ? "s" : ""}: ${novas.map((s) => `#${s.num} ${s.name}`).join(", ")}`,
+        );
+      if (repetidas.length > 0)
+        partes.push(
+          `${repetidas.length} repetida${repetidas.length > 1 ? "s" : ""}`,
+        );
+      pushNotification(
+        {
+          id: `pack-${Date.now()}`,
+          type: "pack_opened",
+          icon: "📦",
+          title: "Pacote aberto!",
+          message: partes.length
+            ? partes.join(" · ")
+            : `${pack.length} figurinha(s) recebida(s).`,
+          createdAt: new Date().toISOString(),
+        },
+        { toast: false },
+      );
+
       return loadPackHistory();
     })
     .catch((err) => {
@@ -991,10 +1510,17 @@ async function submitAuth() {
     state.refreshToken = data.refreshToken;
     state.user = data.user;
     saveAuth();
+    restoreNotificationsFromStorage();
 
     ui.authOpen = false;
-    await Promise.all([loadAlbumState(), loadPackHistory()]);
+    await Promise.all([
+      loadStickerCatalog(),
+      loadAlbumState(),
+      loadPackHistory(),
+    ]);
     await loadManagedUsers();
+    await loadSystemEvents(true);
+    startSystemEventsPolling();
     setToast(ui.authMode === "register" ? "Conta criada" : "Login realizado");
   } catch (err) {
     ui.authMsg = err.message || "Erro de autenticacao";
@@ -1085,7 +1611,7 @@ function getTeamImageCandidates(item) {
 function stickerPhotoCandidates(item) {
   if (!item) return [];
 
-  if (item.section === "especial") {
+  if (item.section === "especial" || item.type === "custom") {
     const specialImage = normalizePublicAssetPath(item.image);
     return specialImage
       ? [specialImage, DEFAULT_SPECIAL_IMAGE]
@@ -1104,7 +1630,7 @@ function stickerPhotoCandidates(item) {
       : [DEFAULT_PLAYER_IMAGE];
   }
 
-  return [];
+  return [DEFAULT_SPECIAL_IMAGE];
 }
 
 function stickerPhoto(item) {
@@ -1120,7 +1646,7 @@ function stickerPhoto(item) {
 function getStickerPhotoForDisplay(item) {
   const isCollected = getCount(item.id) >= 1;
   if (!isCollected) {
-    if (item.section === "especial") {
+    if (item.section === "especial" || item.type === "custom") {
       return DEFAULT_SPECIAL_IMAGE;
     }
     if (item.type === "player") {
@@ -1128,7 +1654,7 @@ function getStickerPhotoForDisplay(item) {
     } else if (item.type === "badge") {
       return DEFAULT_TEAM_IMAGE;
     }
-    return "";
+    return DEFAULT_SPECIAL_IMAGE;
   }
   return stickerPhoto(item);
 }
@@ -1179,12 +1705,16 @@ function goToNextFlipPage() {
   state.flipGroup = albumPages.value[idx + 1].key;
 }
 
+function handleAdminRefresh() {
+  if (!canManageCoupons.value) return;
+  loadManagedUsers();
+  loadRecentCreatedStickers();
+}
+
 function openAdminPanelView() {
   state.view = "admin";
   ui.mobileMenuOpen = false;
-  if (canManageCoupons.value) {
-    loadManagedUsers();
-  }
+  handleAdminRefresh();
 }
 
 // ─── Trade functions ─────────────────────────────────────────────────────────
@@ -1322,8 +1852,17 @@ async function acceptTradeOffer(offer) {
         ? data.state.usedCodes
         : state.usedCodes;
     }
+    // Push notification immediately
+    pushNotification({
+      id: `trade-accept-${Date.now()}`,
+      type: "trade_accepted_self",
+      icon: "✅",
+      title: "Troca realizada!",
+      message: `Você trocou #${offer.offeredSticker?.num} ${offer.offeredSticker?.name} por #${offer.requestedSticker?.num} ${offer.requestedSticker?.name}.`,
+      createdAt: new Date().toISOString(),
+    });
     setToast("Troca realizada com sucesso!");
-    await loadTradeOffers();
+    await Promise.all([loadTradeOffers(), loadSystemEvents(false)]);
   } catch (err) {
     setToast(err.message || "Erro ao aceitar troca");
     await loadTradeOffers();
@@ -1336,8 +1875,17 @@ async function rejectTradeOffer(offer) {
   ui.tradeLoading = true;
   try {
     await apiFetch(`/trade/offers/${offer.id}/reject`, { method: "POST" });
-    setToast("Oferta recusada");
-    await loadTradeOffers();
+    // Push notification immediately
+    pushNotification({
+      id: `trade-reject-${Date.now()}`,
+      type: "trade_rejected_self",
+      icon: "❌",
+      title: "Oferta rejeitada",
+      message: `Você rejeitou a oferta de troca de #${offer.offeredSticker?.num} ${offer.offeredSticker?.name}.`,
+      createdAt: new Date().toISOString(),
+    });
+    setToast("Oferta rejeitada");
+    await Promise.all([loadTradeOffers(), loadSystemEvents(false)]);
   } catch (err) {
     setToast(err.message || "Erro ao recusar oferta");
   } finally {
@@ -1349,8 +1897,17 @@ async function cancelTradeOffer(offer) {
   ui.tradeLoading = true;
   try {
     await apiFetch(`/trade/offers/${offer.id}/reject`, { method: "POST" });
+    // Push notification immediately
+    pushNotification({
+      id: `trade-cancel-${Date.now()}`,
+      type: "trade_cancelled_self",
+      icon: "⏹️",
+      title: "Proposta cancelada",
+      message: `Você cancelou a oferta de #${offer.offeredSticker?.num} ${offer.offeredSticker?.name}.`,
+      createdAt: new Date().toISOString(),
+    });
     setToast("Proposta cancelada");
-    await loadTradeOffers();
+    await Promise.all([loadTradeOffers(), loadSystemEvents(false)]);
   } catch (err) {
     setToast(err.message || "Erro ao cancelar proposta");
   } finally {
@@ -1589,6 +2146,20 @@ const filteredTradeAvailable = computed(() => {
       </button>
       <div class="topbar-actions" :class="{ open: ui.mobileMenuOpen }">
         <button
+          class="notif-bell-btn"
+          type="button"
+          :class="{ active: ui.notificationsOpen }"
+          :aria-label="`Notificações${state.notificationsUnread > 0 ? ` (${state.notificationsUnread} não lidas)` : ''}`"
+          @click="openNotifications"
+        >
+          🔔
+          <span v-if="state.notificationsUnread > 0" class="notif-badge">
+            {{
+              state.notificationsUnread > 9 ? "9+" : state.notificationsUnread
+            }}
+          </span>
+        </button>
+        <button
           class="promo-btn"
           type="button"
           @click="
@@ -1616,6 +2187,59 @@ const filteredTradeAvailable = computed(() => {
       </div>
     </header>
 
+    <!-- ── Notifications panel ── -->
+    <Teleport to="body">
+      <div
+        v-if="ui.notificationsOpen"
+        class="notif-overlay"
+        @click.self="closeNotifications"
+      >
+        <div class="notif-panel">
+          <div class="notif-panel-head">
+            <h3>Notificações</h3>
+            <button
+              type="button"
+              class="notif-close-btn"
+              @click="closeNotifications"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="notif-panel-body">
+            <p v-if="state.notifications.length === 0" class="notif-empty">
+              Nenhuma notificação ainda.
+            </p>
+            <ul v-else class="notif-list">
+              <li
+                v-for="notif in state.notifications"
+                :key="notif.id"
+                class="notif-item"
+                :class="`notif-type-${notif.type}`"
+              >
+                <span class="notif-icon">
+                  {{ notif.icon || "🔔" }}
+                </span>
+                <div class="notif-content">
+                  <strong>{{ notif.title }}</strong>
+                  <p>{{ notif.message }}</p>
+                  <small>{{ formatDateTime(notif.createdAt) }}</small>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <div v-if="state.notifications.length > 0" class="notif-panel-foot">
+            <button
+              type="button"
+              class="notif-clear-btn"
+              @click="clearNotifications"
+            >
+              Limpar tudo
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <nav class="tabs" :class="{ open: ui.mobileMenuOpen }">
       <button
         type="button"
@@ -1633,6 +2257,9 @@ const filteredTradeAvailable = computed(() => {
         @click="openCollectionView('flip')"
       >
         Album & Folhear
+        <span v-if="hasNewStickerAlerts" class="tab-badge">{{
+          state.newStickersUnread
+        }}</span>
       </button>
       <button
         type="button"
@@ -1757,7 +2384,7 @@ const filteredTradeAvailable = computed(() => {
           <button
             type="button"
             class="admin-refresh-btn"
-            @click="loadManagedUsers"
+            @click="handleAdminRefresh"
           >
             Atualizar dados
           </button>
@@ -1790,6 +2417,82 @@ const filteredTradeAvailable = computed(() => {
             {{ ui.managePanelMsg }}
           </p>
 
+          <div v-if="isAdmin" class="manage-create-sticker-box">
+            <h4>Criar nova figurinha</h4>
+            <div class="manage-create-sticker-form">
+              <input
+                v-model.trim="adminStickerForm.name"
+                type="text"
+                placeholder="Nome da figurinha"
+              />
+              <input
+                v-model.trim="adminStickerForm.icon"
+                type="text"
+                maxlength="4"
+                placeholder="Ícone"
+              />
+              <select v-model="adminStickerForm.teamId">
+                <option value="">Especial (sem time)</option>
+                <option
+                  v-for="team in adminTeamOptions"
+                  :key="team.teamId"
+                  :value="team.teamId"
+                >
+                  {{ team.teamName }} ({{ team.sectionName }})
+                </option>
+              </select>
+              <input
+                v-model.trim="adminStickerForm.image"
+                type="text"
+                placeholder="Caminho da imagem (opcional)"
+              />
+              <button type="button" @click="createCustomSticker">
+                Criar Figurinha
+              </button>
+            </div>
+            <p v-if="ui.stickerCreateMsg" class="read-only-hint">
+              {{ ui.stickerCreateMsg }}
+            </p>
+          </div>
+
+          <div v-if="isAdmin" class="manage-created-stickers-box">
+            <h4>Últimas figurinhas criadas</h4>
+            <p v-if="ui.recentStickersLoading" class="read-only-hint">
+              Carregando histórico de figurinhas...
+            </p>
+            <p v-else-if="ui.recentStickersMsg" class="read-only-hint">
+              {{ ui.recentStickersMsg }}
+            </p>
+            <ul
+              v-else-if="state.recentCreatedStickers.length > 0"
+              class="recent-stickers-list"
+            >
+              <li
+                v-for="item in state.recentCreatedStickers"
+                :key="item.id"
+                class="recent-sticker-item"
+              >
+                <span class="recent-sticker-main">
+                  #{{ item.num }} {{ item.icon || "🎟️" }} {{ item.name }}
+                </span>
+                <small>
+                  {{ item.teamName || "Especial" }} •
+                  {{ item.createdByUserName || "Admin" }} •
+                  {{ formatDateTime(item.createdAt) }}
+                </small>
+                <button
+                  type="button"
+                  class="recent-sticker-delete-btn"
+                  title="Excluir figurinha"
+                  @click="deleteCustomSticker(item.id, item.name)"
+                >
+                  🗑️
+                </button>
+              </li>
+            </ul>
+            <p v-else class="read-only-hint">Nenhuma figurinha criada ainda.</p>
+          </div>
+
           <div class="manage-coupon-box">
             <h4>Gerar cupom para pacote</h4>
             <div class="manage-coupon-form">
@@ -1814,6 +2517,20 @@ const filteredTradeAvailable = computed(() => {
               <button type="button" @click="generateManagedCoupon">
                 Gerar Cupom
               </button>
+            </div>
+            <div v-if="ui.couponPanelKind" class="coupon-feedback-row">
+              <span class="coupon-kind-badge" :class="ui.couponPanelKind">
+                {{
+                  ui.couponPanelKind === "generic"
+                    ? "Cupom livre"
+                    : ui.couponPanelKind === "targeted"
+                      ? "Cupom direcionado"
+                      : "Erro"
+                }}
+              </span>
+              <span v-if="ui.couponPanelCode" class="coupon-code-chip">
+                {{ ui.couponPanelCode }}
+              </span>
             </div>
             <p v-if="ui.couponPanelMsg" class="read-only-hint">
               {{ ui.couponPanelMsg }}
@@ -2439,20 +3156,35 @@ const filteredTradeAvailable = computed(() => {
                 </div>
               </div>
               <div class="trade-offer-actions">
-                <button
-                  type="button"
-                  class="trade-accept-btn"
-                  @click="acceptTradeOffer(offer)"
+                <template v-if="offer.status === 'pending'">
+                  <button
+                    type="button"
+                    class="trade-accept-btn"
+                    @click="acceptTradeOffer(offer)"
+                  >
+                    Aceitar
+                  </button>
+                  <button
+                    type="button"
+                    class="trade-reject-btn"
+                    @click="rejectTradeOffer(offer)"
+                  >
+                    Recusar
+                  </button>
+                </template>
+                <span
+                  v-else
+                  class="trade-status-badge"
+                  :data-status="offer.status"
                 >
-                  Aceitar
-                </button>
-                <button
-                  type="button"
-                  class="trade-reject-btn"
-                  @click="rejectTradeOffer(offer)"
-                >
-                  Recusar
-                </button>
+                  {{
+                    offer.status === "accepted"
+                      ? "Aceita"
+                      : offer.status === "rejected"
+                        ? "Rejeitada"
+                        : "Cancelada"
+                  }}
+                </span>
               </div>
             </article>
           </div>
@@ -2506,13 +3238,28 @@ const filteredTradeAvailable = computed(() => {
                 </div>
               </div>
               <div class="trade-offer-actions">
-                <button
-                  type="button"
-                  class="trade-reject-btn"
-                  @click="cancelTradeOffer(offer)"
+                <template v-if="offer.status === 'pending'">
+                  <button
+                    type="button"
+                    class="trade-reject-btn"
+                    @click="cancelTradeOffer(offer)"
+                  >
+                    Cancelar proposta
+                  </button>
+                </template>
+                <span
+                  v-else
+                  class="trade-status-badge"
+                  :data-status="offer.status"
                 >
-                  Cancelar proposta
-                </button>
+                  {{
+                    offer.status === "accepted"
+                      ? "Aceita"
+                      : offer.status === "rejected"
+                        ? "Rejeitada"
+                        : "Cancelada"
+                  }}
+                </span>
               </div>
             </article>
           </div>
@@ -2574,13 +3321,29 @@ const filteredTradeAvailable = computed(() => {
       </template>
     </section>
 
-    <div v-if="ui.packOpen" class="modal">
+    <div
+      v-if="ui.packOpen"
+      class="modal"
+      @click.self="ui.packStage === 'opened' && closePackModal()"
+    >
       <div
         class="modal-box pack-modal-box"
         :class="`pack-stage-${ui.packStage}`"
       >
         <template v-if="ui.packStage !== 'opened'">
-          <h2>Pacotinho Lacrado</h2>
+          <div class="pack-modal-head">
+            <div>
+              <h2>Pacotinho Lacrado</h2>
+            </div>
+            <button
+              type="button"
+              class="pack-close-btn"
+              aria-label="Fechar modal"
+              @click="closePackModal"
+            >
+              ✕
+            </button>
+          </div>
           <p class="pack-instruction">
             Arraste o pacotinho para a direita para rasgar e revelar as
             figurinhas.
@@ -2619,9 +3382,19 @@ const filteredTradeAvailable = computed(() => {
         </template>
 
         <template v-else>
-          <div class="pack-reveal-head">
-            <h2>Figurinhas Reveladas</h2>
-            <p>Confira o resultado deste pacotinho</p>
+          <div class="pack-modal-head">
+            <div class="pack-reveal-head">
+              <h2>Figurinhas Reveladas</h2>
+              <p>Confira o resultado deste pacotinho</p>
+            </div>
+            <button
+              type="button"
+              class="pack-close-btn"
+              aria-label="Fechar modal"
+              @click="closePackModal"
+            >
+              ✕
+            </button>
           </div>
 
           <div class="pack-summary">
@@ -2672,7 +3445,6 @@ const filteredTradeAvailable = computed(() => {
               </div>
             </article>
           </div>
-          <button type="button" @click="closePackModal">Colar no Album</button>
         </template>
       </div>
     </div>
