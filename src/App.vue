@@ -2521,7 +2521,10 @@ const filteredTradeAvailable = computed(() => {
                 Criar Figurinha
               </button>
             </div>
-            <div v-if="adminStickerForm.image" class="manage-sticker-upload-preview">
+            <div
+              v-if="adminStickerForm.image"
+              class="manage-sticker-upload-preview"
+            >
               <img
                 :src="adminStickerForm.image"
                 alt="Preview da figurinha"

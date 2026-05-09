@@ -35,6 +35,10 @@ const PROMO_CODES = {
 
 const dbPath = path.join(__dirname, "album.db");
 const db = new sqlite3.Database(dbPath);
+const uploadsDir = path.join(__dirname, "uploads");
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const BASE_STICKERS = loadStickersFromFrontend();
 let CUSTOM_STICKERS = [];
@@ -104,6 +108,64 @@ function findTeamMeta(teamId) {
         groupId: found.groupId,
         sectionName: found.sectionName || `Grupo ${found.groupId}`,
     };
+}
+
+function getImageExtensionFromMime(mimeType) {
+    const map = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+        "image/svg+xml": "svg",
+    };
+    return map[String(mimeType || "").toLowerCase()] || "png";
+}
+
+function saveStickerImageToUploads(rawImage, stickerId) {
+    const value = String(rawImage || "").trim();
+    if (!value) return "";
+
+    // For backwards compatibility, accept existing URL/path values.
+    if (!value.startsWith("data:image/")) {
+        return value;
+    }
+
+    const match = value.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) {
+        throw new Error("Formato de imagem inválido");
+    }
+
+    const mimeType = match[1];
+    const base64Data = match[2];
+    const extension = getImageExtensionFromMime(mimeType);
+    const fileName = `${stickerId}-${crypto.randomBytes(4).toString("hex")}.${extension}`;
+    const filePath = path.join(uploadsDir, fileName);
+    const fileBuffer = Buffer.from(base64Data, "base64");
+
+    fs.writeFileSync(filePath, fileBuffer);
+    return `${PUBLIC_BASE_URL}/uploads/${fileName}`;
+}
+
+function removeUploadedStickerImage(imageUrl) {
+    const value = String(imageUrl || "").trim();
+    if (!value) return;
+
+    let parsedPath = "";
+    try {
+        const url = new URL(value);
+        parsedPath = url.pathname || "";
+    } catch {
+        parsedPath = value;
+    }
+
+    if (!parsedPath.startsWith("/uploads/")) return;
+
+    const fileName = path.basename(parsedPath);
+    const filePath = path.join(uploadsDir, fileName);
+    if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+    }
 }
 
 async function loadCustomStickersFromDb() {
@@ -500,6 +562,7 @@ async function initDb() {
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "8mb" }));
+app.use("/uploads", express.static(uploadsDir));
 
 app.get("/api/health", (_req, res) => {
     res.json({ ok: true, service: "album-backend", stickers: STICKERS.length });
@@ -930,10 +993,10 @@ app.post("/api/admin/stickers", authMiddleware, requireRoles(ROLE_ADMIN), async 
         const name = String(req.body?.name || "").trim();
         const icon = String(req.body?.icon || "🎟️").trim() || "🎟️";
         const type = String(req.body?.type || "custom").trim() || "custom";
-        const image = String(req.body?.image || "").trim();
+        const rawImage = String(req.body?.image || "").trim();
         const teamIdRaw = String(req.body?.teamId || "").trim();
 
-        if (image.startsWith("data:image/") && image.length > 7_000_000) {
+        if (rawImage.startsWith("data:image/") && rawImage.length > 7_000_000) {
             return res.status(400).json({ error: "Imagem muito grande. Use uma imagem menor que 5MB." });
         }
 
@@ -951,6 +1014,12 @@ app.post("/api/admin/stickers", authMiddleware, requireRoles(ROLE_ADMIN), async 
         const nextNum = Math.max(Number(maxNumRow?.maxNum || 0), baseMaxNum) + 1;
         const stickerId = `custom-${Date.now()}-${crypto.randomBytes(2).toString("hex")}`;
         const createdAt = nowSqlTimestamp();
+        let image = "";
+        try {
+            image = saveStickerImageToUploads(rawImage, stickerId);
+        } catch {
+            return res.status(400).json({ error: "Falha ao processar a imagem enviada" });
+        }
 
         const sectionName = teamMeta ? teamMeta.sectionName : "Especial";
         const groupId = teamMeta ? teamMeta.groupId : null;
@@ -1081,10 +1150,11 @@ app.delete("/api/admin/stickers/:id", authMiddleware, requireRoles(ROLE_ADMIN), 
         const stickerId = String(req.params.id || "").trim();
         if (!stickerId) return res.status(400).json({ error: "ID invalido" });
 
-        const existing = await get("SELECT id, num, name FROM custom_stickers WHERE id = ?", [stickerId]);
+        const existing = await get("SELECT id, num, name, image FROM custom_stickers WHERE id = ?", [stickerId]);
         if (!existing) return res.status(404).json({ error: "Figurinha nao encontrada" });
 
         await run("DELETE FROM custom_stickers WHERE id = ?", [stickerId]);
+        removeUploadedStickerImage(existing.image);
 
         // remove from in-memory catalog
         CUSTOM_STICKERS = CUSTOM_STICKERS.filter((s) => s.id !== stickerId);
