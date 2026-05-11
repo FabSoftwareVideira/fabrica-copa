@@ -2,11 +2,29 @@
 import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
 import playerImagesData from "../js/player-images.json";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  `http://${window.location.hostname || "localhost"}:3001/api`;
 const FRONTEND_ENV = import.meta.env.MODE || "development";
 const IS_DEV = Boolean(import.meta.env.DEV);
+const BASE_URL = import.meta.env.BASE_URL || "/";
+const BASE_URL_PREFIX = BASE_URL.endsWith("/")
+  ? BASE_URL.slice(0, -1)
+  : BASE_URL;
+
+function withBasePath(assetPath) {
+  const value = String(assetPath || "").trim();
+  if (!value) return "";
+  if (/^(?:[a-z]+:)?\/\//i.test(value) || value.startsWith("data:")) {
+    return value;
+  }
+  if (!value.startsWith("/")) return value;
+  if (!BASE_URL_PREFIX) return value;
+  return `${BASE_URL_PREFIX}${value}`;
+}
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (IS_DEV
+    ? `http://${window.location.hostname || "localhost"}:3001/api`
+    : `${window.location.origin}${BASE_URL_PREFIX}/api`);
 const FRONTEND_LOG_ENDPOINT = `${API_BASE_URL}/logs/frontend-error`;
 const APP_TIMEZONE = "America/Sao_Paulo";
 const PACKS_PER_DAY = 1;
@@ -15,9 +33,9 @@ const SYSTEM_EVENTS_CURSOR_KEY = "album-system-events-cursor";
 const NOTIFICATIONS_LIMIT = 50;
 const NOTIFICATIONS_KEY_PREFIX = "album-notifications";
 const NOTIFICATIONS_UNREAD_KEY_PREFIX = "album-notifications-unread";
-const DEFAULT_PLAYER_IMAGE = "/player-default.png";
-const DEFAULT_TEAM_IMAGE = "/teams/default.png";
-const DEFAULT_SPECIAL_IMAGE = "/specials/especial_default.png";
+const DEFAULT_PLAYER_IMAGE = withBasePath("/player-default.png");
+const DEFAULT_TEAM_IMAGE = withBasePath("/teams/default.png");
+const DEFAULT_SPECIAL_IMAGE = withBasePath("/specials/especial_default.png");
 const TEAM_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "svg"];
 const TEAM_IMAGE_CODES = {
   usa: "us",
@@ -1839,9 +1857,9 @@ function buildImageVariants(basePath) {
 function normalizePublicAssetPath(path) {
   const value = String(path || "").trim();
   if (!value) return "";
-  if (value.startsWith("public/")) return `/${value.slice(7)}`;
-  if (value.startsWith("/public/")) return value.slice(7);
-  return value;
+  if (value.startsWith("public/")) return withBasePath(`/${value.slice(7)}`);
+  if (value.startsWith("/public/")) return withBasePath(value.slice(7));
+  return withBasePath(value);
 }
 
 function getTeamImageCandidates(item) {
@@ -1852,10 +1870,14 @@ function getTeamImageCandidates(item) {
   }
 
   if (item?.teamId) {
-    candidates.push(...buildImageVariants(`/teams/${item.teamId}`));
+    candidates.push(
+      ...buildImageVariants(withBasePath(`/teams/${item.teamId}`)),
+    );
     const shortCode = TEAM_IMAGE_CODES[item.teamId];
     if (shortCode) {
-      candidates.push(...buildImageVariants(`/teams/${shortCode}`));
+      candidates.push(
+        ...buildImageVariants(withBasePath(`/teams/${shortCode}`)),
+      );
     }
   }
 

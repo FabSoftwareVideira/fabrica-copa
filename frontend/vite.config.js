@@ -9,7 +9,7 @@ function normalizeBasePath(rawBasePath) {
 }
 
 export default defineConfig(({ mode }) => {
-    const configuredBase = process.env.VITE_BASE_PATH || "/";
+    const configuredBase = process.env.VITE_BASE_PATH || "/copa/";
     const base = mode === "development" ? "/" : normalizeBasePath(configuredBase);
 
     return {

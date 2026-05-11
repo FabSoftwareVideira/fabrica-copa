@@ -120,6 +120,7 @@ services:
       args:
         # Opcional. Se vazio, o frontend usa fallback dinamico por hostname.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/copa/}
     container_name: album-frontend-prod
     profiles: [prod]
     depends_on:
