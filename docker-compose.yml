@@ -96,7 +96,7 @@ services:
       - ./backend/uploads:/app/backend/uploads
       - ./scripts:/app/scripts:ro
       - ./backups:/backups
-      - album-data:/app/data
+      - ./data:/app/data
     command: npm start
     init: true
     ports:
@@ -144,6 +144,3 @@ networks:
     driver: bridge
   fabrica-network:
     external: true
-
-volumes:
-  album-data:
