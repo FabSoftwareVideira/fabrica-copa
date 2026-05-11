@@ -90,7 +90,7 @@ services:
       DB_PATH: /app/data/album.db
     volumes:
       - ./backend/uploads:/app/backend/uploads
-      - ./data:/app/data
+      - album-data:/app/data
     command: npm start
     init: true
     ports:
@@ -137,3 +137,6 @@ networks:
     driver: bridge
   fabrica-network:
     external: true
+
+volumes:
+  album-data:
