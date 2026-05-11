@@ -44,11 +44,9 @@ fs.mkdirSync(dbDir, { recursive: true });
 const dbPath = DB_PATH;
 const db = new sqlite3.Database(dbPath);
 const uploadsDir = path.join(__dirname, "uploads");
-const logsDir = path.join(__dirname, "logs");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
-fs.mkdirSync(logsDir, { recursive: true });
 
 const LOG_PRIORITIES = { debug: 10, info: 20, warn: 30, error: 40 };
 
@@ -101,13 +99,6 @@ function writeLog(level, message, meta = {}) {
     };
 
     const serialized = JSON.stringify(entry);
-    const logFile = path.join(logsDir, `backend-${timestamp.slice(0, 10)}.log`);
-
-    try {
-        fs.appendFileSync(logFile, `${serialized}\n`);
-    } catch (err) {
-        console.error("Falha ao gravar arquivo de log", err);
-    }
 
     if (level === "error") {
         console.error(serialized);
@@ -1916,7 +1907,6 @@ initDb()
                 env: NODE_ENV,
                 logLevel: LOG_LEVEL,
                 corsOrigin: CORS_ORIGIN,
-                logsDir,
             });
         });
     })

@@ -90,7 +90,6 @@ services:
       DB_PATH: /app/data/album.db
     volumes:
       - ./backend/uploads:/app/backend/uploads
-      - ./backend/logs:/app/backend/logs
       - ./data:/app/data
     command: npm start
     init: true
