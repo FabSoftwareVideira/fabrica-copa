@@ -833,6 +833,48 @@ function setToast(message) {
   }, 2200);
 }
 
+async function copyTextToClipboard(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // fallback below for insecure contexts / permissions
+    }
+  }
+
+  try {
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.left = "-9999px";
+    input.style.top = "0";
+    document.body.appendChild(input);
+    input.focus();
+    input.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(input);
+    return Boolean(copied);
+  } catch {
+    return false;
+  }
+}
+
+async function copyCouponCodeFromNotification(notif) {
+  const code = String(notif?.payload?.code || "").trim();
+  if (!code) {
+    setToast("Cupom não encontrado nesta notificação");
+    return;
+  }
+
+  const ok = await copyTextToClipboard(code);
+  setToast(ok ? `Cupom ${code} copiado` : "Não foi possível copiar o cupom");
+}
+
 function saveAuth() {
   if (state.accessToken)
     localStorage.setItem("album-access-token", state.accessToken);
@@ -961,6 +1003,7 @@ async function loadSystemEvents(silent = false) {
           icon: "🎟️",
           title: "Você recebeu um cupom!",
           message: `${evt.message}${evt.payload?.code ? ` Código: ${evt.payload.code}` : ""}`,
+          payload: { code: evt.payload?.code || "" },
           createdAt: evt.createdAt,
         });
       }
@@ -2357,21 +2400,19 @@ const filteredTradeAvailable = computed(() => {
         <span></span>
         <span></span>
       </button>
+      <button
+        class="notif-bell-btn topbar-notif-bell"
+        type="button"
+        :class="{ active: ui.notificationsOpen }"
+        :aria-label="`Notificações${state.notificationsUnread > 0 ? ` (${state.notificationsUnread} não lidas)` : ''}`"
+        @click="openNotifications"
+      >
+        🔔
+        <span v-if="state.notificationsUnread > 0" class="notif-badge">
+          {{ state.notificationsUnread > 9 ? "9+" : state.notificationsUnread }}
+        </span>
+      </button>
       <div class="topbar-actions" :class="{ open: ui.mobileMenuOpen }">
-        <button
-          class="notif-bell-btn"
-          type="button"
-          :class="{ active: ui.notificationsOpen }"
-          :aria-label="`Notificações${state.notificationsUnread > 0 ? ` (${state.notificationsUnread} não lidas)` : ''}`"
-          @click="openNotifications"
-        >
-          🔔
-          <span v-if="state.notificationsUnread > 0" class="notif-badge">
-            {{
-              state.notificationsUnread > 9 ? "9+" : state.notificationsUnread
-            }}
-          </span>
-        </button>
         <button
           class="promo-btn"
           type="button"
@@ -2435,7 +2476,18 @@ const filteredTradeAvailable = computed(() => {
                 <div class="notif-content">
                   <strong>{{ notif.title }}</strong>
                   <p>{{ notif.message }}</p>
-                  <small>{{ formatDateTime(notif.createdAt) }}</small>
+                  <div class="notif-meta-row">
+                    <small>{{ formatDateTime(notif.createdAt) }}</small>
+                    <button
+                      v-if="notif.type === 'coupon_created' && notif.payload?.code"
+                      type="button"
+                      class="notif-copy-btn"
+                      :aria-label="`Copiar cupom ${notif.payload.code}`"
+                      @click="copyCouponCodeFromNotification(notif)"
+                    >
+                      📋
+                    </button>
+                  </div>
                 </div>
               </li>
             </ul>
