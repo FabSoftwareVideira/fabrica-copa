@@ -1,103 +1,74 @@
 # ------------------------------------------------------------
-# BASE — dependências compartilhadas entre dev e prod
+# BACKEND DEV
 # ------------------------------------------------------------
-FROM node:25.9-bookworm-slim AS base
+FROM node:22-bookworm-slim AS backend-dev
 
-# Recebe metadados de build passados pelo docker-compose
-# (silenciosamente ignorados se não declarados aqui)
-ARG IMAGE_TAG=dev
-ARG IMAGE_NAME=
-ARG BUILD_DATE=unknown
-ARG GIT_COMMIT=unknown
+WORKDIR /app/backend
 
-# Expõe como variáveis de ambiente dentro da imagem
-# (útil para endpoints de /health ou /version na app)
-ENV IMAGE_TAG=$IMAGE_TAG \
-  IMAGE_NAME=$IMAGE_NAME \
-  BUILD_DATE=$BUILD_DATE \
-    GIT_COMMIT=$GIT_COMMIT
-
-WORKDIR /app
-
-# Copia apenas os manifests primeiro — melhor aproveitamento do cache de layers:
-# enquanto package*.json não mudar, o npm ci não roda de novo.
-COPY --chown=node:node package*.json ./
-
-# ------------------------------------------------------------
-# DEV — hot-reload, devDependencies incluídas
-# O volume bind-mount do compose sobrescreve /app em runtime,
-# então o COPY do código-fonte aqui serve só para builds
-# isolados (ex: CI de lint/test sem compose).
-# ------------------------------------------------------------
-FROM base AS dev
-
-ENV NODE_ENV=development
-
+COPY backend/package*.json ./
 RUN npm ci
 
-COPY --chown=node:node . .
+COPY backend/ ./
+COPY frontend/js/data.js /app/frontend/js/data.js
 
-USER node
-
-EXPOSE 3000
-
+EXPOSE 3001
 CMD ["npm", "run", "dev"]
 
 # ------------------------------------------------------------
-# PROD — imagem enxuta, sem devDependencies
-# Compatível com:
-#   - read_only: true  (escrita apenas em tmpfs)
-#   - cap_drop: ALL
-#   - no-new-privileges: true
+# BACKEND PROD
 # ------------------------------------------------------------
-FROM base AS prod
+FROM node:22-bookworm-slim AS backend-prod
 
-ENV NODE_ENV=production \
-    # Redireciona o cache do npm para /tmp (tmpfs no compose).
-    # Necessário porque read_only: true impede escrita em /home/node/.npm
-    # durante qualquer operação npm em runtime.
-    npm_config_cache=/tmp/.npm
+ENV NODE_ENV=production
+WORKDIR /app/backend
 
-RUN npm ci --omit=dev && \
-    # Remove arquivos desnecessários do node_modules para reduzir tamanho:
-    # - testes, docs, exemplos embutidos em pacotes
-    # Seguro para produção — não afeta código executado.
-    find node_modules -type f \( \
-      -name "*.md" \
-      -o -name "*.ts" ! -name "*.d.ts" \
-      -o -name "*.map" \
-      -o -name "CHANGELOG*" \
-      -o -name "LICENSE*" \
-      -o -name "README*" \
-      -o -name ".npmignore" \
-    \) -delete && \
-    # Remove diretórios de teste e exemplos
-    find node_modules -type d \( \
-      -name "test" \
-      -o -name "tests" \
-      -o -name "__tests__" \
-      -o -name "example" \
-      -o -name "examples" \
-      -o -name ".github" \
-    \) -exec rm -rf {} + 2>/dev/null || true
+COPY backend/package*.json ./
+RUN npm ci --omit=dev
 
-COPY --chown=node:node . .
+COPY backend/ ./
+COPY frontend/js/data.js /app/frontend/js/data.js
 
-# Cria diretórios temporários com as permissões corretas.
-# O compose monta tmpfs sobre eles em runtime; sem o diretório
-# existindo na imagem, o mount pode falhar em alguns runtimes.
-RUN mkdir -p /tmp/.npm /app/tmp && \
-    chown -R node:node /tmp/.npm /app/tmp
-
-USER node
-
-# Healthcheck nativo da imagem — funciona mesmo sem o compose.
-# Usa apenas node (sempre disponível), sem depender de wget/curl
-# que podem não estar na imagem slim.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=4 \
-  CMD node -e \
-    "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-
-EXPOSE 3000
-
+EXPOSE 3001
 CMD ["npm", "start"]
+
+# ------------------------------------------------------------
+# FRONTEND DEV
+# ------------------------------------------------------------
+FROM node:22-bookworm-slim AS frontend-dev
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+# ------------------------------------------------------------
+# FRONTEND BUILD (PROD)
+# ------------------------------------------------------------
+FROM node:22-bookworm-slim AS frontend-build
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+ARG VITE_API_BASE_URL=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
+RUN npm run build
+
+# ------------------------------------------------------------
+# FRONTEND PROD (NGINX)
+# ------------------------------------------------------------
+FROM nginx:1.27-alpine AS frontend-prod
+
+COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

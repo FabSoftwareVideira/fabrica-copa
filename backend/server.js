@@ -129,17 +129,17 @@ function logError(message, meta) {
     writeLog("error", message, meta);
 }
 
-const BASE_STICKERS = loadStickersFromFrontend();
+const BASE_STICKERS = loadStickersFromSharedFrontendData();
 let CUSTOM_STICKERS = [];
 let STICKERS = [...BASE_STICKERS];
 let STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
 
-function loadStickersFromFrontend() {
+function loadStickersFromSharedFrontendData() {
     const dataFile = path.join(__dirname, "..", "frontend", "js", "data.js");
     const code = fs.readFileSync(dataFile, "utf8");
     const all = vm.runInNewContext(`${code}\nALL_STICKERS;`, {});
     if (!Array.isArray(all) || all.length === 0) {
-        throw new Error("Catalogo de figurinhas nao encontrado no data.js");
+        throw new Error("Catalogo de figurinhas nao encontrado em frontend/js/data.js");
     }
     return all.map((s) => ({
         id: s.id,
