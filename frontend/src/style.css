@@ -3327,6 +3327,26 @@ button:disabled {
   gap: 1rem;
 }
 
+.auth-google-form {
+  align-items: center;
+  text-align: center;
+}
+
+.auth-google-hint {
+  margin: 0;
+  color: var(--text-dimmed);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.google-signin-button {
+  min-height: 42px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .auth-field {
   display: flex;
   flex-direction: column;

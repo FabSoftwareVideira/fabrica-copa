@@ -6,6 +6,7 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 const sqlite3 = require("sqlite3").verbose();
 require("dotenv").config({ path: path.join(__dirname, ".env") });
 
@@ -18,6 +19,7 @@ const IS_PROD = NODE_ENV === "production";
 const LOG_LEVEL = String(process.env.LOG_LEVEL || (IS_PROD ? "info" : "debug")).toLowerCase();
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const PACKS_PER_DAY = 1;
 const APP_TIMEZONE = "America/Sao_Paulo";
 const ROLE_ADMIN = "admin";
@@ -44,6 +46,7 @@ fs.mkdirSync(dbDir, { recursive: true });
 const dbPath = DB_PATH;
 const DB_ALREADY_EXISTS = fs.existsSync(dbPath);
 const db = new sqlite3.Database(dbPath);
+const googleOAuthClient = new OAuth2Client();
 const uploadsDir = path.join(__dirname, "uploads");
 const SEED_USERS_FILE_PATH = path.join(__dirname, "seed", "users.json");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
@@ -396,6 +399,30 @@ function signAccessToken(user) {
     return jwt.sign({ sub: user.id, email: user.email, name: user.name, role: user.role }, JWT_SECRET, {
         expiresIn: ACCESS_TOKEN_TTL,
     });
+}
+
+function roleFromGoogleEmail(email, currentRole = ROLE_PLAYER) {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (cleanEmail.endsWith("@ifc.edu.br")) {
+        if (currentRole === ROLE_ADMIN) return ROLE_ADMIN;
+        return ROLE_PROFESSOR;
+    }
+    return currentRole || ROLE_PLAYER;
+}
+
+async function verifyGoogleIdToken(idToken) {
+    if (!GOOGLE_CLIENT_ID) {
+        const err = new Error("GOOGLE_CLIENT_ID nao configurado no backend");
+        err.code = "GOOGLE_CONFIG_MISSING";
+        throw err;
+    }
+
+    const ticket = await googleOAuthClient.verifyIdToken({
+        idToken,
+        audience: GOOGLE_CLIENT_ID,
+    });
+
+    return ticket.getPayload() || {};
 }
 
 function makeRefreshToken() {
@@ -794,64 +821,73 @@ app.get("/api/stickers/catalog", async (_req, res) => {
 });
 
 app.post("/api/auth/register", async (req, res) => {
-    try {
-        const { name, email, password } = req.body || {};
-        const cleanName = String(name || "").trim();
-        const cleanEmail = String(email || "").trim().toLowerCase();
-        const cleanPassword = String(password || "");
-
-        if (cleanName.length < 2) return res.status(400).json({ error: "Nome invalido" });
-        if (!cleanEmail.includes("@")) return res.status(400).json({ error: "Email invalido" });
-        if (cleanPassword.length < 6) return res.status(400).json({ error: "Senha deve ter 6+ caracteres" });
-
-        const existing = await get("SELECT id FROM users WHERE email = ?", [cleanEmail]);
-        if (existing) return res.status(409).json({ error: "Email ja cadastrado" });
-
-        const usersCountRow = await get("SELECT COUNT(*) AS total FROM users");
-        const role = Number(usersCountRow?.total || 0) === 0 ? ROLE_ADMIN : ROLE_PLAYER;
-
-        const passwordHash = await bcrypt.hash(cleanPassword, 10);
-        const created = await run("INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)", [
-            cleanName,
-            cleanEmail,
-            passwordHash,
-            role,
-        ]);
-
-        await run("INSERT INTO album_states(user_id) VALUES(?)", [created.lastID]);
-
-        const user = { id: created.lastID, name: cleanName, email: cleanEmail, role };
-        const accessToken = signAccessToken(user);
-        const refreshToken = await createRefreshToken(user.id);
-
-        return res.status(201).json({
-            accessToken,
-            refreshToken,
-            tokenType: "Bearer",
-            expiresIn: ACCESS_TOKEN_TTL,
-            user,
-        });
-    } catch (err) {
-        return res.status(500).json({ error: "Erro ao criar usuario", detail: err.message });
-    }
+    return res.status(410).json({ error: "Cadastro por email/senha desativado. Use login com Google." });
 });
 
 app.post("/api/auth/login", async (req, res) => {
-    try {
-        const { email, password } = req.body || {};
-        const cleanEmail = String(email || "").trim().toLowerCase();
-        const cleanPassword = String(password || "");
+    return res.status(410).json({ error: "Login por email/senha desativado. Use login com Google." });
+});
 
-        const userRow = await get("SELECT id, name, email, password_hash, role, is_blocked FROM users WHERE email = ?", [cleanEmail]);
-        if (!userRow) return res.status(401).json({ error: "Credenciais invalidas" });
-        if (Number(userRow.is_blocked || 0) === 1) {
-            return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
+app.post("/api/auth/google", async (req, res) => {
+    try {
+        const idToken = String(req.body?.idToken || "").trim();
+        if (!idToken) return res.status(400).json({ error: "idToken obrigatorio" });
+
+        const googleProfile = await verifyGoogleIdToken(idToken);
+        const cleanEmail = String(googleProfile.email || "").trim().toLowerCase();
+        const cleanName = String(googleProfile.name || "").trim() || cleanEmail.split("@")[0] || "Usuario";
+        const emailVerified = Boolean(googleProfile.email_verified);
+
+        if (!cleanEmail || !emailVerified) {
+            return res.status(401).json({ error: "Conta Google invalida para autenticacao" });
         }
 
-        const ok = await bcrypt.compare(cleanPassword, userRow.password_hash);
-        if (!ok) return res.status(401).json({ error: "Credenciais invalidas" });
+        let userRow = await get(
+            "SELECT id, name, email, role, is_blocked FROM users WHERE email = ?",
+            [cleanEmail]
+        );
 
-        const user = { id: userRow.id, name: userRow.name, email: userRow.email, role: userRow.role || ROLE_PLAYER };
+        if (!userRow) {
+            const initialRole = roleFromGoogleEmail(cleanEmail, ROLE_PLAYER);
+            const pseudoPasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+            const created = await run(
+                "INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)",
+                [cleanName, cleanEmail, pseudoPasswordHash, initialRole]
+            );
+            await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [created.lastID]);
+
+            userRow = {
+                id: created.lastID,
+                name: cleanName,
+                email: cleanEmail,
+                role: initialRole,
+                is_blocked: 0,
+            };
+        } else {
+            if (Number(userRow.is_blocked || 0) === 1) {
+                return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
+            }
+
+            const targetRole = roleFromGoogleEmail(cleanEmail, userRow.role || ROLE_PLAYER);
+            if (targetRole !== (userRow.role || ROLE_PLAYER)) {
+                await run("UPDATE users SET role = ? WHERE id = ?", [targetRole, userRow.id]);
+                userRow.role = targetRole;
+            }
+
+            if (cleanName && cleanName !== userRow.name) {
+                await run("UPDATE users SET name = ? WHERE id = ?", [cleanName, userRow.id]);
+                userRow.name = cleanName;
+            }
+
+            await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [userRow.id]);
+        }
+
+        const user = {
+            id: userRow.id,
+            name: userRow.name,
+            email: userRow.email,
+            role: userRow.role || ROLE_PLAYER,
+        };
         const accessToken = signAccessToken(user);
         const refreshToken = await createRefreshToken(user.id);
 
@@ -863,7 +899,10 @@ app.post("/api/auth/login", async (req, res) => {
             user,
         });
     } catch (err) {
-        return res.status(500).json({ error: "Erro no login", detail: err.message });
+        if (err?.code === "GOOGLE_CONFIG_MISSING") {
+            return res.status(500).json({ error: "Google OAuth nao configurado no servidor" });
+        }
+        return res.status(401).json({ error: "Falha na autenticacao Google", detail: err.message });
     }
 });
 

@@ -25,6 +25,10 @@ const API_BASE_URL =
   (IS_DEV
     ? `http://${window.location.hostname || "localhost"}:3001/api`
     : `${window.location.origin}${BASE_URL_PREFIX}/api`);
+const GOOGLE_CLIENT_ID = String(
+  import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
+).trim();
+let googleIdentityInitialized = false;
 const FRONTEND_LOG_ENDPOINT = `${API_BASE_URL}/logs/frontend-error`;
 const APP_TIMEZONE = "America/Sao_Paulo";
 const PACKS_PER_DAY = 1;
@@ -225,12 +229,6 @@ const ui = reactive({
 });
 
 restoreNotificationsFromStorage();
-
-const authForm = reactive({
-  name: "",
-  email: "",
-  password: "",
-});
 
 const adminTools = reactive({
   targetUserId: "",
@@ -1743,27 +1741,84 @@ async function redeemPromo() {
 function openAuth(mode) {
   ui.authMode = mode;
   ui.authMsg = "";
-  authForm.name = "";
-  authForm.email = "";
-  authForm.password = "";
   ui.authOpen = true;
+  setTimeout(() => {
+    renderGoogleSignInButton();
+  }, 0);
 }
 
-async function submitAuth() {
+function initializeGoogleIdentity() {
+  if (!GOOGLE_CLIENT_ID) {
+    ui.authMsg = "Google OAuth não configurado no frontend.";
+    return false;
+  }
+
+  if (!window.google?.accounts?.id) {
+    return false;
+  }
+
+  if (!googleIdentityInitialized) {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (response) => {
+        if (!response?.credential) {
+          ui.authMsg = "Falha ao autenticar com Google.";
+          return;
+        }
+        submitGoogleAuth(response.credential);
+      },
+      ux_mode: "popup",
+    });
+    googleIdentityInitialized = true;
+  }
+
+  return true;
+}
+
+function renderGoogleSignInButton(attempt = 0) {
+  if (!ui.authOpen) return;
+
+  const container = document.getElementById("google-signin-button");
+  if (!container) return;
+
+  if (!initializeGoogleIdentity()) {
+    if (attempt < 12) {
+      setTimeout(() => renderGoogleSignInButton(attempt + 1), 250);
+    } else if (!GOOGLE_CLIENT_ID) {
+      ui.authMsg = "Configure VITE_GOOGLE_CLIENT_ID para entrar com Google.";
+    } else {
+      ui.authMsg = "Não foi possível carregar o botão do Google.";
+    }
+    return;
+  }
+
+  container.innerHTML = "";
+  window.google.accounts.id.renderButton(container, {
+    type: "standard",
+    theme: "outline",
+    size: "large",
+    shape: "pill",
+    text: "continue_with",
+  });
+}
+
+function promptGoogleSignIn() {
+  ui.authMsg = "";
+  if (!initializeGoogleIdentity()) {
+    renderGoogleSignInButton();
+    return;
+  }
+  window.google.accounts.id.prompt();
+}
+
+async function submitGoogleAuth(idToken) {
   ui.authMsg = "";
 
-  const payload = {
-    email: authForm.email.trim(),
-    password: authForm.password,
-  };
-
-  if (ui.authMode === "register") payload.name = authForm.name.trim();
-
   try {
-    const data = await fetch(`${API_BASE_URL}/auth/${ui.authMode}`, {
+    const data = await fetch(`${API_BASE_URL}/auth/google`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ idToken }),
     }).then(async (res) => {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || "Falha na autenticacao");
@@ -1785,11 +1840,11 @@ async function submitAuth() {
     await loadManagedUsers();
     await loadSystemEvents(true);
     startSystemEventsPolling();
-    setToast(ui.authMode === "register" ? "Conta criada" : "Login realizado");
+    setToast("Login realizado com Google");
   } catch (err) {
     reportFrontendError({
-      message: "Falha no fluxo de autenticacao",
-      context: { mode: ui.authMode },
+      message: "Falha no fluxo de autenticacao Google",
+      context: { mode: "google" },
       error: err,
     });
     ui.authMsg = err.message || "Erro de autenticacao";
@@ -2253,14 +2308,7 @@ const filteredTradeAvailable = computed(() => {
               class="landing-btn-primary"
               @click="openAuth('login')"
             >
-              Entrar na Conta
-            </button>
-            <button
-              type="button"
-              class="landing-btn-secondary"
-              @click="openAuth('register')"
-            >
-              Criar Conta Grátis
+              Entrar com Google
             </button>
           </div>
         </div>
@@ -2317,72 +2365,26 @@ const filteredTradeAvailable = computed(() => {
         </div>
         <div class="auth-card">
           <div class="auth-card-tabs">
-            <button
-              type="button"
-              class="auth-tab"
-              :class="{ active: ui.authMode === 'login' }"
-              @click="
-                ui.authMode = 'login';
-                ui.authMsg = '';
-              "
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              class="auth-tab"
-              :class="{ active: ui.authMode === 'register' }"
-              @click="
-                ui.authMode = 'register';
-                ui.authMsg = '';
-              "
-            >
-              Criar Conta
+            <button type="button" class="auth-tab active">
+              Entrar com Google
             </button>
           </div>
-          <form class="auth-form" @submit.prevent="submitAuth">
-            <div v-if="ui.authMode === 'register'" class="auth-field">
-              <label for="auth-name">Nome</label>
-              <input
-                id="auth-name"
-                v-model="authForm.name"
-                type="text"
-                placeholder="Seu nome completo"
-                autocomplete="name"
-                required
-              />
-            </div>
-            <div class="auth-field">
-              <label for="auth-email">Email</label>
-              <input
-                id="auth-email"
-                v-model="authForm.email"
-                type="email"
-                placeholder="seu@email.com"
-                autocomplete="email"
-                required
-              />
-            </div>
-            <div class="auth-field">
-              <label for="auth-password">Senha</label>
-              <input
-                id="auth-password"
-                v-model="authForm.password"
-                type="password"
-                placeholder="••••••••"
-                :autocomplete="
-                  ui.authMode === 'register'
-                    ? 'new-password'
-                    : 'current-password'
-                "
-                required
-              />
-            </div>
-            <p v-if="ui.authMsg" class="auth-error">{{ ui.authMsg }}</p>
-            <button type="submit" class="auth-submit-btn">
-              {{ ui.authMode === "register" ? "Criar Conta" : "Entrar" }}
+          <div class="auth-form auth-google-form">
+            <p class="auth-google-hint">
+              Use sua conta Google para entrar. Se o email for
+              <strong>@ifc.edu.br</strong>, o perfil será
+              <strong>professor</strong>.
+            </p>
+            <div id="google-signin-button" class="google-signin-button"></div>
+            <button
+              type="button"
+              class="auth-submit-btn"
+              @click="promptGoogleSignIn"
+            >
+              Continuar com Google
             </button>
-          </form>
+            <p v-if="ui.authMsg" class="auth-error">{{ ui.authMsg }}</p>
+          </div>
           <div class="auth-card-footer">
             <button
               type="button"
