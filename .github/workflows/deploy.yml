@@ -96,6 +96,13 @@ jobs:
           echo "Imagem: $IMAGE_NAME"
           echo "Commit: $GIT_COMMIT"
 
+          echo "Exportando variáveis de build do frontend/.env para o ambiente..."
+          # Exporta apenas as variáveis VITE_ necessárias como build args do Docker Compose
+          set -a
+          # shellcheck disable=SC1091
+          source <(grep -E '^VITE_' frontend/.env | sed 's/\r//')
+          set +a
+
           echo "Puxando imagens novas (se houver)..."
           docker compose -f docker-compose.yml --profile prod pull --quiet || true
 

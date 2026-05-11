@@ -2643,9 +2643,6 @@ button:disabled {
   color: #fff;
   box-shadow: 0 4px 20px rgba(34, 197, 94, 0.35);
 }
-- .landing-btn-primary:active {
-  transform: translateY(0);
-}
 
 .landing-btn-secondary {
   padding: 0.85rem 2rem;

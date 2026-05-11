@@ -127,6 +127,7 @@ services:
         # Opcional. Se vazio, o frontend usa fallback dinamico por hostname.
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
         VITE_BASE_PATH: ${VITE_BASE_PATH:-/copa/}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     container_name: album-frontend-prod
     profiles: [prod]
     depends_on:
