@@ -42,9 +42,13 @@ const DB_PATH = process.env.DB_PATH
 const dbDir = path.dirname(DB_PATH);
 fs.mkdirSync(dbDir, { recursive: true });
 const dbPath = DB_PATH;
+const DB_ALREADY_EXISTS = fs.existsSync(dbPath);
 const db = new sqlite3.Database(dbPath);
 const uploadsDir = path.join(__dirname, "uploads");
+const SEED_USERS_FILE_PATH = path.join(__dirname, "seed", "users.json");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+
+const INITIAL_SEED_USERS = loadSeedUsersFromJson();
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -84,6 +88,38 @@ function sanitizeMeta(meta, depth = 0) {
     }
     if (typeof meta === "string") return truncateValue(meta, 4000);
     return meta;
+}
+
+function loadSeedUsersFromJson() {
+    try {
+        const rawContent = fs.readFileSync(SEED_USERS_FILE_PATH, "utf8");
+        const parsed = JSON.parse(rawContent);
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map((item) => {
+                const name = String(item?.name || "").trim();
+                const email = String(item?.email || "").trim().toLowerCase();
+                const password = String(item?.password || "");
+                const role = String(item?.role || ROLE_PLAYER).trim().toLowerCase();
+                if (!name || !email || !password) return null;
+                if (!ALLOWED_ROLES.has(role)) return null;
+                return { name, email, password, role };
+            })
+            .filter(Boolean);
+    } catch (err) {
+        console.warn(
+            JSON.stringify({
+                level: "warn",
+                message: "Nao foi possivel carregar seed/users.json",
+                meta: {
+                    file: SEED_USERS_FILE_PATH,
+                    error: err?.message || String(err),
+                },
+            })
+        );
+        return [];
+    }
 }
 
 function writeLog(level, message, meta = {}) {
@@ -642,6 +678,30 @@ async function initDb() {
       FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+}
+
+async function seedUsersForFreshDatabase() {
+    if (DB_ALREADY_EXISTS) return;
+    if (!INITIAL_SEED_USERS.length) {
+        logWarn("Seed inicial ignorado: nenhum usuario valido em seed/users.json");
+        return;
+    }
+
+    const usersCountRow = await get("SELECT COUNT(*) AS total FROM users");
+    if (Number(usersCountRow?.total || 0) > 0) return;
+
+    for (const user of INITIAL_SEED_USERS) {
+        const passwordHash = await bcrypt.hash(user.password, 10);
+        const created = await run(
+            "INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)",
+            [user.name, user.email, passwordHash, user.role]
+        );
+        await run("INSERT INTO album_states(user_id) VALUES(?)", [created.lastID]);
+    }
+
+    logInfo("Seed inicial de usuarios executado", {
+        users: INITIAL_SEED_USERS.map((u) => ({ name: u.name, email: u.email, role: u.role })),
+    });
 }
 
 app.use(cors(corsOptions));
@@ -1901,6 +1961,7 @@ process.on("uncaughtException", (err) => {
 
 initDb()
     .then(async () => {
+        await seedUsersForFreshDatabase();
         await loadCustomStickersFromDb();
         app.listen(PORT, () => {
             logInfo(`Backend do album rodando em http://localhost:${PORT}`, {

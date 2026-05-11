@@ -1,0 +1,20 @@
+[
+    {
+        "name": "Fabricio Bizotto",
+        "email": "fabricio.bizotto@ifc.edu.br",
+        "password": "ifcvideira",
+        "role": "admin"
+    },
+    {
+        "name": "Professor Demo",
+        "email": "professor.demo@ifc.edu.br",
+        "password": "ifcvideira",
+        "role": "professor"
+    },
+    {
+        "name": "Aluno Demo",
+        "email": "aluno.demo@ifc.edu.br",
+        "password": "ifcvideira",
+        "role": "jogador"
+    }
+]
