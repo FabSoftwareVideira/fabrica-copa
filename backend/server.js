@@ -36,7 +36,12 @@ const PROMO_CODES = {
     FIGURINHA: { packs: 2, label: "Figurinha Bonus" },
 };
 
-const dbPath = path.join(__dirname, "album.db");
+const DB_PATH = process.env.DB_PATH
+    ? path.resolve(process.env.DB_PATH)
+    : path.join(__dirname, "..", "data", "album.db");
+const dbDir = path.dirname(DB_PATH);
+fs.mkdirSync(dbDir, { recursive: true });
+const dbPath = DB_PATH;
 const db = new sqlite3.Database(dbPath);
 const uploadsDir = path.join(__dirname, "uploads");
 const logsDir = path.join(__dirname, "logs");

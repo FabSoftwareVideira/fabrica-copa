@@ -16,9 +16,11 @@ services:
       NODE_ENV: development
       PORT: 3001
       TRUST_PROXY: "true"
+      DB_PATH: /app/data/album.db
     volumes:
       - ./backend:/app/backend
       - ./frontend/js/data.js:/app/frontend/js/data.js:ro
+      - ./data:/app/data
       - /app/backend/node_modules
     command: npm run dev
     init: true
@@ -39,7 +41,7 @@ services:
       retries: 5
     restart: unless-stopped
     networks:
-      - album-network
+      - fabrica-network
 
   frontend-dev:
     build:
@@ -85,10 +87,11 @@ services:
       NODE_ENV: production
       PORT: 3001
       TRUST_PROXY: "true"
+      DB_PATH: /app/data/album.db
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./backend/logs:/app/backend/logs
-      - ./backend/album.db:/app/backend/album.db
+      - ./data:/app/data
     command: npm start
     init: true
     ports:
@@ -127,8 +130,10 @@ services:
       - "5173:80"
     restart: unless-stopped
     networks:
-      - album-network
+      - fabrica-network
 
 networks:
   album-network:
     driver: bridge
+  fabrica-network:
+    external: true
