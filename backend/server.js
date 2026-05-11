@@ -135,7 +135,7 @@ let STICKERS = [...BASE_STICKERS];
 let STICKER_BY_ID = new Map(STICKERS.map((s) => [s.id, s]));
 
 function loadStickersFromFrontend() {
-    const dataFile = path.join(__dirname, "..", "js", "data.js");
+    const dataFile = path.join(__dirname, "..", "frontend", "js", "data.js");
     const code = fs.readFileSync(dataFile, "utf8");
     const all = vm.runInNewContext(`${code}\nALL_STICKERS;`, {});
     if (!Array.isArray(all) || all.length === 0) {

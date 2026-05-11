@@ -2479,7 +2479,9 @@ const filteredTradeAvailable = computed(() => {
                   <div class="notif-meta-row">
                     <small>{{ formatDateTime(notif.createdAt) }}</small>
                     <button
-                      v-if="notif.type === 'coupon_created' && notif.payload?.code"
+                      v-if="
+                        notif.type === 'coupon_created' && notif.payload?.code
+                      "
                       type="button"
                       class="notif-copy-btn"
                       :aria-label="`Copiar cupom ${notif.payload.code}`"
