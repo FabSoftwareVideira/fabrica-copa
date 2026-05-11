@@ -24,49 +24,65 @@ jobs:
       - name: 🏷️ Definir versão do build
         run: |
           echo "IMAGE_TAG=${GITHUB_REF_NAME}" >> $GITHUB_ENV
-          echo "IMAGE_NAME=fabrica-museu:${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          echo "IMAGE_NAME=album-figurinhas-copa:${GITHUB_REF_NAME}" >> $GITHUB_ENV
           echo "GIT_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
 
-      - name: Gerar .env a partir do ENV_FILE do repositório
+      - name: Gerar backend/.env e frontend/.env a partir do GitHub
         env:
-          ENV_FILE_SECRET: ${{ secrets.ENV_FILE }}
-          ENV_FILE_VAR: ${{ vars.ENV_FILE }}
+          BACKEND_ENV_FILE_SECRET: ${{ secrets.BACKEND_ENV_FILE }}
+          BACKEND_ENV_FILE_VAR: ${{ vars.BACKEND_ENV_FILE }}
+          FRONTEND_ENV_FILE_SECRET: ${{ secrets.FRONTEND_ENV_FILE }}
+          FRONTEND_ENV_FILE_VAR: ${{ vars.FRONTEND_ENV_FILE }}
         run: |
-          echo "Gerando .env para o deploy..."
+          echo "Gerando backend/.env e frontend/.env para o deploy..."
 
-          ENV_CONTENT="$ENV_FILE_SECRET"
-          if [ -z "$ENV_CONTENT" ]; then
-            ENV_CONTENT="$ENV_FILE_VAR"
+          BACKEND_ENV_CONTENT="$BACKEND_ENV_FILE_SECRET"
+          if [ -z "$BACKEND_ENV_CONTENT" ]; then
+            BACKEND_ENV_CONTENT="$BACKEND_ENV_FILE_VAR"
           fi
 
-          if [ -z "$ENV_CONTENT" ]; then
-            echo "ERRO: ENV_FILE não definido em secrets ou vars do repositório."
+          FRONTEND_ENV_CONTENT="$FRONTEND_ENV_FILE_SECRET"
+          if [ -z "$FRONTEND_ENV_CONTENT" ]; then
+            FRONTEND_ENV_CONTENT="$FRONTEND_ENV_FILE_VAR"
+          fi
+
+          if [ -z "$BACKEND_ENV_CONTENT" ]; then
+            echo "ERRO: BACKEND_ENV_FILE não definido em secrets ou vars do repositório."
             exit 1
           fi
 
-          printf '%s' "$ENV_CONTENT" > .env
+          if [ -z "$FRONTEND_ENV_CONTENT" ]; then
+            echo "ERRO: FRONTEND_ENV_FILE não definido em secrets ou vars do repositório."
+            exit 1
+          fi
 
-          echo "Arquivo .env criado com sucesso para o deploy."
+          mkdir -p backend frontend
+          printf '%s' "$BACKEND_ENV_CONTENT" > backend/.env
+          printf '%s' "$FRONTEND_ENV_CONTENT" > frontend/.env
+
+          echo "Arquivos backend/.env e frontend/.env criados com sucesso para o deploy."
 
       - name: Validar Ambiente e Arquivos
         run: |
           echo "Verificando arquivos críticos..."
           test -f docker-compose.yml || (echo "ERRO: docker-compose.yml não encontrado" && exit 1)
-          test -f .env || (echo "ERRO: .env não encontrado" && exit 1)
+          test -f backend/.env || (echo "ERRO: backend/.env não encontrado" && exit 1)
+          test -f frontend/.env || (echo "ERRO: frontend/.env não encontrado" && exit 1)
+
+          echo "Garantindo rede externa de produção..."
+          docker network inspect fabrica-network >/dev/null 2>&1 || docker network create fabrica-network
 
           echo "Validando sintaxe do Docker Compose de Produção..."
           docker compose -f docker-compose.yml --profile prod config -q
 
       - name: ✅ Testes de Qualidade
         run: |
-          echo "Instalando dependências..."
-          npm install --prefer-offline --no-audit
-
-          echo "Executando suite de testes..."
-          npm test || (echo "❌ ERRO: Testes falharam. Deploy abortado." && exit 1)
-
-          echo "✅ Todos os testes passaram com sucesso!"
+          echo "Executando validações de qualidade (se scripts existirem)..."
+          npm --prefix backend run --if-present test
+          npm --prefix frontend run --if-present test
+          npm --prefix frontend run build
+          echo "✅ Validações concluídas."
 
       # ── 2. EXECUÇÃO ─────────────────────────────────────────────────────────
       - name: Atualizar e Subir Containers
@@ -90,9 +106,8 @@ jobs:
           docker compose -f docker-compose.yml --profile prod ps
 
           echo "--- Consumo de Recursos ---"
-          # O nome do container deve ser o que está no seu docker-compose.yml
-          docker stats --no-stream fabrica-museu-prod
+          docker stats --no-stream album-backend-prod album-frontend-prod || true
 
-      - name: Limpar arquivo .env temporário
+      - name: Limpar arquivos .env temporários
         if: always()
-        run: rm -f .env
+        run: rm -f backend/.env frontend/.env .env
