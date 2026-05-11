@@ -12,7 +12,10 @@ require("dotenv").config({ path: path.join(__dirname, ".env") });
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 const JWT_SECRET = process.env.JWT_SECRET || "album-2026-dev-secret";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173";
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const NODE_ENV = String(process.env.NODE_ENV || "development").toLowerCase();
+const IS_PROD = NODE_ENV === "production";
+const LOG_LEVEL = String(process.env.LOG_LEVEL || (IS_PROD ? "info" : "debug")).toLowerCase();
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const PACKS_PER_DAY = 1;
@@ -36,9 +39,95 @@ const PROMO_CODES = {
 const dbPath = path.join(__dirname, "album.db");
 const db = new sqlite3.Database(dbPath);
 const uploadsDir = path.join(__dirname, "uploads");
+const logsDir = path.join(__dirname, "logs");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(logsDir, { recursive: true });
+
+const LOG_PRIORITIES = { debug: 10, info: 20, warn: 30, error: 40 };
+
+function shouldLog(level) {
+    const current = LOG_PRIORITIES[LOG_LEVEL] || LOG_PRIORITIES.info;
+    const target = LOG_PRIORITIES[level] || LOG_PRIORITIES.info;
+    return target >= current;
+}
+
+function truncateValue(value, max = 1000) {
+    const str = String(value == null ? "" : value);
+    if (str.length <= max) return str;
+    return `${str.slice(0, max)}... [truncated ${str.length - max} chars]`;
+}
+
+function sanitizeMeta(meta, depth = 0) {
+    if (meta == null) return null;
+    if (depth > 4) return "[max-depth]";
+    if (meta instanceof Error) {
+        return {
+            name: meta.name,
+            message: meta.message,
+            stack: truncateValue(meta.stack || "", 4000),
+        };
+    }
+    if (Array.isArray(meta)) {
+        return meta.slice(0, 40).map((item) => sanitizeMeta(item, depth + 1));
+    }
+    if (typeof meta === "object") {
+        const output = {};
+        for (const [key, value] of Object.entries(meta)) {
+            output[key] = sanitizeMeta(value, depth + 1);
+        }
+        return output;
+    }
+    if (typeof meta === "string") return truncateValue(meta, 4000);
+    return meta;
+}
+
+function writeLog(level, message, meta = {}) {
+    if (!shouldLog(level)) return;
+
+    const timestamp = new Date().toISOString();
+    const entry = {
+        timestamp,
+        level,
+        env: NODE_ENV,
+        message: truncateValue(message, 2000),
+        meta: sanitizeMeta(meta),
+    };
+
+    const serialized = JSON.stringify(entry);
+    const logFile = path.join(logsDir, `backend-${timestamp.slice(0, 10)}.log`);
+
+    try {
+        fs.appendFileSync(logFile, `${serialized}\n`);
+    } catch (err) {
+        console.error("Falha ao gravar arquivo de log", err);
+    }
+
+    if (level === "error") {
+        console.error(serialized);
+    } else if (level === "warn") {
+        console.warn(serialized);
+    } else {
+        console.log(serialized);
+    }
+}
+
+function logDebug(message, meta) {
+    writeLog("debug", message, meta);
+}
+
+function logInfo(message, meta) {
+    writeLog("info", message, meta);
+}
+
+function logWarn(message, meta) {
+    writeLog("warn", message, meta);
+}
+
+function logError(message, meta) {
+    writeLog("error", message, meta);
+}
 
 const BASE_STICKERS = loadStickersFromFrontend();
 let CUSTOM_STICKERS = [];
@@ -564,8 +653,84 @@ app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "8mb" }));
 app.use("/uploads", express.static(uploadsDir));
 
+app.use((req, res, next) => {
+    const requestId = crypto.randomBytes(6).toString("hex");
+    const startAt = Date.now();
+    let responseBody = null;
+
+    req.requestId = requestId;
+
+    const originalJson = res.json.bind(res);
+    res.json = (body) => {
+        responseBody = body;
+        return originalJson(body);
+    };
+
+    res.on("finish", () => {
+        const durationMs = Date.now() - startAt;
+        const meta = {
+            requestId,
+            method: req.method,
+            path: req.originalUrl,
+            status: res.statusCode,
+            durationMs,
+            ip: req.ip,
+        };
+
+        if (res.statusCode >= 500) {
+            logError("HTTP request failed", {
+                ...meta,
+                responseBody,
+            });
+            return;
+        }
+
+        if (res.statusCode >= 400) {
+            logWarn("HTTP request returned client error", {
+                ...meta,
+                responseBody,
+            });
+            return;
+        }
+
+        logDebug("HTTP request completed", meta);
+    });
+
+    next();
+});
+
 app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, service: "album-backend", stickers: STICKERS.length });
+    res.json({ ok: true, service: "album-backend", env: NODE_ENV, stickers: STICKERS.length });
+});
+
+app.post("/api/logs/frontend-error", (req, res) => {
+    try {
+        const payload = req.body || {};
+        const level = String(payload.level || "error").toLowerCase();
+        const message = String(payload.message || "Frontend error report");
+        const meta = {
+            requestId: req.requestId,
+            origin: req.get("origin") || "unknown",
+            userAgent: req.get("user-agent") || "unknown",
+            route: payload.route || "",
+            context: payload.context || {},
+            details: payload.details || {},
+            timestamp: payload.timestamp || "",
+        };
+
+        if (level === "warn") {
+            logWarn(`Frontend: ${message}`, meta);
+        } else if (level === "info") {
+            logInfo(`Frontend: ${message}`, meta);
+        } else {
+            logError(`Frontend: ${message}`, meta);
+        }
+
+        return res.status(201).json({ ok: true });
+    } catch (err) {
+        logError("Failed to process frontend error report", { err, requestId: req.requestId });
+        return res.status(500).json({ error: "Erro ao processar log do frontend" });
+    }
 });
 
 app.get("/api/stickers/catalog", async (_req, res) => {
@@ -1716,14 +1881,41 @@ app.get("/api/trade/history", authMiddleware, async (req, res) => {
 
 // ─── End Trade endpoints ─────────────────────────────────────────────────────
 
+app.use((err, req, res, _next) => {
+    logError("Unhandled express error", {
+        requestId: req.requestId,
+        method: req.method,
+        path: req.originalUrl,
+        err,
+    });
+
+    return res.status(500).json({
+        error: "Erro interno do servidor",
+        requestId: req.requestId,
+    });
+});
+
+process.on("unhandledRejection", (reason) => {
+    logError("Unhandled promise rejection", { reason });
+});
+
+process.on("uncaughtException", (err) => {
+    logError("Uncaught exception", { err });
+});
+
 initDb()
     .then(async () => {
         await loadCustomStickersFromDb();
         app.listen(PORT, () => {
-            console.log(`Backend do album rodando em http://localhost:${PORT}`);
+            logInfo(`Backend do album rodando em http://localhost:${PORT}`, {
+                env: NODE_ENV,
+                logLevel: LOG_LEVEL,
+                corsOrigin: CORS_ORIGIN,
+                logsDir,
+            });
         });
     })
     .catch((err) => {
-        console.error("Falha ao inicializar banco:", err);
+        logError("Falha ao inicializar banco", { err });
         process.exit(1);
     });

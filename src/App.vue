@@ -2,7 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
 import playerImagesData from "../js/player-images.json";
 
-const API_BASE_URL = "http://localhost:3001/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  `http://${window.location.hostname || "localhost"}:3001/api`;
+const FRONTEND_ENV = import.meta.env.MODE || "development";
+const IS_DEV = Boolean(import.meta.env.DEV);
+const FRONTEND_LOG_ENDPOINT = `${API_BASE_URL}/logs/frontend-error`;
 const APP_TIMEZONE = "America/Sao_Paulo";
 const PACKS_PER_DAY = 1;
 const PACK_DRAG_OPEN_DISTANCE = 180;
@@ -550,6 +555,98 @@ let packRevealTimer = null;
 let systemEventsTimer = null;
 const stickerPhotoCache = new Map();
 
+function toErrorPayload(error) {
+  if (!error) return { message: "Erro desconhecido" };
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack || "",
+    };
+  }
+  if (typeof error === "string") return { message: error };
+  try {
+    return { message: JSON.stringify(error) };
+  } catch {
+    return { message: String(error) };
+  }
+}
+
+function reportFrontendError({
+  level = "error",
+  message,
+  context = {},
+  error,
+}) {
+  const details = toErrorPayload(error);
+  const payload = {
+    level,
+    message,
+    route: window.location?.pathname || "",
+    timestamp: new Date().toISOString(),
+    context: {
+      env: FRONTEND_ENV,
+      isAuthenticated: Boolean(state.user?.id),
+      userId: state.user?.id || null,
+      ...context,
+    },
+    details,
+  };
+
+  const printable = {
+    message,
+    context: payload.context,
+    details,
+  };
+
+  if (level === "warn") {
+    console.warn("[frontend-log]", printable);
+  } else {
+    console.error("[frontend-log]", printable);
+  }
+
+  if (IS_DEV) return;
+
+  const body = JSON.stringify(payload);
+  if (navigator.sendBeacon) {
+    const ok = navigator.sendBeacon(
+      FRONTEND_LOG_ENDPOINT,
+      new Blob([body], { type: "application/json" }),
+    );
+    if (ok) return;
+  }
+
+  fetch(FRONTEND_LOG_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {
+    // Swallow logging transport errors to avoid recursion loops.
+  });
+}
+
+function handleGlobalWindowError(event) {
+  reportFrontendError({
+    message: "Erro global de janela",
+    context: {
+      source: "window.onerror",
+      file: event.filename || "",
+      line: event.lineno || 0,
+      column: event.colno || 0,
+    },
+    error: event.error || event.message,
+  });
+}
+
+function handleUnhandledRejection(event) {
+  reportFrontendError({
+    message: "Promise rejeitada sem tratamento",
+    context: { source: "window.unhandledrejection" },
+    error: event.reason,
+  });
+}
+
 function handleGlobalKeydown(event) {
   if (event.key === "Escape" && ui.packOpen) {
     closePackModal();
@@ -558,6 +655,14 @@ function handleGlobalKeydown(event) {
 
 onMounted(async () => {
   window.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("error", handleGlobalWindowError);
+  window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+  console.info("[frontend-log] App inicializado", {
+    env: FRONTEND_ENV,
+    apiBaseUrl: API_BASE_URL,
+  });
+
   if (isAuthenticated.value) {
     await bootstrapAuth();
   }
@@ -565,6 +670,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleGlobalKeydown);
+  window.removeEventListener("error", handleGlobalWindowError);
+  window.removeEventListener("unhandledrejection", handleUnhandledRejection);
   removePackDragListeners();
   clearPackRevealTimer();
   stopSystemEventsPolling();
@@ -947,30 +1054,47 @@ function clearNotifications() {
 }
 
 async function apiFetch(path, options = {}, retry = true) {
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
-  };
-  if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    };
+    if (state.accessToken)
+      headers.Authorization = `Bearer ${state.accessToken}`;
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
-  if (res.status === 401 && retry && state.refreshToken) {
-    const payload = await res
-      .clone()
-      .json()
-      .catch(() => ({}));
-    if (payload?.code === "TOKEN_EXPIRED") {
-      const refreshed = await tryRefreshToken();
-      if (refreshed) return apiFetch(path, options, false);
+    if (res.status === 401 && retry && state.refreshToken) {
+      const payload = await res
+        .clone()
+        .json()
+        .catch(() => ({}));
+      if (payload?.code === "TOKEN_EXPIRED") {
+        const refreshed = await tryRefreshToken();
+        if (refreshed) return apiFetch(path, options, false);
+      }
     }
-  }
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || "Erro de API");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || "Erro de API");
+      err.status = res.status;
+      err.payload = data;
+      throw err;
+    }
+
+    return data;
+  } catch (err) {
+    reportFrontendError({
+      message: "Falha em requisicao API",
+      context: {
+        path,
+        method: String(options?.method || "GET").toUpperCase(),
+      },
+      error: err,
+    });
+    throw err;
   }
-  return data;
 }
 
 async function tryRefreshToken() {
@@ -993,7 +1117,13 @@ async function tryRefreshToken() {
     saveAuth();
     await loadManagedUsers();
     return true;
-  } catch {
+  } catch (err) {
+    reportFrontendError({
+      level: "warn",
+      message: "Falha ao renovar token",
+      context: { path: "/auth/refresh" },
+      error: err,
+    });
     clearAuth();
     return false;
   }
@@ -1014,7 +1144,12 @@ async function bootstrapAuth() {
     await loadManagedUsers();
     await loadSystemEvents(true);
     startSystemEventsPolling();
-  } catch (_err) {
+  } catch (err) {
+    reportFrontendError({
+      level: "warn",
+      message: "Falha no bootstrap de autenticacao",
+      error: err,
+    });
     clearAuth();
   } finally {
     ui.loading = false;
@@ -1591,6 +1726,11 @@ async function submitAuth() {
     startSystemEventsPolling();
     setToast(ui.authMode === "register" ? "Conta criada" : "Login realizado");
   } catch (err) {
+    reportFrontendError({
+      message: "Falha no fluxo de autenticacao",
+      context: { mode: ui.authMode },
+      error: err,
+    });
     ui.authMsg = err.message || "Erro de autenticacao";
   }
 }
@@ -1604,7 +1744,12 @@ async function logout() {
         body: JSON.stringify({ refreshToken: state.refreshToken }),
       });
     }
-  } catch {
+  } catch (err) {
+    reportFrontendError({
+      level: "warn",
+      message: "Falha ao notificar logout no backend",
+      error: err,
+    });
     // logout local ainda deve ocorrer
   }
 
