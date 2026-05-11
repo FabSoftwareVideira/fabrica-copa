@@ -78,6 +78,10 @@ jobs:
 
       - name: ✅ Testes de Qualidade
         run: |
+          echo "Instalando dependências do backend e frontend..."
+          npm --prefix backend ci --prefer-offline --no-audit
+          npm --prefix frontend ci --prefer-offline --no-audit
+
           echo "Executando validações de qualidade (se scripts existirem)..."
           npm --prefix backend run --if-present test
           npm --prefix frontend run --if-present test
