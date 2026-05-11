@@ -1,0 +1,157 @@
+services:
+  # ----------------------------------------------------------
+  # DESENVOLVIMENTO
+  # ----------------------------------------------------------
+  fabrica-copa-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    container_name: fabrica-copa-dev
+    working_dir: /app
+    profiles: [dev]
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: 3001
+      TRUST_PROXY: "true"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+      - ./src/public/photos:/app/src/public/photos
+    command: npm run dev
+    init: true
+    ports:
+      - "127.0.0.1:3001:3001"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+          pids: 512
+        reservations:
+          memory: 768M
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "15m"
+        max-file: "4"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >
+          fetch("http://127.0.0.1:3001/health")
+            .then(r => process.exit(r.ok ? 0 : 1))
+            .catch(() => process.exit(1))
+      interval: 10s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # PRODUÇÃO
+  # ----------------------------------------------------------
+  fabrica-copa-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        IMAGE_TAG: ${IMAGE_TAG:-dev}
+        IMAGE_NAME: ${IMAGE_NAME:-fabrica-copa:${IMAGE_TAG:-latest}}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: fabrica-copa:${IMAGE_TAG:-latest}
+    container_name: fabrica-copa-prod
+    working_dir: /app
+    profiles: [prod]
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      TRUST_PROXY: "true"
+      IMAGE_TAG: ${IMAGE_TAG:-dev}
+      IMAGE_NAME: ${IMAGE_NAME:-fabrica-copa:${IMAGE_TAG:-latest}}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      BUILD_DATE: ${BUILD_DATE:-unknown}
+    volumes:
+      - ${PHOTOS_HOST_PATH:-./src/public/photos}:/app/src/public/photos:ro,cached
+    command: npm start
+    init: true
+    expose:
+      - "3000"
+
+    # --- recursos (padrão Compose v2 / Docker 25+) ---
+    deploy:
+      resources:
+        limits:
+          cpus: "2.50" # permite usar até 2.5 CPUs
+          memory: 3072M # 3GB de memória para produção
+          pids: 512 # limita a 512 processos/threads para evitar runaway
+        reservations:
+          cpus: "0.50"
+          memory: 1536M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # --- segurança ---
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # --- sistema de arquivos temporário em RAM ---
+    # /tmp       → uso geral do Node/libs
+    # /app/tmp   → arquivos temporários da aplicação (ajuste se necessário)
+    tmpfs:
+      - /tmp:size=128M,mode=1777
+      - /app/tmp:size=64M,mode=1777
+
+    # --- observabilidade ---
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+        compress: "true" # comprime rotações antigas — economiza disco
+
+    # --- labels para rastreamento de deploy ---
+    labels:
+      app.name: "fabrica-copa"
+      app.version: "${IMAGE_TAG:-dev}"
+      app.build-date: "${BUILD_DATE:-unknown}"
+      app.git-commit: "${GIT_COMMIT:-unknown}"
+      traefik.enable: "false" # mude para true se usar Traefik como proxy
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - |
+          node -e "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" \
+          || wget -qO- http://127.0.0.1:3001/health > /dev/null 2>&1
+      interval: 15s
+      timeout: 5s
+      start_period: 30s # dá tempo para o Node.js carregar em hardware modesto
+      retries: 4
+
+    networks:
+      - fabrica-network
+
+# ============================================================
+# REDES
+# ============================================================
+networks:
+  fabrica-network:
+    external: true
