@@ -94,6 +94,7 @@ services:
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - album-data:/app/data
+      - scripts:/app/scripts:ro
     command: npm start
     init: true
     ports:
@@ -143,3 +144,4 @@ networks:
 
 volumes:
   album-data:
+  scripts:
