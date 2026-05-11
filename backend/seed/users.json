@@ -9,7 +9,7 @@
         "name": "Professor Demo",
         "email": "professor.demo@ifc.edu.br",
         "password": "ifcvideira",
-        "role": "professor"
+        "role": "servidor"
     },
     {
         "name": "Aluno Demo",

@@ -258,7 +258,7 @@ const isAuthenticated = computed(() =>
 const userRole = computed(() => String(state.user?.role || "jogador"));
 const isAdmin = computed(() => userRole.value === "admin");
 const canManageCoupons = computed(() =>
-  ["admin", "professor"].includes(userRole.value),
+  ["admin", "servidor"].includes(userRole.value),
 );
 const collectionViews = ["album", "missing", "duplicates", "search", "flip"];
 const isCollectionView = computed(() => collectionViews.includes(state.view));
@@ -2373,7 +2373,7 @@ const filteredTradeAvailable = computed(() => {
             <p class="auth-google-hint">
               Use sua conta Google para entrar. Se o email for
               <strong>@ifc.edu.br</strong>, o perfil será
-              <strong>professor</strong>.
+              <strong>servidor</strong>.
             </p>
             <div id="google-signin-button" class="google-signin-button"></div>
             <button
@@ -2862,7 +2862,7 @@ const filteredTradeAvailable = computed(() => {
               >
                 <option value="all">Todos os perfis</option>
                 <option value="admin">admin</option>
-                <option value="professor">professor</option>
+                <option value="servidor">servidor</option>
                 <option value="jogador">jogador</option>
               </select>
               <select
@@ -2995,7 +2995,7 @@ const filteredTradeAvailable = computed(() => {
                   Perfil
                   <select v-model="editingManagedUser.draftRole">
                     <option value="admin">admin</option>
-                    <option value="professor">professor</option>
+                    <option value="servidor">servidor</option>
                     <option value="jogador">jogador</option>
                   </select>
                 </label>

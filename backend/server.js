@@ -23,7 +23,7 @@ const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const PACKS_PER_DAY = 1;
 const APP_TIMEZONE = "America/Sao_Paulo";
 const ROLE_ADMIN = "admin";
-const ROLE_PROFESSOR = "professor";
+const ROLE_PROFESSOR = "servidor";
 const ROLE_PLAYER = "jogador";
 const ALLOWED_ROLES = new Set([ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]);
 
@@ -48,10 +48,7 @@ const DB_ALREADY_EXISTS = fs.existsSync(dbPath);
 const db = new sqlite3.Database(dbPath);
 const googleOAuthClient = new OAuth2Client();
 const uploadsDir = path.join(__dirname, "uploads");
-const SEED_USERS_FILE_PATH = path.join(__dirname, "seed", "users.json");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-
-const INITIAL_SEED_USERS = loadSeedUsersFromJson();
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -91,38 +88,6 @@ function sanitizeMeta(meta, depth = 0) {
     }
     if (typeof meta === "string") return truncateValue(meta, 4000);
     return meta;
-}
-
-function loadSeedUsersFromJson() {
-    try {
-        const rawContent = fs.readFileSync(SEED_USERS_FILE_PATH, "utf8");
-        const parsed = JSON.parse(rawContent);
-        if (!Array.isArray(parsed)) return [];
-
-        return parsed
-            .map((item) => {
-                const name = String(item?.name || "").trim();
-                const email = String(item?.email || "").trim().toLowerCase();
-                const password = String(item?.password || "");
-                const role = String(item?.role || ROLE_PLAYER).trim().toLowerCase();
-                if (!name || !email || !password) return null;
-                if (!ALLOWED_ROLES.has(role)) return null;
-                return { name, email, password, role };
-            })
-            .filter(Boolean);
-    } catch (err) {
-        console.warn(
-            JSON.stringify({
-                level: "warn",
-                message: "Nao foi possivel carregar seed/users.json",
-                meta: {
-                    file: SEED_USERS_FILE_PATH,
-                    error: err?.message || String(err),
-                },
-            })
-        );
-        return [];
-    }
 }
 
 function writeLog(level, message, meta = {}) {
@@ -707,30 +672,6 @@ async function initDb() {
   `);
 }
 
-async function seedUsersForFreshDatabase() {
-    if (DB_ALREADY_EXISTS) return;
-    if (!INITIAL_SEED_USERS.length) {
-        logWarn("Seed inicial ignorado: nenhum usuario valido em seed/users.json");
-        return;
-    }
-
-    const usersCountRow = await get("SELECT COUNT(*) AS total FROM users");
-    if (Number(usersCountRow?.total || 0) > 0) return;
-
-    for (const user of INITIAL_SEED_USERS) {
-        const passwordHash = await bcrypt.hash(user.password, 10);
-        const created = await run(
-            "INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)",
-            [user.name, user.email, passwordHash, user.role]
-        );
-        await run("INSERT INTO album_states(user_id) VALUES(?)", [created.lastID]);
-    }
-
-    logInfo("Seed inicial de usuarios executado", {
-        users: INITIAL_SEED_USERS.map((u) => ({ name: u.name, email: u.email, role: u.role })),
-    });
-}
-
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "8mb" }));
@@ -1032,7 +973,7 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
                 [code, req.user.sub]
             );
             if (couponRow) {
-                promo = { packs: Number(couponRow.packs_added || 1), label: "Cupom de professor/admin" };
+                promo = { packs: Number(couponRow.packs_added || 1), label: "Cupom de servidor/admin" };
                 isGeneratedCoupon = true;
             }
         }
@@ -2000,7 +1941,6 @@ process.on("uncaughtException", (err) => {
 
 initDb()
     .then(async () => {
-        await seedUsersForFreshDatabase();
         await loadCustomStickersFromDb();
         app.listen(PORT, () => {
             logInfo(`Backend do album rodando em http://localhost:${PORT}`, {
