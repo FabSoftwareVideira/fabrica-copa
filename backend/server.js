@@ -29,16 +29,7 @@ const ROLE_PROFESSOR = "servidor";
 const ROLE_PLAYER = "jogador";
 const ALLOWED_ROLES = new Set([ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]);
 
-const PROMO_CODES = {
-    COPA2026: { packs: 3, label: "Bonus Copa 2026" },
-    FIFA2026: { packs: 5, label: "Pacote FIFA" },
-    BRASIL26: { packs: 2, label: "Vai Brasil" },
-    WORLDCUP: { packs: 1, label: "World Cup" },
-    MESSI10: { packs: 2, label: "El Clasico" },
-    MBAPPE26: { packs: 3, label: "Les Bleus" },
-    PANINI26: { packs: 500, label: "Panini Especial" },
-    FIGURINHA: { packs: 2, label: "Figurinha Bonus" },
-};
+const PROMO_CODES = {};
 
 const DB_PATH = process.env.DB_PATH
     ? path.resolve(process.env.DB_PATH)
