@@ -1474,9 +1474,9 @@ async function generateManagedCoupon() {
   if (targetUserId > 0) {
     payload.targetUserId = targetUserId;
   }
-  if (isAdmin.value) {
-    payload.packs = Math.max(1, Number(adminTools.packs || 1));
-  }
+  payload.packs = isAdmin.value
+    ? Math.max(1, Number(adminTools.packs || 1))
+    : Math.max(1, Math.min(3, Number(adminTools.packs || 1)));
 
   try {
     const data = await apiFetch("/coupons/generate", {
@@ -2851,6 +2851,10 @@ const filteredTradeAvailable = computed(() => {
 
           <div class="manage-coupon-box">
             <h4>Gerar cupom para pacote</h4>
+            <p v-if="!isAdmin" class="read-only-hint">
+              Como servidor, o limite é 1 cupom por dia para o mesmo usuário,
+              com 1 a 3 pacotes por cupom.
+            </p>
             <div class="manage-coupon-form">
               <select v-model="adminTools.targetUserId">
                 <option value="">Cupom livre (qualquer usuário)</option>
@@ -2863,11 +2867,11 @@ const filteredTradeAvailable = computed(() => {
                 </option>
               </select>
               <input
-                v-if="isAdmin"
+                v-if="canManageCoupons"
                 v-model.number="adminTools.packs"
                 type="number"
                 min="1"
-                max="20"
+                :max="isAdmin ? 100 : 3"
                 placeholder="Pacotes"
               />
               <button type="button" @click="generateManagedCoupon">

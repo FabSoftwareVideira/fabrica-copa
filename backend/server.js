@@ -1062,10 +1062,23 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
 
         const requestedPacks = Number(req.body?.packs || 1);
         const packs = req.user.role === ROLE_ADMIN
-            ? Math.max(1, Math.min(20, Number.isFinite(requestedPacks) ? requestedPacks : 1))
-            : 1;
+            ? Math.max(1, Number.isFinite(requestedPacks) ? requestedPacks : 1)
+            : Math.max(1, Math.min(3, Number.isFinite(requestedPacks) ? requestedPacks : 1));
         const isGeneric = hasTargetUser ? 0 : 1;
         const couponTargetUserId = hasTargetUser ? targetUserId : req.user.sub;
+
+        if (hasTargetUser) {
+            const todayDate = todayStr();
+            const alreadyToday = await get(
+                `SELECT id FROM user_coupons
+                 WHERE target_user_id = ? AND created_by_user_id = ? AND date(created_at) = ? AND status = 'active'
+                 LIMIT 1`,
+                [targetUserId, req.user.sub, todayDate]
+            );
+            if (alreadyToday) {
+                return res.status(409).json({ error: "Ja foi gerado um cupom para este usuario hoje" });
+            }
+        }
 
         const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
