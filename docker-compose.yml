@@ -23,7 +23,7 @@ services:
       - ./frontend/js/data.js:/app/frontend/js/data.js:ro
       - ./data:/app/data
       - /app/backend/node_modules
-    command: npm run dev -- --legacy-watch
+    command: sh -c "npm ci && npm run dev -- --legacy-watch"
     init: true
     ports:
       - "3001:3001"
