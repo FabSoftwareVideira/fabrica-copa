@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import playerImagesData from "../js/player-images.json";
 
 const FRONTEND_ENV = import.meta.env.MODE || "development";
@@ -180,6 +180,7 @@ const state = reactive({
   tradeOutgoing: [],
   tradeHistory: [],
   managedUsers: [],
+  managedCoupons: [],
   recentCreatedStickers: [],
   newStickersUnread: 0,
   notifications: [],
@@ -225,6 +226,15 @@ const ui = reactive({
   stickerCreateMsg: "",
   recentStickersLoading: false,
   recentStickersMsg: "",
+  adminTab: "overview",
+  adminCouponsLoading: false,
+  adminCouponsMsg: "",
+  deletingCouponId: 0,
+  dashboardAnimatedPercent: 0,
+  dashboardAnimatedTotal: 0,
+  dashboardAnimatedCollected: 0,
+  dashboardAnimatedMissing: 0,
+  dashboardAnimatedDuplicates: 0,
   notificationsOpen: false,
 });
 
@@ -241,6 +251,8 @@ const adminTools = reactive({
   editingUserId: "",
   sortBy: "name",
   sortDir: "asc",
+  couponSearch: "",
+  couponStatusFilter: "all",
 });
 
 const adminStickerForm = reactive({
@@ -366,6 +378,29 @@ const managedUsersPageTo = computed(() =>
     managedUsersSorted.value.length,
   ),
 );
+const filteredManagedCoupons = computed(() => {
+  const query = String(adminTools.couponSearch || "")
+    .trim()
+    .toLowerCase();
+  return state.managedCoupons.filter((c) => {
+    if (
+      adminTools.couponStatusFilter !== "all" &&
+      c.status !== adminTools.couponStatusFilter
+    ) {
+      return false;
+    }
+
+    if (!query) return true;
+    const code = String(c.code || "").toLowerCase();
+    const target = String(c.targetUserName || "").toLowerCase();
+    const createdBy = String(c.createdByUserName || "").toLowerCase();
+    return (
+      code.includes(query) ||
+      target.includes(query) ||
+      createdBy.includes(query)
+    );
+  });
+});
 const editingManagedUser = computed(() => {
   const id = Number(adminTools.editingUserId || 0);
   if (!id) return null;
@@ -393,6 +428,24 @@ const percent = computed(() =>
   total.value === 0
     ? 0
     : Math.min(100, Math.round((collectedCount.value / total.value) * 100)),
+);
+const dashboardPercentDisplay = computed(() =>
+  Math.max(
+    0,
+    Math.min(100, Math.round(Number(ui.dashboardAnimatedPercent || 0))),
+  ),
+);
+const dashboardTotalDisplay = computed(() =>
+  Math.max(0, Math.round(Number(ui.dashboardAnimatedTotal || 0))),
+);
+const dashboardCollectedDisplay = computed(() =>
+  Math.max(0, Math.round(Number(ui.dashboardAnimatedCollected || 0))),
+);
+const dashboardMissingDisplay = computed(() =>
+  Math.max(0, Math.round(Number(ui.dashboardAnimatedMissing || 0))),
+);
+const dashboardDuplicatesDisplay = computed(() =>
+  Math.max(0, Math.round(Number(ui.dashboardAnimatedDuplicates || 0))),
 );
 const progressTheme = computed(() => {
   if (percent.value >= 76) {
@@ -569,7 +622,151 @@ const packDragStyle = computed(() => ({
 
 let packRevealTimer = null;
 let systemEventsTimer = null;
+let dashboardRingAnimFrame = null;
+let dashboardStatsAnimFrame = null;
 const stickerPhotoCache = new Map();
+
+function stopDashboardRingAnimation() {
+  if (!dashboardRingAnimFrame) return;
+  cancelAnimationFrame(dashboardRingAnimFrame);
+  dashboardRingAnimFrame = null;
+}
+
+function animateDashboardRing(targetValue) {
+  const target = Math.max(0, Math.min(100, Number(targetValue || 0)));
+  const start = Math.max(
+    0,
+    Math.min(100, Number(ui.dashboardAnimatedPercent || 0)),
+  );
+
+  stopDashboardRingAnimation();
+  if (Math.abs(target - start) < 0.2) {
+    ui.dashboardAnimatedPercent = target;
+    return;
+  }
+
+  const durationMs = 560;
+  const startAt = performance.now();
+
+  const tick = (now) => {
+    const progress = Math.min(1, (now - startAt) / durationMs);
+    const eased = 1 - (1 - progress) ** 3;
+    ui.dashboardAnimatedPercent = start + (target - start) * eased;
+
+    if (progress < 1) {
+      dashboardRingAnimFrame = requestAnimationFrame(tick);
+      return;
+    }
+
+    ui.dashboardAnimatedPercent = target;
+    dashboardRingAnimFrame = null;
+  };
+
+  dashboardRingAnimFrame = requestAnimationFrame(tick);
+}
+
+function stopDashboardStatsAnimation() {
+  if (!dashboardStatsAnimFrame) return;
+  cancelAnimationFrame(dashboardStatsAnimFrame);
+  dashboardStatsAnimFrame = null;
+}
+
+function animateDashboardStats(targets) {
+  const start = {
+    total: Number(ui.dashboardAnimatedTotal || 0),
+    collected: Number(ui.dashboardAnimatedCollected || 0),
+    missing: Number(ui.dashboardAnimatedMissing || 0),
+    duplicates: Number(ui.dashboardAnimatedDuplicates || 0),
+  };
+  const end = {
+    total: Math.max(0, Number(targets.total || 0)),
+    collected: Math.max(0, Number(targets.collected || 0)),
+    missing: Math.max(0, Number(targets.missing || 0)),
+    duplicates: Math.max(0, Number(targets.duplicates || 0)),
+  };
+
+  const unchanged =
+    Math.abs(end.total - start.total) < 0.2 &&
+    Math.abs(end.collected - start.collected) < 0.2 &&
+    Math.abs(end.missing - start.missing) < 0.2 &&
+    Math.abs(end.duplicates - start.duplicates) < 0.2;
+
+  stopDashboardStatsAnimation();
+  if (unchanged) {
+    ui.dashboardAnimatedTotal = end.total;
+    ui.dashboardAnimatedCollected = end.collected;
+    ui.dashboardAnimatedMissing = end.missing;
+    ui.dashboardAnimatedDuplicates = end.duplicates;
+    return;
+  }
+
+  const durationMs = 620;
+  const startAt = performance.now();
+
+  const tick = (now) => {
+    const progress = Math.min(1, (now - startAt) / durationMs);
+    const eased = 1 - (1 - progress) ** 3;
+
+    ui.dashboardAnimatedTotal = start.total + (end.total - start.total) * eased;
+    ui.dashboardAnimatedCollected =
+      start.collected + (end.collected - start.collected) * eased;
+    ui.dashboardAnimatedMissing =
+      start.missing + (end.missing - start.missing) * eased;
+    ui.dashboardAnimatedDuplicates =
+      start.duplicates + (end.duplicates - start.duplicates) * eased;
+
+    if (progress < 1) {
+      dashboardStatsAnimFrame = requestAnimationFrame(tick);
+      return;
+    }
+
+    ui.dashboardAnimatedTotal = end.total;
+    ui.dashboardAnimatedCollected = end.collected;
+    ui.dashboardAnimatedMissing = end.missing;
+    ui.dashboardAnimatedDuplicates = end.duplicates;
+    dashboardStatsAnimFrame = null;
+  };
+
+  dashboardStatsAnimFrame = requestAnimationFrame(tick);
+}
+
+watch(
+  [() => state.view, percent],
+  ([view, nextPercent]) => {
+    if (view === "dashboard") {
+      animateDashboardRing(nextPercent);
+      return;
+    }
+
+    stopDashboardRingAnimation();
+    ui.dashboardAnimatedPercent = nextPercent;
+  },
+  { immediate: true },
+);
+
+watch(
+  [() => state.view, total, collectedCount, missing, duplicates],
+  ([view, nextTotal, nextCollected, nextMissing, nextDuplicates]) => {
+    const targets = {
+      total: nextTotal,
+      collected: nextCollected,
+      missing: nextMissing,
+      duplicates: nextDuplicates,
+    };
+
+    if (view === "dashboard") {
+      animateDashboardStats(targets);
+      return;
+    }
+
+    stopDashboardStatsAnimation();
+    ui.dashboardAnimatedTotal = targets.total;
+    ui.dashboardAnimatedCollected = targets.collected;
+    ui.dashboardAnimatedMissing = targets.missing;
+    ui.dashboardAnimatedDuplicates = targets.duplicates;
+  },
+  { immediate: true },
+);
 
 function toErrorPayload(error) {
   if (!error) return { message: "Erro desconhecido" };
@@ -688,6 +885,8 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleGlobalKeydown);
   window.removeEventListener("error", handleGlobalWindowError);
   window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+  stopDashboardRingAnimation();
+  stopDashboardStatsAnimation();
   removePackDragListeners();
   clearPackRevealTimer();
   stopSystemEventsPolling();
@@ -916,6 +1115,7 @@ function clearAuth() {
   state.usedCodes = [];
   state.recentPacks = [];
   state.managedUsers = [];
+  state.managedCoupons = [];
   state.recentCreatedStickers = [];
   state.newStickersUnread = 0;
   state.notifications = [];
@@ -935,12 +1135,17 @@ function clearAuth() {
   adminTools.statusFilter = "all";
   adminTools.page = 1;
   adminTools.editingUserId = "";
+  adminTools.couponSearch = "";
+  adminTools.couponStatusFilter = "all";
   ui.managePanelMsg = "";
   ui.couponPanelMsg = "";
   ui.couponPanelKind = "";
   ui.couponPanelCode = "";
   ui.stickerCreateMsg = "";
   ui.recentStickersMsg = "";
+  ui.adminCouponsMsg = "";
+  ui.adminTab = "overview";
+  ui.deletingCouponId = 0;
   ui.tradeOfferOpen = false;
   ui.tradeTargetEntry = null;
   ui.tradeTargetUser = null;
@@ -1425,6 +1630,47 @@ async function loadManagedUsers() {
   }
 }
 
+async function loadAdminCoupons() {
+  if (!isAuthenticated.value || !isAdmin.value) {
+    state.managedCoupons = [];
+    return;
+  }
+
+  ui.adminCouponsLoading = true;
+  ui.adminCouponsMsg = "";
+  try {
+    const data = await apiFetch("/admin/coupons");
+    state.managedCoupons = Array.isArray(data.coupons) ? data.coupons : [];
+  } catch (err) {
+    ui.adminCouponsMsg = err.message || "Erro ao carregar cupons";
+  } finally {
+    ui.adminCouponsLoading = false;
+  }
+}
+
+async function deleteManagedCoupon(coupon) {
+  if (!isAdmin.value || !coupon?.id) return;
+  if (
+    !confirm(`Excluir o cupom ${coupon.code}? Essa ação não pode ser desfeita.`)
+  ) {
+    return;
+  }
+
+  ui.deletingCouponId = Number(coupon.id);
+  ui.adminCouponsMsg = "";
+  try {
+    await apiFetch(`/admin/coupons/${coupon.id}`, { method: "DELETE" });
+    state.managedCoupons = state.managedCoupons.filter(
+      (item) => Number(item.id) !== Number(coupon.id),
+    );
+    setToast(`Cupom ${coupon.code} excluído`);
+  } catch (err) {
+    ui.adminCouponsMsg = err.message || "Erro ao excluir cupom";
+  } finally {
+    ui.deletingCouponId = 0;
+  }
+}
+
 function openManagedUserEditor(user) {
   const id = Number(user?.id || 0);
   adminTools.editingUserId = id ? String(id) : "";
@@ -1491,6 +1737,9 @@ async function generateManagedCoupon() {
           coupon.targetUserName || "usuário"
         } (${coupon.packs || 1} pacote).`;
     ui.couponPanelKind = coupon.isGeneric ? "generic" : "targeted";
+    if (isAdmin.value) {
+      await loadAdminCoupons();
+    }
   } catch (err) {
     ui.couponPanelMsg = err.message || "Erro ao gerar cupom";
     ui.couponPanelKind = "error";
@@ -2042,6 +2291,9 @@ function handleAdminRefresh() {
   if (!canManageCoupons.value) return;
   loadManagedUsers();
   loadRecentCreatedStickers();
+  if (isAdmin.value) {
+    loadAdminCoupons();
+  }
 }
 
 function openAdminPanelView() {
@@ -2664,29 +2916,62 @@ const filteredTradeAvailable = computed(() => {
       <section v-if="state.view === 'dashboard'" class="panel">
         <div class="panel-head">
           <h2>Visao Geral</h2>
-          <span class="badge-chip">{{ percent }}% completo</span>
+          <span class="badge-chip"
+            >{{ dashboardPercentDisplay }}% completo</span
+          >
         </div>
-        <div class="stats">
-          <article>
-            <strong>{{ total }}</strong>
-            <span>Total</span>
-          </article>
-          <article>
-            <strong>{{ collectedCount }}</strong>
-            <span>Coladas</span>
-          </article>
-          <article>
-            <strong>{{ missing }}</strong>
-            <span>Faltando</span>
-          </article>
-          <article>
-            <strong>{{ duplicates }}</strong>
-            <span>Repetidas</span>
-          </article>
-        </div>
-        <div class="progress-wrap">
-          <div class="progress-label">Album {{ percent }}% completo</div>
-          <div class="progress"><div :style="{ width: `${percent}%` }" /></div>
+        <div class="dashboard-overview">
+          <div
+            class="dashboard-ring"
+            :style="{
+              background: `conic-gradient(var(--progress-b) ${dashboardPercentDisplay}%, rgba(148, 163, 184, 0.28) ${dashboardPercentDisplay}% 100%)`,
+            }"
+          >
+            <div class="dashboard-ring-core">
+              <strong>{{ dashboardPercentDisplay }}%</strong>
+              <span>Album completo</span>
+            </div>
+            <div class="dashboard-ring-orbit orbit-total">
+              <small>Total</small>
+              <strong>{{ dashboardTotalDisplay }}</strong>
+            </div>
+            <div class="dashboard-ring-orbit orbit-new">
+              <small>Coladas</small>
+              <strong>{{ dashboardCollectedDisplay }}</strong>
+            </div>
+            <div class="dashboard-ring-orbit orbit-missing">
+              <small>Faltando</small>
+              <strong>{{ dashboardMissingDisplay }}</strong>
+            </div>
+            <div class="dashboard-ring-orbit orbit-dup">
+              <small>Repetidas</small>
+              <strong>{{ dashboardDuplicatesDisplay }}</strong>
+            </div>
+          </div>
+
+          <div class="dashboard-legend">
+            <article>
+              <span class="dot dot-collected" />
+              <div>
+                <strong>{{ dashboardCollectedDisplay }}</strong>
+                <small>Figurinhas coladas</small>
+              </div>
+            </article>
+            <article>
+              <span class="dot dot-missing" />
+              <div>
+                <strong>{{ dashboardMissingDisplay }}</strong>
+                <small>Ainda faltando</small>
+              </div>
+            </article>
+            <article>
+              <span class="dot dot-duplicates" />
+              <div>
+                <strong>{{ dashboardDuplicatesDisplay }}</strong>
+                <small>Repetidas para troca</small>
+              </div>
+            </article>
+          </div>
         </div>
         <div v-if="isAuthenticated" class="history">
           <h3>Historico de pacotinhos</h3>
@@ -2746,6 +3031,25 @@ const filteredTradeAvailable = computed(() => {
           </article>
         </div>
 
+        <div v-if="isAdmin" class="admin-subtabs">
+          <button
+            type="button"
+            class="admin-subtab-btn"
+            :class="{ active: ui.adminTab === 'overview' }"
+            @click="ui.adminTab = 'overview'"
+          >
+            Geral
+          </button>
+          <button
+            type="button"
+            class="admin-subtab-btn"
+            :class="{ active: ui.adminTab === 'coupons' }"
+            @click="ui.adminTab = 'coupons'"
+          >
+            Cupons
+          </button>
+        </div>
+
         <div class="manage-panel admin-panel-shell">
           <p v-if="ui.managePanelLoading" class="read-only-hint">
             Carregando usuários...
@@ -2754,337 +3058,426 @@ const filteredTradeAvailable = computed(() => {
             {{ ui.managePanelMsg }}
           </p>
 
-          <div v-if="isAdmin" class="manage-create-sticker-box">
-            <h4>Criar nova figurinha</h4>
-            <div class="manage-create-sticker-form">
-              <input
-                v-model.trim="adminStickerForm.name"
-                type="text"
-                placeholder="Nome da figurinha"
-              />
-              <select v-model="adminStickerForm.icon">
-                <option
-                  v-for="opt in ADMIN_ICON_OPTIONS"
-                  :key="opt.value"
-                  :value="opt.value"
-                >
-                  {{ opt.label }}
-                </option>
-              </select>
-              <select v-model="adminStickerForm.teamId">
-                <option value="">Especial (sem time)</option>
-                <option
-                  v-for="team in adminTeamOptions"
-                  :key="team.teamId"
-                  :value="team.teamId"
-                >
-                  {{ team.teamName }} ({{ team.sectionName }})
-                </option>
-              </select>
-              <input
-                type="file"
-                accept="image/*"
-                @change="handleAdminStickerImageUpload"
-              />
-              <button type="button" @click="createCustomSticker">
-                Criar Figurinha
-              </button>
-            </div>
-            <div
-              v-if="adminStickerForm.image"
-              class="manage-sticker-upload-preview"
-            >
-              <img
-                :src="adminStickerForm.image"
-                alt="Preview da figurinha"
-                class="manage-sticker-upload-thumb"
-              />
-              <small>
-                {{ adminStickerForm.imageFileName || "Imagem selecionada" }}
-              </small>
-              <button type="button" @click="clearAdminStickerImage">
-                Remover imagem
-              </button>
-            </div>
-            <p v-if="ui.stickerCreateMsg" class="read-only-hint">
-              {{ ui.stickerCreateMsg }}
-            </p>
-          </div>
-
-          <div v-if="isAdmin" class="manage-created-stickers-box">
-            <h4>Últimas figurinhas criadas</h4>
-            <p v-if="ui.recentStickersLoading" class="read-only-hint">
-              Carregando histórico de figurinhas...
-            </p>
-            <p v-else-if="ui.recentStickersMsg" class="read-only-hint">
-              {{ ui.recentStickersMsg }}
-            </p>
-            <ul
-              v-else-if="state.recentCreatedStickers.length > 0"
-              class="recent-stickers-list"
-            >
-              <li
-                v-for="item in state.recentCreatedStickers"
-                :key="item.id"
-                class="recent-sticker-item"
-              >
-                <span class="recent-sticker-main">
-                  #{{ item.num }} {{ item.icon || "🎟️" }} {{ item.name }}
-                </span>
-                <small>
-                  {{ item.teamName || "Especial" }} •
-                  {{ item.createdByUserName || "Admin" }} •
-                  {{ formatDateTime(item.createdAt) }}
-                </small>
-                <button
-                  type="button"
-                  class="recent-sticker-delete-btn"
-                  title="Excluir figurinha"
-                  @click="deleteCustomSticker(item.id, item.name)"
-                >
-                  🗑️
+          <template v-if="!isAdmin || ui.adminTab === 'overview'">
+            <div v-if="isAdmin" class="manage-create-sticker-box">
+              <h4>Criar nova figurinha</h4>
+              <div class="manage-create-sticker-form">
+                <input
+                  v-model.trim="adminStickerForm.name"
+                  type="text"
+                  placeholder="Nome da figurinha"
+                />
+                <select v-model="adminStickerForm.icon">
+                  <option
+                    v-for="opt in ADMIN_ICON_OPTIONS"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <select v-model="adminStickerForm.teamId">
+                  <option value="">Especial (sem time)</option>
+                  <option
+                    v-for="team in adminTeamOptions"
+                    :key="team.teamId"
+                    :value="team.teamId"
+                  >
+                    {{ team.teamName }} ({{ team.sectionName }})
+                  </option>
+                </select>
+                <input
+                  type="file"
+                  accept="image/*"
+                  @change="handleAdminStickerImageUpload"
+                />
+                <button type="button" @click="createCustomSticker">
+                  Criar Figurinha
                 </button>
-              </li>
-            </ul>
-            <p v-else class="read-only-hint">Nenhuma figurinha criada ainda.</p>
-          </div>
+              </div>
+              <div
+                v-if="adminStickerForm.image"
+                class="manage-sticker-upload-preview"
+              >
+                <img
+                  :src="adminStickerForm.image"
+                  alt="Preview da figurinha"
+                  class="manage-sticker-upload-thumb"
+                />
+                <small>
+                  {{ adminStickerForm.imageFileName || "Imagem selecionada" }}
+                </small>
+                <button type="button" @click="clearAdminStickerImage">
+                  Remover imagem
+                </button>
+              </div>
+              <p v-if="ui.stickerCreateMsg" class="read-only-hint">
+                {{ ui.stickerCreateMsg }}
+              </p>
+            </div>
 
-          <div class="manage-coupon-box">
-            <h4>Gerar cupom para pacote</h4>
-            <p v-if="!isAdmin" class="read-only-hint">
-              Como servidor, o limite é 1 cupom por dia para o mesmo usuário,
-              com 1 a 3 pacotes por cupom.
-            </p>
-            <div class="manage-coupon-form">
-              <select v-model="adminTools.targetUserId">
-                <option value="">Cupom livre (qualquer usuário)</option>
-                <option
-                  v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
-                  :key="u.id"
-                  :value="String(u.id)"
+            <div v-if="isAdmin" class="manage-created-stickers-box">
+              <h4>Últimas figurinhas criadas</h4>
+              <p v-if="ui.recentStickersLoading" class="read-only-hint">
+                Carregando histórico de figurinhas...
+              </p>
+              <p v-else-if="ui.recentStickersMsg" class="read-only-hint">
+                {{ ui.recentStickersMsg }}
+              </p>
+              <ul
+                v-else-if="state.recentCreatedStickers.length > 0"
+                class="recent-stickers-list"
+              >
+                <li
+                  v-for="item in state.recentCreatedStickers"
+                  :key="item.id"
+                  class="recent-sticker-item"
                 >
-                  {{ u.name }} ({{ u.role }})
-                </option>
-              </select>
-              <input
-                v-if="canManageCoupons"
-                v-model.number="adminTools.packs"
-                type="number"
-                min="1"
-                :max="isAdmin ? 100 : 3"
-                placeholder="Pacotes"
-              />
-              <button type="button" @click="generateManagedCoupon">
-                Gerar Cupom
-              </button>
+                  <span class="recent-sticker-main">
+                    #{{ item.num }} {{ item.icon || "🎟️" }} {{ item.name }}
+                  </span>
+                  <small>
+                    {{ item.teamName || "Especial" }} •
+                    {{ item.createdByUserName || "Admin" }} •
+                    {{ formatDateTime(item.createdAt) }}
+                  </small>
+                  <button
+                    type="button"
+                    class="recent-sticker-delete-btn"
+                    title="Excluir figurinha"
+                    @click="deleteCustomSticker(item.id, item.name)"
+                  >
+                    🗑️
+                  </button>
+                </li>
+              </ul>
+              <p v-else class="read-only-hint">
+                Nenhuma figurinha criada ainda.
+              </p>
             </div>
-            <div v-if="ui.couponPanelKind" class="coupon-feedback-row">
-              <span class="coupon-kind-badge" :class="ui.couponPanelKind">
-                {{
-                  ui.couponPanelKind === "generic"
-                    ? "Cupom livre"
-                    : ui.couponPanelKind === "targeted"
-                      ? "Cupom direcionado"
-                      : "Erro"
-                }}
-              </span>
-              <span v-if="ui.couponPanelCode" class="coupon-code-chip">
-                {{ ui.couponPanelCode }}
-              </span>
-            </div>
-            <p v-if="ui.couponPanelMsg" class="read-only-hint">
-              {{ ui.couponPanelMsg }}
-            </p>
-          </div>
 
-          <div v-if="isAdmin" class="manage-users-box">
-            <h4>Gerenciar usuários</h4>
+            <div class="manage-coupon-box">
+              <h4>Gerar cupom para pacote</h4>
+              <p v-if="!isAdmin" class="read-only-hint">
+                Como servidor, o limite é 1 cupom por dia para o mesmo usuário,
+                com 1 a 3 pacotes por cupom.
+              </p>
+              <div class="manage-coupon-form">
+                <select v-model="adminTools.targetUserId">
+                  <option value="">Cupom livre (qualquer usuário)</option>
+                  <option
+                    v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
+                    :key="u.id"
+                    :value="String(u.id)"
+                  >
+                    {{ u.name }} ({{ u.role }})
+                  </option>
+                </select>
+                <input
+                  v-if="canManageCoupons"
+                  v-model.number="adminTools.packs"
+                  type="number"
+                  min="1"
+                  :max="isAdmin ? 100 : 3"
+                  placeholder="Pacotes"
+                />
+                <button type="button" @click="generateManagedCoupon">
+                  Gerar Cupom
+                </button>
+              </div>
+              <div v-if="ui.couponPanelKind" class="coupon-feedback-row">
+                <span class="coupon-kind-badge" :class="ui.couponPanelKind">
+                  {{
+                    ui.couponPanelKind === "generic"
+                      ? "Cupom livre"
+                      : ui.couponPanelKind === "targeted"
+                        ? "Cupom direcionado"
+                        : "Erro"
+                  }}
+                </span>
+                <span v-if="ui.couponPanelCode" class="coupon-code-chip">
+                  {{ ui.couponPanelCode }}
+                </span>
+              </div>
+              <p v-if="ui.couponPanelMsg" class="read-only-hint">
+                {{ ui.couponPanelMsg }}
+              </p>
+            </div>
+
+            <div v-if="isAdmin" class="manage-users-box">
+              <h4>Gerenciar usuários</h4>
+              <div class="manage-users-toolbar">
+                <input
+                  v-model.trim="adminTools.search"
+                  type="search"
+                  placeholder="Buscar por nome ou email"
+                  @input="setManagedUsersPage(1)"
+                />
+                <select
+                  v-model="adminTools.roleFilter"
+                  @change="setManagedUsersPage(1)"
+                >
+                  <option value="all">Todos os perfis</option>
+                  <option value="admin">admin</option>
+                  <option value="servidor">servidor</option>
+                  <option value="jogador">jogador</option>
+                </select>
+                <select
+                  v-model="adminTools.statusFilter"
+                  @change="setManagedUsersPage(1)"
+                >
+                  <option value="all">Todos os status</option>
+                  <option value="active">Ativos</option>
+                  <option value="blocked">Bloqueados</option>
+                </select>
+              </div>
+
+              <div class="admin-users-table-wrap">
+                <table class="admin-users-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button
+                          type="button"
+                          @click="setManagedUsersSort('name')"
+                        >
+                          Usuário
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          @click="setManagedUsersSort('role')"
+                        >
+                          Perfil
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          @click="setManagedUsersSort('status')"
+                        >
+                          Status
+                        </button>
+                      </th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="managedUsersPaged.length === 0">
+                      <td colspan="4">Nenhum usuário encontrado.</td>
+                    </tr>
+                    <tr
+                      v-for="u in managedUsersPaged"
+                      :key="u.id"
+                      :class="{
+                        selected:
+                          Number(adminTools.editingUserId) === Number(u.id),
+                      }"
+                    >
+                      <td>
+                        <strong>{{ u.name }}</strong>
+                        <small>{{ u.email }}</small>
+                      </td>
+                      <td>
+                        <span class="table-pill">{{ u.role }}</span>
+                      </td>
+                      <td>
+                        <span
+                          class="table-pill"
+                          :class="u.isBlocked ? 'blocked' : 'active'"
+                        >
+                          {{ u.isBlocked ? "bloqueado" : "ativo" }}
+                        </span>
+                      </td>
+                      <td>
+                        <button type="button" @click="openManagedUserEditor(u)">
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="admin-pagination">
+                <div>
+                  <small>
+                    Exibindo {{ managedUsersPageFrom }}-{{ managedUsersPageTo }}
+                    de
+                    {{ managedUsersSorted.length }}
+                  </small>
+                  <label class="page-size-label">
+                    Itens por página
+                    <select
+                      :value="adminTools.pageSize"
+                      @change="setManagedUsersPageSize($event.target.value)"
+                    >
+                      <option :value="5">5</option>
+                      <option :value="8">8</option>
+                      <option :value="10">10</option>
+                      <option :value="20">20</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="managedUsersSafePage <= 1"
+                    @click="setManagedUsersPage(managedUsersSafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span>
+                    Página {{ managedUsersSafePage }} de
+                    {{ managedUsersPageCount }}
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="managedUsersSafePage >= managedUsersPageCount"
+                    @click="setManagedUsersPage(managedUsersSafePage + 1)"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+
+              <article v-if="editingManagedUser" class="manage-user-card">
+                <header>
+                  <strong>{{ editingManagedUser.name }}</strong>
+                  <small>{{ editingManagedUser.email }}</small>
+                </header>
+                <div class="manage-user-grid">
+                  <label>
+                    Perfil
+                    <select v-model="editingManagedUser.draftRole">
+                      <option value="admin">admin</option>
+                      <option value="servidor">servidor</option>
+                      <option value="jogador">jogador</option>
+                    </select>
+                  </label>
+                  <label class="manage-user-check">
+                    <input
+                      v-model="editingManagedUser.draftBlocked"
+                      type="checkbox"
+                    />
+                    Bloquear acesso
+                  </label>
+                </div>
+                <input
+                  v-if="editingManagedUser.draftBlocked"
+                  v-model="editingManagedUser.draftBlockedReason"
+                  type="text"
+                  placeholder="Motivo do bloqueio"
+                />
+                <div class="manage-user-actions">
+                  <button
+                    type="button"
+                    @click="saveManagedUser(editingManagedUser)"
+                  >
+                    Salvar perfil
+                  </button>
+                </div>
+                <div class="manage-user-password">
+                  <input
+                    v-model="editingManagedUser.newPassword"
+                    type="password"
+                    placeholder="Nova senha (min. 6)"
+                  />
+                  <button
+                    type="button"
+                    @click="changeManagedUserPassword(editingManagedUser)"
+                  >
+                    Alterar senha
+                  </button>
+                </div>
+              </article>
+            </div>
+          </template>
+
+          <div
+            v-if="isAdmin && ui.adminTab === 'coupons'"
+            class="manage-users-box"
+          >
+            <h4>Todos os cupons gerados</h4>
             <div class="manage-users-toolbar">
               <input
-                v-model.trim="adminTools.search"
+                v-model.trim="adminTools.couponSearch"
                 type="search"
-                placeholder="Buscar por nome ou email"
-                @input="setManagedUsersPage(1)"
+                placeholder="Buscar por código, usuário alvo ou criador"
               />
-              <select
-                v-model="adminTools.roleFilter"
-                @change="setManagedUsersPage(1)"
-              >
-                <option value="all">Todos os perfis</option>
-                <option value="admin">admin</option>
-                <option value="servidor">servidor</option>
-                <option value="jogador">jogador</option>
-              </select>
-              <select
-                v-model="adminTools.statusFilter"
-                @change="setManagedUsersPage(1)"
-              >
+              <select v-model="adminTools.couponStatusFilter">
                 <option value="all">Todos os status</option>
                 <option value="active">Ativos</option>
-                <option value="blocked">Bloqueados</option>
+                <option value="redeemed">Resgatados</option>
               </select>
             </div>
 
-            <div class="admin-users-table-wrap">
+            <p v-if="ui.adminCouponsLoading" class="read-only-hint">
+              Carregando cupons...
+            </p>
+            <p v-else-if="ui.adminCouponsMsg" class="read-only-hint">
+              {{ ui.adminCouponsMsg }}
+            </p>
+
+            <div v-else class="admin-users-table-wrap">
               <table class="admin-users-table">
                 <thead>
                   <tr>
-                    <th>
-                      <button
-                        type="button"
-                        @click="setManagedUsersSort('name')"
-                      >
-                        Usuário
-                      </button>
-                    </th>
-                    <th>
-                      <button
-                        type="button"
-                        @click="setManagedUsersSort('role')"
-                      >
-                        Perfil
-                      </button>
-                    </th>
-                    <th>
-                      <button
-                        type="button"
-                        @click="setManagedUsersSort('status')"
-                      >
-                        Status
-                      </button>
-                    </th>
+                    <th>Código</th>
+                    <th>Tipo</th>
+                    <th>Pacotes</th>
+                    <th>Alvo</th>
+                    <th>Criado por</th>
+                    <th>Status</th>
+                    <th>Criado em</th>
                     <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-if="managedUsersPaged.length === 0">
-                    <td colspan="4">Nenhum usuário encontrado.</td>
+                  <tr v-if="filteredManagedCoupons.length === 0">
+                    <td colspan="8">Nenhum cupom encontrado.</td>
                   </tr>
-                  <tr
-                    v-for="u in managedUsersPaged"
-                    :key="u.id"
-                    :class="{
-                      selected:
-                        Number(adminTools.editingUserId) === Number(u.id),
-                    }"
-                  >
+                  <tr v-for="coupon in filteredManagedCoupons" :key="coupon.id">
                     <td>
-                      <strong>{{ u.name }}</strong>
-                      <small>{{ u.email }}</small>
+                      <strong>{{ coupon.code }}</strong>
                     </td>
                     <td>
-                      <span class="table-pill">{{ u.role }}</span>
+                      <span class="table-pill">
+                        {{ coupon.isGeneric ? "livre" : "direcionado" }}
+                      </span>
                     </td>
+                    <td>{{ coupon.packs }}</td>
+                    <td>{{ coupon.targetUserName || "-" }}</td>
+                    <td>{{ coupon.createdByUserName || "-" }}</td>
                     <td>
                       <span
                         class="table-pill"
-                        :class="u.isBlocked ? 'blocked' : 'active'"
+                        :class="
+                          coupon.status === 'active' ? 'active' : 'blocked'
+                        "
                       >
-                        {{ u.isBlocked ? "bloqueado" : "ativo" }}
+                        {{ coupon.status === "active" ? "ativo" : "resgatado" }}
                       </span>
                     </td>
+                    <td>{{ formatDateTime(coupon.createdAt) }}</td>
                     <td>
-                      <button type="button" @click="openManagedUserEditor(u)">
-                        Editar
+                      <button
+                        type="button"
+                        :disabled="ui.deletingCouponId === Number(coupon.id)"
+                        @click="deleteManagedCoupon(coupon)"
+                      >
+                        {{
+                          ui.deletingCouponId === Number(coupon.id)
+                            ? "Excluindo..."
+                            : "Excluir"
+                        }}
                       </button>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-
-            <div class="admin-pagination">
-              <div>
-                <small>
-                  Exibindo {{ managedUsersPageFrom }}-{{ managedUsersPageTo }}
-                  de
-                  {{ managedUsersSorted.length }}
-                </small>
-                <label class="page-size-label">
-                  Itens por página
-                  <select
-                    :value="adminTools.pageSize"
-                    @change="setManagedUsersPageSize($event.target.value)"
-                  >
-                    <option :value="5">5</option>
-                    <option :value="8">8</option>
-                    <option :value="10">10</option>
-                    <option :value="20">20</option>
-                  </select>
-                </label>
-              </div>
-              <div class="admin-pagination-actions">
-                <button
-                  type="button"
-                  :disabled="managedUsersSafePage <= 1"
-                  @click="setManagedUsersPage(managedUsersSafePage - 1)"
-                >
-                  Anterior
-                </button>
-                <span>
-                  Página {{ managedUsersSafePage }} de
-                  {{ managedUsersPageCount }}
-                </span>
-                <button
-                  type="button"
-                  :disabled="managedUsersSafePage >= managedUsersPageCount"
-                  @click="setManagedUsersPage(managedUsersSafePage + 1)"
-                >
-                  Próxima
-                </button>
-              </div>
-            </div>
-
-            <article v-if="editingManagedUser" class="manage-user-card">
-              <header>
-                <strong>{{ editingManagedUser.name }}</strong>
-                <small>{{ editingManagedUser.email }}</small>
-              </header>
-              <div class="manage-user-grid">
-                <label>
-                  Perfil
-                  <select v-model="editingManagedUser.draftRole">
-                    <option value="admin">admin</option>
-                    <option value="servidor">servidor</option>
-                    <option value="jogador">jogador</option>
-                  </select>
-                </label>
-                <label class="manage-user-check">
-                  <input
-                    v-model="editingManagedUser.draftBlocked"
-                    type="checkbox"
-                  />
-                  Bloquear acesso
-                </label>
-              </div>
-              <input
-                v-if="editingManagedUser.draftBlocked"
-                v-model="editingManagedUser.draftBlockedReason"
-                type="text"
-                placeholder="Motivo do bloqueio"
-              />
-              <div class="manage-user-actions">
-                <button
-                  type="button"
-                  @click="saveManagedUser(editingManagedUser)"
-                >
-                  Salvar perfil
-                </button>
-              </div>
-              <div class="manage-user-password">
-                <input
-                  v-model="editingManagedUser.newPassword"
-                  type="password"
-                  placeholder="Nova senha (min. 6)"
-                />
-                <button
-                  type="button"
-                  @click="changeManagedUserPassword(editingManagedUser)"
-                >
-                  Alterar senha
-                </button>
-              </div>
-            </article>
           </div>
         </div>
       </section>

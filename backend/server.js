@@ -1129,6 +1129,67 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
     }
 });
 
+app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const coupons = await all(
+            `SELECT c.id, c.code, c.packs_added, c.is_generic, c.status, c.created_at, c.redeemed_at,
+                    c.target_user_id, c.created_by_user_id,
+                    tu.name AS target_user_name,
+                    cu.name AS created_by_user_name
+             FROM user_coupons c
+             LEFT JOIN users tu ON tu.id = c.target_user_id
+             LEFT JOIN users cu ON cu.id = c.created_by_user_id
+             ORDER BY c.created_at DESC, c.id DESC`
+        );
+
+        return res.json({
+            coupons: coupons.map((c) => ({
+                id: c.id,
+                code: c.code,
+                packs: Number(c.packs_added || 1),
+                isGeneric: Number(c.is_generic || 0) === 1,
+                status: c.status || "active",
+                createdAt: c.created_at,
+                redeemedAt: c.redeemed_at,
+                targetUserId: c.target_user_id,
+                targetUserName: c.target_user_name || null,
+                createdByUserId: c.created_by_user_id,
+                createdByUserName: c.created_by_user_name || null,
+            })),
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao listar cupons", detail: err.message });
+    }
+});
+
+app.delete("/api/admin/coupons/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const couponId = Number(req.params.id || 0);
+        if (!couponId) return res.status(400).json({ error: "id invalido" });
+
+        const coupon = await get(
+            `SELECT id, code, status
+             FROM user_coupons
+             WHERE id = ?`,
+            [couponId]
+        );
+        if (!coupon) return res.status(404).json({ error: "Cupom nao encontrado" });
+
+        await run("DELETE FROM user_coupons WHERE id = ?", [couponId]);
+
+        return res.json({
+            ok: true,
+            deletedCoupon: {
+                id: coupon.id,
+                code: coupon.code,
+                status: coupon.status,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao excluir cupom", detail: err.message });
+    }
+});
+
 app.get("/api/admin/users", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
     try {
         const users = await all(
