@@ -522,6 +522,20 @@ function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
 }
 
+// Peso menor para figurinhas especiais: 10% da chance de uma figurinha normal.
+const ESPECIAL_WEIGHT = 0.1;
+
+function pickRandomWeighted(list) {
+    const weights = list.map((s) => (s.section === "especial" ? ESPECIAL_WEIGHT : 1));
+    const total = weights.reduce((sum, w) => sum + w, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < list.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return list[i];
+    }
+    return list[list.length - 1];
+}
+
 async function initDb() {
     await run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -1445,7 +1459,7 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
         for (let i = 0; i < 5; i++) {
             const forceRepeat = collected.length > 0 && (missing.length === 0 || Math.random() < 0.3);
             const pool = forceRepeat ? collected : (missing.length > 0 ? missing : STICKERS);
-            const sticker = pickRandom(pool);
+            const sticker = pickRandomWeighted(pool);
             pack.push(sticker);
             wasOwned.push((collectedMap[sticker.id] || 0) >= 1);
             collectedMap[sticker.id] = (collectedMap[sticker.id] || 0) + 1;

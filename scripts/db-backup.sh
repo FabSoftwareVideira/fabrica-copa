@@ -2,9 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
-DB_FILE="${DB_FILE:-$DATA_DIR/album.db}"
-BACKUP_DIR="${BACKUP_DIR:-$DATA_DIR/backups}"
+DB_FILE="${DB_FILE:-${HOST_DB_DIR:-/srv/fabrica-copa-data}/album.db}"
+BACKUP_DIR="${BACKUP_DIR:-${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}}"
 
 mkdir -p "$BACKUP_DIR"
 
