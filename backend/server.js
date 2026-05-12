@@ -51,7 +51,7 @@ const db = new sqlite3.Database(dbPath);
 const googleOAuthClient = new OAuth2Client();
 const uploadsDir = path.join(__dirname, "uploads");
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-const API_BASE_SERVER_URL = `${PUBLIC_BASE_URL.replace(/\/$/, "")}/api`;
+const API_BASE_SERVER_URL = `${PUBLIC_BASE_URL.replace(/\/$/, "")}/`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
