@@ -1937,7 +1937,7 @@ app.get("/api/trade/users/:userId/duplicates", authMiddleware, async (req, res) 
         const userId = Number(req.params.userId);
         if (!userId) return res.status(400).json({ error: "userId invalido" });
 
-        const user = await get("SELECT id, name FROM users WHERE id = ?", [userId]);
+        const user = await get("SELECT id, name FROM users WHERE id = ? AND is_blocked = 0", [userId]);
         if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
 
         const { state } = await getAlbumState(userId);
@@ -1957,7 +1957,7 @@ app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, r
         if (!userId) return res.status(400).json({ error: "userId invalido" });
         if (userId === req.user.sub) return res.status(400).json({ error: "Nao pode consultar a si mesmo" });
 
-        const user = await get("SELECT id, name FROM users WHERE id = ?", [userId]);
+        const user = await get("SELECT id, name FROM users WHERE id = ? AND is_blocked = 0", [userId]);
         if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
 
         const { state: myState } = await getAlbumState(req.user.sub);
@@ -1996,8 +1996,11 @@ app.post("/api/trade/offers", authMiddleware, async (req, res) => {
             return res.status(400).json({ error: "Voce precisa ter ao menos uma figurinha repetida para oferecer" });
         }
 
-        const toUserRow = await get("SELECT id FROM users WHERE id = ?", [Number(toUserId)]);
+        const toUserRow = await get("SELECT id, is_blocked FROM users WHERE id = ?", [Number(toUserId)]);
         if (!toUserRow) return res.status(404).json({ error: "Usuario destino nao encontrado" });
+        if (Number(toUserRow.is_blocked || 0) === 1) {
+            return res.status(400).json({ error: "Nao e possivel trocar com usuario bloqueado" });
+        }
 
         const { state: toState } = await getAlbumState(Number(toUserId));
         if ((toState.collected[requestedStickerId] || 0) <= 1) {
@@ -2044,7 +2047,7 @@ app.get("/api/trade/offers", authMiddleware, async (req, res) => {
                     u.name AS from_user_name
              FROM trade_offers o
              JOIN users u ON u.id = o.from_user_id
-             WHERE o.to_user_id = ? AND o.status = 'pending'
+             WHERE o.to_user_id = ? AND o.status = 'pending' AND u.is_blocked = 0
              ORDER BY o.created_at DESC`,
             [req.user.sub]
         );
@@ -2054,7 +2057,7 @@ app.get("/api/trade/offers", authMiddleware, async (req, res) => {
                     u.name AS to_user_name
              FROM trade_offers o
              JOIN users u ON u.id = o.to_user_id
-             WHERE o.from_user_id = ? AND o.status = 'pending'
+             WHERE o.from_user_id = ? AND o.status = 'pending' AND u.is_blocked = 0
              ORDER BY o.created_at DESC`,
             [req.user.sub]
         );
@@ -2081,7 +2084,12 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
     try {
         const offerId = Number(req.params.id);
         const offer = await get(
-            "SELECT * FROM trade_offers WHERE id = ? AND to_user_id = ? AND status = 'pending'",
+            `SELECT o.*
+             FROM trade_offers o
+             JOIN users uf ON uf.id = o.from_user_id
+             JOIN users ut ON ut.id = o.to_user_id
+             WHERE o.id = ? AND o.to_user_id = ? AND o.status = 'pending'
+               AND uf.is_blocked = 0 AND ut.is_blocked = 0`,
             [offerId, req.user.sub]
         );
         if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
@@ -2223,7 +2231,7 @@ app.get("/api/trade/available", authMiddleware, async (req, res) => {
         const { state: myState } = await getAlbumState(req.user.sub);
         const myCollected = myState.collected || {};
 
-        const users = await all("SELECT id, name FROM users WHERE id != ?", [req.user.sub]);
+        const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
 
         const stickerOffers = new Map();
 
