@@ -95,8 +95,8 @@ services:
     volumes:
       - ./backend/uploads:/app/backend/uploads
       - ./scripts:/app/scripts:ro
-      - ./backups:/backups
-      - ./data:/app/data
+      - ${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}:/backups
+      - ${HOST_DB_DIR:-/srv/fabrica-copa-data}:/app/data
     command: npm start
     init: true
     ports:

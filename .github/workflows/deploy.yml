@@ -96,6 +96,13 @@ jobs:
           echo "Imagem: $IMAGE_NAME"
           echo "Commit: $GIT_COMMIT"
 
+          export HOST_DB_DIR="${HOST_DB_DIR:-/srv/fabrica-copa-data}"
+          export HOST_BACKUP_DIR="${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}"
+          echo "Garantindo diretório persistente do banco no host: $HOST_DB_DIR"
+          mkdir -p "$HOST_DB_DIR"
+          echo "Garantindo diretório persistente de backups no host: $HOST_BACKUP_DIR"
+          mkdir -p "$HOST_BACKUP_DIR"
+
           echo "Exportando variáveis de build do frontend/.env para o ambiente..."
           # Exporta apenas as variáveis VITE_ necessárias como build args do Docker Compose
           set -a
