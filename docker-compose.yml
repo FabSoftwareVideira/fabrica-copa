@@ -93,10 +93,10 @@ services:
       DB_PATH: /app/data/album.db
       BACKUP_DIR: /backups
     volumes:
-      - ./backend/uploads:/app/backend/uploads
       - ./scripts:/app/scripts:ro
-      - ${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}:/backups
       - ${HOST_DB_DIR:-/srv/fabrica-copa-data}:/app/data
+      - ${HOST_UPLOAD_DIR:-/srv/fabrica-copa-data/uploads}:/app/backend/uploads
+      - ${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}:/backups
     command: npm start
     init: true
     ports:

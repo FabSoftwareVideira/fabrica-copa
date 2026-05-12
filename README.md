@@ -56,6 +56,14 @@ PORT=3001
 JWT_SECRET=troque-este-segredo
 CORS_ORIGIN=http://localhost:5173
 GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
+
+# Auth
+ACCESS_TOKEN_TTL=15m
+REFRESH_TOKEN_TTL_DAYS=30
+
+<!-- Apenas para modo production -->
+HOST_BACKUP_DIR=/caminho/no/host/para/backups
+HOST_DB_DIR=/caminho/no/host/para/data
 ```
 
 ### 2) Rodar com Docker (recomendado)
