@@ -31,10 +31,16 @@ export default defineConfig(({ mode }) => {
                     lang: "pt-BR",
                     icons: [
                         {
-                            src: "album-logo.webp",
+                            src: "favicon/android-chrome-192x192.png",
+                            sizes: "192x192",
+                            type: "image/png",
+                            purpose: "any",
+                        },
+                        {
+                            src: "favicon/android-chrome-512x512.png",
                             sizes: "512x512",
-                            type: "image/webp",
-                            purpose: "any maskable",
+                            type: "image/png",
+                            purpose: "maskable",
                         },
                     ],
                 },
