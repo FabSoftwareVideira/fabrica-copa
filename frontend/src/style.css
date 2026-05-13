@@ -724,6 +724,34 @@ button:disabled {
   letter-spacing: 0.02em;
   color: #475569;
 }
+
+.dashboard-ring-coins {
+  justify-self: center;
+  margin-top: 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.14rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(234, 179, 8, 0.32);
+  background: linear-gradient(
+    135deg,
+    rgba(234, 179, 8, 0.15),
+    rgba(245, 158, 11, 0.1)
+  );
+  color: #7c2d12;
+}
+
+.dashboard-ring-coins-icon {
+  font-size: 1.78rem;
+  /* line-height: 1; */
+}
+
+.dashboard-ring-coins strong {
+  font-size: 0.98rem;
+  line-height: 1;
+  color: #7c2d12;
+}
 .dashboard-ring-orbit {
   position: absolute;
   z-index: 2;
@@ -2016,6 +2044,7 @@ button:disabled {
   .filters,
   .trade-filters,
   .trade-tabs,
+  .trade-coins-legend-actions,
   .trade-modal-actions,
   .trade-offer-actions {
     flex-direction: column;
@@ -2025,6 +2054,7 @@ button:disabled {
   .trade-filters input,
   .trade-filters select,
   .trade-tabs button,
+  .trade-coins-legend .trade-accept-btn,
   .trade-modal-actions button,
   .trade-offer-actions button {
     width: 100%;
@@ -2289,6 +2319,39 @@ button:disabled {
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+}
+
+.trade-coins-legend {
+  display: grid;
+  gap: 0.6rem;
+  border: 1px solid rgba(234, 179, 8, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(250, 204, 21, 0.08),
+    rgba(245, 158, 11, 0.08)
+  );
+  border-radius: 12px;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.9rem;
+  color: #78350f;
+  font-size: 0.86rem;
+}
+
+.trade-coins-legend-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.trade-coins-balance {
+  font-weight: 700;
+  color: #92400e;
+}
+
+.trade-coins-legend .trade-accept-btn {
+  min-width: 220px;
 }
 
 .trade-filters {

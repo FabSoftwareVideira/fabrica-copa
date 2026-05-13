@@ -789,6 +789,7 @@ async function getAlbumState(userId) {
             packsUsedDate: row.packs_used_date || "",
             packsUsedToday: row.packs_used_today || 0,
             extraPacks: row.extra_packs || 0,
+            tradeCoins: Number(row.trade_coins || 0),
             usedCodes: parseJSON(row.used_codes_json || "[]", []),
         },
     };
@@ -903,11 +904,13 @@ async function initDb() {
       packs_used_date TEXT NOT NULL DEFAULT '',
       packs_used_today INTEGER NOT NULL DEFAULT 0,
       extra_packs INTEGER NOT NULL DEFAULT 0,
+            trade_coins INTEGER NOT NULL DEFAULT 0,
       used_codes_json TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+    await ensureColumn("album_states", "trade_coins", "INTEGER NOT NULL DEFAULT 0");
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -1483,6 +1486,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
           packs_used_date = ?,
           packs_used_today = ?,
           extra_packs = ?,
+          trade_coins = ?,
           used_codes_json = ?,
           updated_at = ?
       WHERE user_id = ?
@@ -1492,6 +1496,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
                 row.packs_used_date || "",
                 row.packs_used_today || 0,
                 row.extra_packs || 0,
+                Number(row.trade_coins || 0),
                 row.used_codes_json || "[]",
                 updatedAt,
                 req.user.sub,
@@ -2421,7 +2426,7 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [JSON.stringify(fromCollected), nowTimestamp, offer.from_user_id]
         );
         await run(
-            "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
+            "UPDATE album_states SET collected_json = ?, trade_coins = trade_coins + 1, updated_at = ? WHERE user_id = ?",
             [JSON.stringify(toCollected), nowTimestamp, offer.to_user_id]
         );
         await run(
@@ -2467,6 +2472,73 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
         return res.json({ ok: true, state: newState });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
+    }
+});
+
+app.post("/api/trade/coins/redeem", authMiddleware, async (req, res) => {
+    try {
+        const COINS_PER_COUPON = 10;
+        const { state } = await getAlbumState(req.user.sub);
+        const currentCoins = Number(state.tradeCoins || 0);
+
+        if (currentCoins < COINS_PER_COUPON) {
+            return res.status(400).json({
+                error: "Moedas insuficientes para resgate",
+                tradeCoins: currentCoins,
+                requiredCoins: COINS_PER_COUPON,
+            });
+        }
+
+        const nowTimestamp = nowSqlTimestamp();
+        const nextCoins = currentCoins - COINS_PER_COUPON;
+        let code = "";
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+            code = `TRADE-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+            const exists = await get("SELECT id FROM user_coupons WHERE code = ?", [code]);
+            if (!exists) break;
+            code = "";
+        }
+
+        if (!code) {
+            return res.status(500).json({ error: "Nao foi possivel gerar cupom no momento" });
+        }
+
+        await run(
+            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
+             VALUES(?, ?, ?, 1, 0, 'active', ?)`,
+            [code, req.user.sub, req.user.sub, nowTimestamp]
+        );
+
+        await run(
+            "UPDATE album_states SET trade_coins = ?, updated_at = ? WHERE user_id = ?",
+            [nextCoins, nowTimestamp, req.user.sub]
+        );
+
+        const eventPayload = { code, packs: 1, spentCoins: COINS_PER_COUPON, remainingCoins: nextCoins };
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_coupon_redeemed', ?, ?, ?, ?, ?)`,
+            [
+                `Você trocou ${COINS_PER_COUPON} moedas por 1 cupom de pacote. Código: ${code}`,
+                JSON.stringify(eventPayload),
+                req.user.sub,
+                req.user.sub,
+                nowTimestamp,
+            ]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            coupon: {
+                code,
+                packs: 1,
+            },
+            tradeCoins: nextCoins,
+            requiredCoins: COINS_PER_COUPON,
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao resgatar cupom por moedas", detail: err.message });
     }
 });
 

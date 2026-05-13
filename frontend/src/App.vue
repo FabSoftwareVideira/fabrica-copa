@@ -189,6 +189,7 @@ const state = reactive({
   tradeOutgoingPage: 1,
   tradeHistoryPage: 1,
   tradePageSize: 8,
+  tradeCoins: 0,
   tradeIncoming: [],
   tradeOutgoing: [],
   tradeHistory: [],
@@ -230,6 +231,7 @@ const ui = reactive({
   tradeOfferChoices: [],
   tradeLoading: false,
   tradeOfferChoicesLoading: false,
+  tradeCoinRedeemLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
   tradeWindowClockNow: Date.now(),
@@ -1377,6 +1379,7 @@ function clearAuth() {
   state.tradeOutgoingPage = 1;
   state.tradeHistoryPage = 1;
   state.tradePageSize = 8;
+  state.tradeCoins = 0;
   state.tradeSubView = "available";
   adminTools.targetUserId = "";
   adminTools.packs = 1;
@@ -2118,6 +2121,7 @@ async function loadAlbumState() {
   state.packsUsedDate = data.packsUsedDate || "";
   state.packsUsedToday = Number(data.packsUsedToday || 0);
   state.extraPacks = Number(data.extraPacks || 0);
+  state.tradeCoins = Number(data.tradeCoins || 0);
   state.usedCodes = Array.isArray(data.usedCodes) ? data.usedCodes : [];
   setTradeWindowStateFromPayload(data.tradeWindows || []);
 }
@@ -2848,6 +2852,7 @@ async function acceptTradeOffer(offer) {
         data.state.packsUsedToday ?? state.packsUsedToday,
       );
       state.extraPacks = Number(data.state.extraPacks ?? state.extraPacks);
+      state.tradeCoins = Number(data.state.tradeCoins ?? state.tradeCoins);
       state.usedCodes = Array.isArray(data.state.usedCodes)
         ? data.state.usedCodes
         : state.usedCodes;
@@ -2923,6 +2928,35 @@ async function cancelTradeOffer(offer) {
   }
 }
 
+async function redeemTradeCoinsCoupon() {
+  if (ui.tradeCoinRedeemLoading) return;
+  ui.tradeCoinRedeemLoading = true;
+  try {
+    const data = await apiFetch("/trade/coins/redeem", { method: "POST" });
+    state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
+
+    const couponCode = String(data?.coupon?.code || "").trim();
+    if (couponCode) {
+      const copied = await copyTextToClipboard(couponCode);
+      setToast(
+        copied
+          ? `Cupom ${couponCode} gerado e copiado`
+          : `Cupom gerado: ${couponCode}`,
+      );
+    } else {
+      setToast("Cupom resgatado com sucesso");
+    }
+
+    await Promise.all([loadAdminCoupons(), loadSystemEvents(false)]).catch(() =>
+      null,
+    );
+  } catch (err) {
+    setToast(err.message || "Erro ao resgatar cupom por moedas");
+  } finally {
+    ui.tradeCoinRedeemLoading = false;
+  }
+}
+
 async function openTradeView() {
   state.view = "trade";
   state.tradeSubView = "available";
@@ -2961,6 +2995,13 @@ const myTradableDuplicatesForOffer = computed(() => {
 });
 
 const tradeIncomingCount = computed(() => state.tradeIncoming.length);
+const TRADE_COINS_PER_COUPON = 10;
+const tradeCoinsNeeded = computed(() =>
+  Math.max(0, TRADE_COINS_PER_COUPON - Number(state.tradeCoins || 0)),
+);
+const canRedeemTradeCoinsCoupon = computed(
+  () => Number(state.tradeCoins || 0) >= TRADE_COINS_PER_COUPON,
+);
 
 function normalizeTradeQuery(value) {
   return String(value || "")
@@ -3579,15 +3620,20 @@ const filteredTradeHistoryPaged = computed(() => {
 
       <section v-if="state.view === 'dashboard'" class="panel">
         <div v-if="tradeWindowConfigured" class="dashboard-trade-window-status">
-          <div
-            :class="['trade-status-indicator', { open: tradeWindowIsOpenNow }]"
-          >
-            <span class="status-emoji">{{
-              tradeWindowIsOpenNow ? "🟢" : "🔴"
-            }}</span>
-            <div class="status-text">
-              <small>Janela de trocas</small>
-              <strong>{{ tradeWindowStatusText }}</strong>
+          <div class="dashboard-trade-top-row">
+            <div
+              :class="[
+                'trade-status-indicator',
+                { open: tradeWindowIsOpenNow },
+              ]"
+            >
+              <span class="status-emoji">{{
+                tradeWindowIsOpenNow ? "🟢" : "🔴"
+              }}</span>
+              <div class="status-text">
+                <small>Janela de trocas</small>
+                <strong>{{ tradeWindowStatusText }}</strong>
+              </div>
             </div>
           </div>
         </div>
@@ -3607,6 +3653,13 @@ const filteredTradeHistoryPaged = computed(() => {
             <div class="dashboard-ring-core">
               <strong>{{ dashboardPercentDisplay }}%</strong>
               <span>Album completo</span>
+              <div
+                class="dashboard-ring-coins"
+                title="Moedas ganhas ao aceitar trocas"
+              >
+                <span class="dashboard-ring-coins-icon">🪙</span>
+                <strong>{{ state.tradeCoins }}</strong>
+              </div>
             </div>
             <div class="dashboard-ring-orbit orbit-total">
               <small>Total</small>
@@ -4632,6 +4685,32 @@ const filteredTradeHistoryPaged = computed(() => {
       </div>
 
       <template v-else>
+        <div class="trade-coins-legend">
+          <div>
+            <strong>🪙 Moedas de troca:</strong>
+            você ganha <strong>1 moeda</strong> ao aceitar uma troca.
+            A cada <strong>{{ TRADE_COINS_PER_COUPON }} moedas</strong>, pode
+            resgatar <strong>1 cupom</strong> de 1 pacote.
+          </div>
+          <div class="trade-coins-legend-actions">
+            <span class="trade-coins-balance">Saldo: {{ state.tradeCoins }} 🪙</span>
+            <button
+              type="button"
+              class="trade-accept-btn"
+              :disabled="!canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading"
+              @click="redeemTradeCoinsCoupon"
+            >
+              {{
+                ui.tradeCoinRedeemLoading
+                  ? "Resgatando..."
+                  : canRedeemTradeCoinsCoupon
+                    ? "Trocar 10 moedas por cupom"
+                    : `Faltam ${tradeCoinsNeeded} moedas`
+              }}
+            </button>
+          </div>
+        </div>
+
         <div
           v-if="!tradeWindowIsOpenNow && nextTradeWindow"
           class="trade-window-countdown-box"
