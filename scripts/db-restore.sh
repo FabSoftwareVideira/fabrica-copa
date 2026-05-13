@@ -2,9 +2,20 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Carregar variáveis do .env se existir
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  # Sourçar apenas as variáveis necessárias
+  export $(grep -E '^HOST_DB_DIR=|^HOST_BACKUP_DIR=' "$ROOT_DIR/.env" | xargs)
+fi
+
+# Usar variáveis de ambiente ou fallback para dev
+HOST_DB_DIR="${HOST_DB_DIR:-/srv/fabrica-copa-data}"
+HOST_BACKUP_DIR="${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}"
+
 DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
-DB_FILE="${DB_FILE:-$DATA_DIR/album.db}"
-BACKUP_DIR="${BACKUP_DIR:-$DATA_DIR/backups}"
+DB_FILE="${DB_FILE:-$HOST_DB_DIR/album.db}"
+BACKUP_DIR="${BACKUP_DIR:-$HOST_BACKUP_DIR}"
 
 backup_source="${1:-}"
 if [[ -z "$backup_source" ]]; then
