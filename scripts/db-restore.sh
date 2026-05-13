@@ -3,19 +3,30 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Carregar variáveis do .env se existir
-if [[ -f "$ROOT_DIR/.env" ]]; then
-  # Sourçar apenas as variáveis necessárias
-  export $(grep -E '^HOST_DB_DIR=|^HOST_BACKUP_DIR=' "$ROOT_DIR/.env" | xargs)
+# Detectar se está rodando dentro de um container Docker
+IN_CONTAINER=false
+if [[ -f /.dockerenv ]]; then
+  IN_CONTAINER=true
 fi
 
-# Usar variáveis de ambiente ou fallback para dev
-HOST_DB_DIR="${HOST_DB_DIR:-/srv/fabrica-copa-data}"
-HOST_BACKUP_DIR="${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}"
-
-DATA_DIR="${DATA_DIR:-$ROOT_DIR/data}"
-DB_FILE="${DB_FILE:-$HOST_DB_DIR/album.db}"
-BACKUP_DIR="${BACKUP_DIR:-$HOST_BACKUP_DIR}"
+# Definir caminhos baseado no contexto (container ou host)
+if [[ "$IN_CONTAINER" == true ]]; then
+  # Dentro do container: usar os caminhos dos volumes
+  DB_FILE="${DB_PATH:-/app/data/album.db}"
+  BACKUP_DIR="${BACKUP_DIR:-/backups}"
+else
+  # No host: carregar variáveis do .env
+  if [[ -f "$ROOT_DIR/backend/.env" ]]; then
+    export $(grep -E '^HOST_DB_DIR=|^HOST_BACKUP_DIR=' "$ROOT_DIR/backend/.env" | xargs)
+  fi
+  
+  # Usar variáveis de ambiente com fallback
+  HOST_DB_DIR="${HOST_DB_DIR:-/srv/fabrica-copa-data}"
+  HOST_BACKUP_DIR="${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}"
+  
+  DB_FILE="${DB_FILE:-$HOST_DB_DIR/album.db}"
+  BACKUP_DIR="${BACKUP_DIR:-$HOST_BACKUP_DIR}"
+fi
 
 backup_source="${1:-}"
 if [[ -z "$backup_source" ]]; then
