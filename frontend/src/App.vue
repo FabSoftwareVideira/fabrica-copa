@@ -794,23 +794,24 @@ function formatCountdown(ms) {
 
 function formatCountdownLongFormat(ms) {
   const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
-
-  if (totalSeconds < 60) {
-    return "em breve...";
-  }
-
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);
-
-  if (days > 0 && hours > 0) {
-    return `${days} dia${days > 1 ? "s" : ""} ${hours} hora${hours > 1 ? "s" : ""}`;
-  } else if (days > 0) {
-    return `${days} dia${days > 1 ? "s" : ""}`;
-  } else if (hours > 0) {
-    return `${hours} hora${hours > 1 ? "s" : ""}`;
-  }
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  return `${minutes} minuto${minutes > 1 ? "s" : ""}`;
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}min`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}min`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}min ${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 function setTradeWindowStateFromPayload(payload) {
