@@ -104,7 +104,7 @@ a {
   margin: 0 auto;
   overflow-x: clip;
 }
-
+/* 
 .ambient-orb {
   position: absolute;
   border-radius: 999px;
@@ -127,7 +127,7 @@ a {
   left: -40px;
   bottom: 80px;
   background: radial-gradient(circle, var(--orb-b), transparent 72%);
-}
+} */
 
 .topbar {
   display: flex;
@@ -233,7 +233,7 @@ a {
 .user-pill {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 9px;
   padding: 0.4rem 0.8rem;
   font-weight: 600;
   font-size: 0.85rem;
@@ -3176,6 +3176,8 @@ button:disabled {
 
 .app-footer {
   margin-top: 1rem;
+  border-top: 1px solid rgba(122, 106, 90, 0.18);
+  padding-top: 1rem;
 }
 
 .app-footer-cols {
@@ -4015,6 +4017,7 @@ button:disabled {
   .app-footer-cols {
     flex-direction: column;
     align-items: center;
+    gap: 0.6rem;
   }
 
   .app-footer-left,
@@ -4024,16 +4027,20 @@ button:disabled {
     align-items: center;
   }
 
-  .app-footer-session {
-    flex-direction: column;
-    gap: 0.45rem;
-    justify-content: center;
+  .app-footer-right {
+    width: 100%;
+    /* border-top: 1px solid rgba(122, 106, 90, 0.15); */
+    padding-top: 0.6rem;
   }
 
-  .app-footer-session .user-pill,
-  .app-footer-session .app-footer-logout {
-    width: 100%;
-    max-width: 280px;
+  .app-footer-session {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .app-footer-github {
+    align-self: center;
   }
   .dashboard-overview {
     grid-template-columns: 1fr;
