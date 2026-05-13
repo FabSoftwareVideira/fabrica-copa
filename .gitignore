@@ -1,5 +1,6 @@
 *.db
 node_modules
+dev-dist
 dist
 .env
 logs/

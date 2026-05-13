@@ -31,9 +31,9 @@ export default defineConfig(({ mode }) => {
                     lang: "pt-BR",
                     icons: [
                         {
-                            src: "pwa-icon.svg",
-                            sizes: "any",
-                            type: "image/svg+xml",
+                            src: "album-logo.webp",
+                            sizes: "512x512",
+                            type: "image/webp",
                             purpose: "any maskable",
                         },
                     ],

@@ -3155,9 +3155,8 @@ button:disabled {
 .landing-footer {
   text-align: center;
   padding: 1.25rem 1.5rem;
-  /* border-top: 1px solid var(--line); */
   font-size: 0.75rem;
-  color: #475569;
+  color: #7a6a5a;
 }
 
 .landing-footer p {
@@ -3165,13 +3164,13 @@ button:disabled {
 }
 
 .landing-footer a {
-  color: #93c5fd;
+  color: #8a6340;
   font-weight: 600;
   text-decoration: none;
 }
 
 .landing-footer a:hover {
-  color: #bfdbfe;
+  color: #6b4a2a;
   text-decoration: underline;
 }
 
@@ -3179,13 +3178,62 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.app-footer-cols {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.app-footer-left {
+  flex: 1 1 300px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+}
+
+.app-footer-right {
+  flex: 0 1 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  justify-content: center;
+}
+
+.app-footer-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid rgba(138, 99, 64, 0.3);
+  border-radius: 8px;
+  background: rgba(138, 99, 64, 0.07);
+  color: #8a6340;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 160ms ease;
+}
+
+.app-footer-github:hover {
+  background: rgba(138, 99, 64, 0.14);
+  color: #6b4a2a;
+  border-color: rgba(138, 99, 64, 0.5);
+  text-decoration: none;
+}
+
 .app-footer-session {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.35rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
 }
 
 .app-footer-session .user-pill {
@@ -3194,7 +3242,6 @@ button:disabled {
 
 .app-footer-logout {
   padding: 0.35rem 0.75rem;
-  /* red color */
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.25);
   color: #ef4444;
@@ -3965,9 +4012,22 @@ button:disabled {
     font-size: 0.72rem;
   }
 
+  .app-footer-cols {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .app-footer-left,
+  .app-footer-right {
+    flex: 1 1 100%;
+    text-align: center;
+    align-items: center;
+  }
+
   .app-footer-session {
     flex-direction: column;
     gap: 0.45rem;
+    justify-content: center;
   }
 
   .app-footer-session .user-pill,
