@@ -3646,6 +3646,7 @@ const filteredTradeHistoryPaged = computed(() => {
             :style="{
               background: `conic-gradient(var(--progress-a) 0%, var(--progress-b) ${dashboardPercentDisplay}%, rgba(148, 163, 184, 0.22) ${dashboardPercentDisplay}% 100%)`,
               '--fill-pct': `${dashboardPercentDisplay}%`,
+              '--fill-raw': dashboardPercentDisplay,
             }"
           >
             <div class="dashboard-ring-img" aria-hidden="true">

@@ -687,7 +687,7 @@ button:disabled {
   gap: 1rem;
 }
 .dashboard-ring {
-  width: min(66vw, 286px);
+  width: min(66vw, 256px);
   aspect-ratio: 1;
   margin: 0 auto;
   border-radius: 50%;
@@ -749,16 +749,27 @@ button:disabled {
   z-index: 1;
   background: radial-gradient(
     ellipse at 38% 28%,
-    rgba(255, 255, 255, 0.72) 0%,
-    rgba(226, 235, 245, 0.55) 55%,
-    rgba(203, 220, 240, 0.32) 100%
+    color-mix(
+        in srgb,
+        rgba(255, 255, 255, 0.55) calc(100% - var(--fill-pct, 0%)),
+        transparent
+      )
+      0%,
+    color-mix(
+        in srgb,
+        rgba(210, 228, 245, 0.38) calc(100% - var(--fill-pct, 0%)),
+        transparent
+      )
+      55%,
+    transparent 100%
   );
-  backdrop-filter: blur(6px) saturate(1.2);
-  -webkit-backdrop-filter: blur(6px) saturate(1.2);
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -1px 0 rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(calc(2.5px * (1 - var(--fill-raw, 0) / 100)));
+  -webkit-backdrop-filter: blur(calc(2.5px * (1 - var(--fill-raw, 0) / 100)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   pointer-events: none;
+  transition:
+    backdrop-filter 400ms ease,
+    background 400ms ease;
 }
 
 .dashboard-coins-chip {
