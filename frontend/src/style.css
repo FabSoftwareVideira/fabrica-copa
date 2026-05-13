@@ -3618,6 +3618,13 @@ button:disabled {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
   gap: 0.5rem;
+  align-items: start;
+}
+
+.manage-users-toolbar input,
+.manage-users-toolbar select {
+  min-width: 0;
+  width: 100%;
 }
 
 .manage-users-coupon-filter-btn {
@@ -3641,7 +3648,7 @@ button:disabled {
 .admin-users-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 640px;
+  min-width: 600px;
 }
 
 .admin-users-table th,
@@ -4046,6 +4053,11 @@ button:disabled {
 
   .landing-subtitle {
     font-size: 0.95rem;
+    line-height: 1.15;
+  }
+
+  .landing-subtitle {
+    font-size: 0.95rem;
     line-height: 1.55;
   }
 
@@ -4127,10 +4139,30 @@ button:disabled {
   .admin-pagination {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.5rem;
   }
 
   .admin-pagination-actions {
+    width: 100%;
     justify-content: space-between;
+  }
+
+  .admin-users-table th,
+  .admin-users-table td {
+    padding: 0.4rem 0.35rem;
+    font-size: 0.7rem;
+  }
+
+  .admin-users-table th {
+    font-size: 0.65rem;
+  }
+
+  .page-size-label {
+    font-size: 0.7rem;
+  }
+
+  .page-size-label select {
+    width: 60px;
   }
 
   .collection-tabs {
@@ -4147,7 +4179,7 @@ button:disabled {
   }
 
   .admin-subtabs {
-    justify-content: center;
+    /* justify-content: center; */
     padding-bottom: 0;
   }
 
@@ -4182,6 +4214,36 @@ button:disabled {
     right: auto;
     width: min(calc(100% - 1.5rem), 420px);
     max-width: 420px;
+  }
+
+  /* Melhorias para tabela de cupons em telas muito pequenas */
+  .admin-users-table th,
+  .admin-users-table td {
+    padding: 0.3rem 0.25rem;
+    font-size: 0.65rem;
+  }
+
+  .admin-users-table th {
+    font-size: 0.6rem;
+  }
+
+  /* Esconder coluna "Criado por" (5ª coluna) em telas muito pequenas */
+  .admin-users-table th:nth-child(5),
+  .admin-users-table td:nth-child(5) {
+    display: none;
+  }
+
+  .manage-users-box h4 {
+    font-size: 1rem;
+  }
+
+  .page-size-label {
+    font-size: 0.65rem;
+  }
+
+  .page-size-label select {
+    width: 50px;
+    font-size: 0.65rem;
   }
 }
 
@@ -4330,6 +4392,36 @@ button:disabled {
 
   .num {
     font-size: 0.8rem;
+  }
+
+  /* Melhorias adicionais para tabela de cupons em telas muito pequenas */
+  .admin-users-table th,
+  .admin-users-table td {
+    padding: 0.25rem 0.2rem;
+    font-size: 0.6rem;
+  }
+
+  .admin-users-table th {
+    font-size: 0.55rem;
+  }
+
+  /* Esconder coluna "Pacotes" (3ª coluna) também em telas muito menores */
+  .admin-users-table th:nth-child(3),
+  .admin-users-table td:nth-child(3) {
+    display: none;
+  }
+
+  .page-size-label {
+    font-size: 0.6rem;
+  }
+
+  .page-size-label select {
+    width: 45px;
+    font-size: 0.6rem;
+  }
+
+  .admin-pagination small {
+    font-size: 0.65rem;
   }
 }
 

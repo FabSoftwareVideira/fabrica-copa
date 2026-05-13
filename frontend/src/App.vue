@@ -289,7 +289,7 @@ const adminSubTabs = computed(() => {
     tabs.push({ key: "stickers", label: "Figurinhas" });
   }
   if (isAdmin.value) {
-    tabs.push({ key: "trade-windows", label: "Janelas de Transferências" });
+    tabs.push({ key: "trade-windows", label: "Transferências" });
     tabs.push({ key: "users", label: "Usuários" });
   }
   return tabs;
@@ -3975,107 +3975,107 @@ const filteredTradeAvailable = computed(() => {
               </div>
             </div>
           </div>
-        </div>
 
-        <div
-          v-if="ui.adminTab === 'trade-windows' && isAdmin"
-          class="manage-users-box manage-trade-window-box"
-        >
-          <h3 style="margin-bottom: 1.5rem; color: #1f2937">
-            Gerenciar Janelas de Trocas
-          </h3>
+          <div
+            v-if="ui.adminTab === 'trade-windows' && isAdmin"
+            class="manage-users-box manage-trade-window-box"
+          >
+            <h3 style="margin-bottom: 1.5rem; color: #1f2937">
+              Gerenciar Janelas de Trocas
+            </h3>
 
-          <div class="trade-windows-toolbar">
-            <select v-model="adminTools.tradeWindowFilter">
-              <option value="all">Todas as janelas atuais/futuras</option>
-              <option value="open">Somente abertas</option>
-              <option value="upcoming">Somente próximas</option>
-            </select>
-            <label class="trade-windows-checkbox">
-              <input
-                v-model="adminTools.hidePastTradeWindows"
-                type="checkbox"
-              />
-              Ocultar janelas antigas
-            </label>
-          </div>
-
-          <div class="trade-windows-form">
-            <h4 style="margin: 0 0 0.8rem 0; color: #10a3ae">
-              Criar Nova Janela
-            </h4>
-            <div class="trade-windows-form-row">
-              <label>
-                Início
+            <div class="trade-windows-toolbar">
+              <select v-model="adminTools.tradeWindowFilter">
+                <option value="all">Todas as janelas atuais/futuras</option>
+                <option value="open">Somente abertas</option>
+                <option value="upcoming">Somente próximas</option>
+              </select>
+              <label class="trade-windows-checkbox">
                 <input
-                  v-model="ui.adminWindowForm.startsAt"
-                  type="datetime-local"
-                  placeholder="Data e hora de início"
+                  v-model="adminTools.hidePastTradeWindows"
+                  type="checkbox"
                 />
+                Ocultar janelas antigas
               </label>
-              <label>
-                Fim
-                <input
-                  v-model="ui.adminWindowForm.endsAt"
-                  type="datetime-local"
-                  placeholder="Data e hora de término"
-                />
-              </label>
-              <button
-                type="button"
-                :disabled="ui.adminWindowSaving"
-                @click="createTradeWindow"
-              >
-                {{ ui.adminWindowSaving ? "Criando..." : "Criar Janela" }}
-              </button>
             </div>
-            <p v-if="ui.adminWindowMsg" class="read-only-hint">
-              {{ ui.adminWindowMsg }}
-            </p>
-          </div>
 
-          <div v-if="filteredTradeWindows.length > 0">
-            <h4 style="margin: 1.5rem 0 1rem 0; color: #1f2937">
-              Janelas listadas ({{ filteredTradeWindows.length }})
-            </h4>
-            <div class="trade-windows-list">
-              <div
-                v-for="window in filteredTradeWindows"
-                :key="window.id"
-                class="trade-window-item"
-                :class="{ open: window.isOpen }"
-              >
-                <div class="trade-window-item-content">
-                  <div class="trade-window-item-times">
-                    <div class="trade-window-item-time">
-                      📅 {{ formatDateTime(window.startsAt) }}
-                    </div>
-                    <div class="trade-window-item-time">
-                      ⏱️ {{ formatDateTime(window.endsAt) }}
-                    </div>
-                  </div>
-                  <div class="trade-window-item-meta">
-                    <span v-if="window.isOpen">
-                      <span class="trade-window-status-badge">🟢 Aberta</span>
-                    </span>
-                    <span>👤 {{ window.createdByUserName }}</span>
-                    <span>📆 {{ formatDateTime(window.createdAt) }}</span>
-                  </div>
-                </div>
+            <div class="trade-windows-form">
+              <h4 style="margin: 0 0 0.8rem 0; color: #10a3ae">
+                Criar Nova Janela
+              </h4>
+              <div class="trade-windows-form-row">
+                <label>
+                  Início
+                  <input
+                    v-model="ui.adminWindowForm.startsAt"
+                    type="datetime-local"
+                    placeholder="Data e hora de início"
+                  />
+                </label>
+                <label>
+                  Fim
+                  <input
+                    v-model="ui.adminWindowForm.endsAt"
+                    type="datetime-local"
+                    placeholder="Data e hora de término"
+                  />
+                </label>
                 <button
                   type="button"
-                  class="trade-window-delete-btn"
                   :disabled="ui.adminWindowSaving"
-                  @click="deleteTradeWindow(window.id)"
-                  title="Deletar esta janela"
+                  @click="createTradeWindow"
                 >
-                  {{ ui.adminWindowSaving ? "..." : "Deletar" }}
+                  {{ ui.adminWindowSaving ? "Criando..." : "Criar Janela" }}
                 </button>
               </div>
+              <p v-if="ui.adminWindowMsg" class="read-only-hint">
+                {{ ui.adminWindowMsg }}
+              </p>
             </div>
-          </div>
-          <div v-else class="read-only-hint">
-            ℹ️ Nenhuma janela encontrada com os filtros atuais.
+
+            <div v-if="filteredTradeWindows.length > 0">
+              <h4 style="margin: 1.5rem 0 1rem 0; color: #1f2937">
+                Janelas listadas ({{ filteredTradeWindows.length }})
+              </h4>
+              <div class="trade-windows-list">
+                <div
+                  v-for="window in filteredTradeWindows"
+                  :key="window.id"
+                  class="trade-window-item"
+                  :class="{ open: window.isOpen }"
+                >
+                  <div class="trade-window-item-content">
+                    <div class="trade-window-item-times">
+                      <div class="trade-window-item-time">
+                        📅 {{ formatDateTime(window.startsAt) }}
+                      </div>
+                      <div class="trade-window-item-time">
+                        ⏱️ {{ formatDateTime(window.endsAt) }}
+                      </div>
+                    </div>
+                    <div class="trade-window-item-meta">
+                      <span v-if="window.isOpen">
+                        <span class="trade-window-status-badge">🟢 Aberta</span>
+                      </span>
+                      <span>👤 {{ window.createdByUserName }}</span>
+                      <span>📆 {{ formatDateTime(window.createdAt) }}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="trade-window-delete-btn"
+                    :disabled="ui.adminWindowSaving"
+                    @click="deleteTradeWindow(window.id)"
+                    title="Deletar esta janela"
+                  >
+                    {{ ui.adminWindowSaving ? "..." : "Deletar" }}
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="read-only-hint">
+              ℹ️ Nenhuma janela encontrada com os filtros atuais.
+            </div>
           </div>
         </div>
       </section>
