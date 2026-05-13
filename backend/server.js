@@ -2448,15 +2448,15 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
         );
 
-        // Emit notification to the offer creator
+        const coinsReceived = 1;
         const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
         const requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
         const creatorUser = await get("SELECT name FROM users WHERE id = ?", [offer.from_user_id]);
         const acceptorUser = await get("SELECT name FROM users WHERE id = ?", [offer.to_user_id]);
-        const eventMessage = `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}`;
-        const eventPayload = {
+        const sharedPayload = {
             offerId: offerId,
             fromUserId: offer.from_user_id,
+            fromUserName: creatorUser?.name,
             toUserId: offer.to_user_id,
             toUserName: acceptorUser?.name,
             offeredStickerId: offer.offered_sticker_id,
@@ -2465,11 +2465,39 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             requestedStickerId: offer.requested_sticker_id,
             requestedStickerNum: requestedSticker?.num,
             requestedStickerName: requestedSticker?.name,
+            coinsReceived,
         };
         await run(
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
              VALUES('trade_accepted', ?, ?, ?, ?, ?)`,
-            [eventMessage, JSON.stringify(eventPayload), offer.to_user_id, offer.from_user_id, nowTimestamp]
+            [
+                `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moeda.`,
+                JSON.stringify({
+                    ...sharedPayload,
+                    recipientUserId: offer.from_user_id,
+                    recipientUserName: creatorUser?.name,
+                    coinsReceived,
+                }),
+                offer.to_user_id,
+                offer.from_user_id,
+                nowTimestamp,
+            ]
+        );
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_accepted', ?, ?, ?, ?, ?)` ,
+            [
+                `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moeda.`,
+                JSON.stringify({
+                    ...sharedPayload,
+                    recipientUserId: offer.to_user_id,
+                    recipientUserName: acceptorUser?.name,
+                    coinsReceived,
+                }),
+                offer.to_user_id,
+                offer.to_user_id,
+                nowTimestamp,
+            ]
         );
 
         const { state: newState } = await getAlbumState(req.user.sub);

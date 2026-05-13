@@ -2857,15 +2857,6 @@ async function acceptTradeOffer(offer) {
         ? data.state.usedCodes
         : state.usedCodes;
     }
-    // Push notification immediately
-    pushNotification({
-      id: `trade-accept-${Date.now()}`,
-      type: "trade_accepted_self",
-      icon: "✅",
-      title: "Troca realizada!",
-      message: `Você trocou #${offer.offeredSticker?.num} ${offer.offeredSticker?.name} por #${offer.requestedSticker?.num} ${offer.requestedSticker?.name}.`,
-      createdAt: new Date().toISOString(),
-    });
     setToast("Troca realizada com sucesso!");
     await Promise.all([loadTradeOffers(), loadSystemEvents(false)]);
   } catch (err) {
