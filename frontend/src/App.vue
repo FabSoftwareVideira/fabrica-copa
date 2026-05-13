@@ -2946,7 +2946,10 @@ const myTradableDuplicatesForOffer = computed(() => {
   for (const offer of state.tradeOutgoing) {
     const stickerId = String(offer?.offeredSticker?.id || "");
     if (!stickerId) continue;
-    reservedBySticker.set(stickerId, (reservedBySticker.get(stickerId) || 0) + 1);
+    reservedBySticker.set(
+      stickerId,
+      (reservedBySticker.get(stickerId) || 0) + 1,
+    );
   }
 
   return stickers.filter((item) => {
@@ -2960,7 +2963,9 @@ const myTradableDuplicatesForOffer = computed(() => {
 const tradeIncomingCount = computed(() => state.tradeIncoming.length);
 
 function normalizeTradeQuery(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function setTradePage(view, value) {
@@ -3055,9 +3060,13 @@ const filteredTradeIncoming = computed(() => {
   if (query) {
     list = list.filter((item) => {
       const fromUser = String(item?.fromUserName || "").toLowerCase();
-      const offeredName = String(item?.offeredSticker?.name || "").toLowerCase();
+      const offeredName = String(
+        item?.offeredSticker?.name || "",
+      ).toLowerCase();
       const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(item?.requestedSticker?.name || "").toLowerCase();
+      const requestedName = String(
+        item?.requestedSticker?.name || "",
+      ).toLowerCase();
       const requestedNum = String(item?.requestedSticker?.num || "");
       return (
         fromUser.includes(query) ||
@@ -3081,9 +3090,13 @@ const filteredTradeOutgoing = computed(() => {
   if (query) {
     list = list.filter((item) => {
       const toUser = String(item?.toUserName || "").toLowerCase();
-      const offeredName = String(item?.offeredSticker?.name || "").toLowerCase();
+      const offeredName = String(
+        item?.offeredSticker?.name || "",
+      ).toLowerCase();
       const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(item?.requestedSticker?.name || "").toLowerCase();
+      const requestedName = String(
+        item?.requestedSticker?.name || "",
+      ).toLowerCase();
       const requestedNum = String(item?.requestedSticker?.num || "");
       return (
         toUser.includes(query) ||
@@ -3113,9 +3126,13 @@ const filteredTradeHistory = computed(() => {
   if (query) {
     list = list.filter((item) => {
       const partner = String(item?.partnerName || "").toLowerCase();
-      const offeredName = String(item?.offeredSticker?.name || "").toLowerCase();
+      const offeredName = String(
+        item?.offeredSticker?.name || "",
+      ).toLowerCase();
       const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(item?.requestedSticker?.name || "").toLowerCase();
+      const requestedName = String(
+        item?.requestedSticker?.name || "",
+      ).toLowerCase();
       const requestedNum = String(item?.requestedSticker?.num || "");
       return (
         partner.includes(query) ||
@@ -3130,16 +3147,28 @@ const filteredTradeHistory = computed(() => {
 });
 
 const tradeAvailablePageCount = computed(() =>
-  Math.max(1, Math.ceil(filteredTradeAvailable.value.length / state.tradePageSize)),
+  Math.max(
+    1,
+    Math.ceil(filteredTradeAvailable.value.length / state.tradePageSize),
+  ),
 );
 const tradeIncomingPageCount = computed(() =>
-  Math.max(1, Math.ceil(filteredTradeIncoming.value.length / state.tradePageSize)),
+  Math.max(
+    1,
+    Math.ceil(filteredTradeIncoming.value.length / state.tradePageSize),
+  ),
 );
 const tradeOutgoingPageCount = computed(() =>
-  Math.max(1, Math.ceil(filteredTradeOutgoing.value.length / state.tradePageSize)),
+  Math.max(
+    1,
+    Math.ceil(filteredTradeOutgoing.value.length / state.tradePageSize),
+  ),
 );
 const tradeHistoryPageCount = computed(() =>
-  Math.max(1, Math.ceil(filteredTradeHistory.value.length / state.tradePageSize)),
+  Math.max(
+    1,
+    Math.ceil(filteredTradeHistory.value.length / state.tradePageSize),
+  ),
 );
 
 const tradeAvailableSafePage = computed(() =>
@@ -4774,8 +4803,11 @@ const filteredTradeHistoryPaged = computed(() => {
             class="admin-pagination trade-pagination"
           >
             <small>
-              Página {{ tradeAvailableSafePage }} de {{ tradeAvailablePageCount }}
-              ({{ filteredTradeAvailable.length }} itens)
+              Página {{ tradeAvailableSafePage }} de
+              {{ tradeAvailablePageCount }} ({{
+                filteredTradeAvailable.length
+              }}
+              itens)
             </small>
             <div class="admin-pagination-actions">
               <button
@@ -4785,7 +4817,11 @@ const filteredTradeHistoryPaged = computed(() => {
               >
                 Anterior
               </button>
-              <span>{{ tradeAvailableSafePage }}/{{ tradeAvailablePageCount }}</span>
+              <span
+                >{{ tradeAvailableSafePage }}/{{
+                  tradeAvailablePageCount
+                }}</span
+              >
               <button
                 type="button"
                 :disabled="tradeAvailableSafePage >= tradeAvailablePageCount"
@@ -4905,8 +4941,11 @@ const filteredTradeHistoryPaged = computed(() => {
             class="admin-pagination trade-pagination"
           >
             <small>
-              Página {{ tradeIncomingSafePage }} de {{ tradeIncomingPageCount }}
-              ({{ filteredTradeIncoming.length }} itens)
+              Página {{ tradeIncomingSafePage }} de
+              {{ tradeIncomingPageCount }} ({{
+                filteredTradeIncoming.length
+              }}
+              itens)
             </small>
             <div class="admin-pagination-actions">
               <button
@@ -4916,7 +4955,9 @@ const filteredTradeHistoryPaged = computed(() => {
               >
                 Anterior
               </button>
-              <span>{{ tradeIncomingSafePage }}/{{ tradeIncomingPageCount }}</span>
+              <span
+                >{{ tradeIncomingSafePage }}/{{ tradeIncomingPageCount }}</span
+              >
               <button
                 type="button"
                 :disabled="tradeIncomingSafePage >= tradeIncomingPageCount"
@@ -5028,8 +5069,11 @@ const filteredTradeHistoryPaged = computed(() => {
             class="admin-pagination trade-pagination"
           >
             <small>
-              Página {{ tradeOutgoingSafePage }} de {{ tradeOutgoingPageCount }}
-              ({{ filteredTradeOutgoing.length }} itens)
+              Página {{ tradeOutgoingSafePage }} de
+              {{ tradeOutgoingPageCount }} ({{
+                filteredTradeOutgoing.length
+              }}
+              itens)
             </small>
             <div class="admin-pagination-actions">
               <button
@@ -5039,7 +5083,9 @@ const filteredTradeHistoryPaged = computed(() => {
               >
                 Anterior
               </button>
-              <span>{{ tradeOutgoingSafePage }}/{{ tradeOutgoingPageCount }}</span>
+              <span
+                >{{ tradeOutgoingSafePage }}/{{ tradeOutgoingPageCount }}</span
+              >
               <button
                 type="button"
                 :disabled="tradeOutgoingSafePage >= tradeOutgoingPageCount"
@@ -5137,8 +5183,11 @@ const filteredTradeHistoryPaged = computed(() => {
             class="admin-pagination trade-pagination"
           >
             <small>
-              Página {{ tradeHistorySafePage }} de {{ tradeHistoryPageCount }}
-              ({{ filteredTradeHistory.length }} itens)
+              Página {{ tradeHistorySafePage }} de
+              {{ tradeHistoryPageCount }} ({{
+                filteredTradeHistory.length
+              }}
+              itens)
             </small>
             <div class="admin-pagination-actions">
               <button
@@ -5148,7 +5197,9 @@ const filteredTradeHistoryPaged = computed(() => {
               >
                 Anterior
               </button>
-              <span>{{ tradeHistorySafePage }}/{{ tradeHistoryPageCount }}</span>
+              <span
+                >{{ tradeHistorySafePage }}/{{ tradeHistoryPageCount }}</span
+              >
               <button
                 type="button"
                 :disabled="tradeHistorySafePage >= tradeHistoryPageCount"
