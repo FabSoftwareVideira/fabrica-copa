@@ -2044,7 +2044,7 @@ button:disabled {
   .filters,
   .trade-filters,
   .trade-tabs,
-  .trade-coins-legend-actions,
+  .trade-coins-bar,
   .trade-modal-actions,
   .trade-offer-actions {
     flex-direction: column;
@@ -2054,7 +2054,7 @@ button:disabled {
   .trade-filters input,
   .trade-filters select,
   .trade-tabs button,
-  .trade-coins-legend .trade-accept-btn,
+  .trade-coins-bar-btn,
   .trade-modal-actions button,
   .trade-offer-actions button {
     width: 100%;
@@ -2321,37 +2321,54 @@ button:disabled {
   gap: 1rem;
 }
 
-.trade-coins-legend {
-  display: grid;
-  gap: 0.6rem;
-  border: 1px solid rgba(234, 179, 8, 0.28);
-  background: linear-gradient(
-    135deg,
-    rgba(250, 204, 21, 0.08),
-    rgba(245, 158, 11, 0.08)
-  );
-  border-radius: 12px;
-  padding: 0.7rem 0.85rem;
-  margin-bottom: 0.9rem;
-  color: #78350f;
-  font-size: 0.86rem;
-}
-
-.trade-coins-legend-actions {
+.trade-coins-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.55rem;
+  gap: 0.6rem;
   flex-wrap: wrap;
+  background: rgba(234, 179, 8, 0.07);
+  border: 1px solid rgba(234, 179, 8, 0.22);
+  border-radius: 8px;
+  padding: 0.42rem 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.82rem;
+  color: #78350f;
 }
 
-.trade-coins-balance {
-  font-weight: 700;
+.trade-coins-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.trade-coins-bar-hint {
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.trade-coins-bar-btn {
+  padding: 0.28rem 0.75rem;
+  font-size: 0.78rem;
+  border-radius: 6px;
+  border: 1.5px solid rgba(234, 179, 8, 0.5);
+  background: rgba(234, 179, 8, 0.15);
   color: #92400e;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    opacity 150ms;
+  white-space: nowrap;
 }
 
-.trade-coins-legend .trade-accept-btn {
-  min-width: 220px;
+.trade-coins-bar-btn:hover:not(:disabled) {
+  background: rgba(234, 179, 8, 0.28);
+}
+
+.trade-coins-bar-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .trade-filters {

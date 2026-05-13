@@ -2934,24 +2934,13 @@ async function redeemTradeCoinsCoupon() {
   try {
     const data = await apiFetch("/trade/coins/redeem", { method: "POST" });
     state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
-
-    const couponCode = String(data?.coupon?.code || "").trim();
-    if (couponCode) {
-      const copied = await copyTextToClipboard(couponCode);
-      setToast(
-        copied
-          ? `Cupom ${couponCode} gerado e copiado`
-          : `Cupom gerado: ${couponCode}`,
-      );
-    } else {
-      setToast("Cupom resgatado com sucesso");
-    }
-
-    await Promise.all([loadAdminCoupons(), loadSystemEvents(false)]).catch(() =>
-      null,
+    if (data.extraPacks != null) state.extraPacks = Number(data.extraPacks);
+    setToast(
+      "🎉 Pacotinho liberado! Abra seus pacotes para colar as figurinhas.",
     );
+    await loadSystemEvents(false).catch(() => null);
   } catch (err) {
-    setToast(err.message || "Erro ao resgatar cupom por moedas");
+    setToast(err.message || "Erro ao resgatar moedas");
   } finally {
     ui.tradeCoinRedeemLoading = false;
   }
@@ -4685,30 +4674,27 @@ const filteredTradeHistoryPaged = computed(() => {
       </div>
 
       <template v-else>
-        <div class="trade-coins-legend">
-          <div>
-            <strong>🪙 Moedas de troca:</strong>
-            você ganha <strong>1 moeda</strong> ao aceitar uma troca.
-            A cada <strong>{{ TRADE_COINS_PER_COUPON }} moedas</strong>, pode
-            resgatar <strong>1 cupom</strong> de 1 pacote.
-          </div>
-          <div class="trade-coins-legend-actions">
-            <span class="trade-coins-balance">Saldo: {{ state.tradeCoins }} 🪙</span>
-            <button
-              type="button"
-              class="trade-accept-btn"
-              :disabled="!canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading"
-              @click="redeemTradeCoinsCoupon"
-            >
-              {{
-                ui.tradeCoinRedeemLoading
-                  ? "Resgatando..."
-                  : canRedeemTradeCoinsCoupon
-                    ? "Trocar 10 moedas por cupom"
-                    : `Faltam ${tradeCoinsNeeded} moedas`
-              }}
-            </button>
-          </div>
+        <div class="trade-coins-bar">
+          <span class="trade-coins-bar-info">
+            🪙
+            <strong>{{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}</strong>
+            moedas
+            <span class="trade-coins-bar-hint">(+1 por troca aceita)</span>
+          </span>
+          <button
+            type="button"
+            class="trade-coins-bar-btn"
+            :disabled="!canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading"
+            @click="redeemTradeCoinsCoupon"
+          >
+            {{
+              ui.tradeCoinRedeemLoading
+                ? "Resgatando..."
+                : canRedeemTradeCoinsCoupon
+                  ? "Trocar por 1 pacote"
+                  : `Faltam ${tradeCoinsNeeded}`
+            }}
+          </button>
         </div>
 
         <div
@@ -4883,9 +4869,7 @@ const filteredTradeHistoryPaged = computed(() => {
           >
             <small>
               Página {{ tradeAvailableSafePage }} de
-              {{ tradeAvailablePageCount }} ({{
-                filteredTradeAvailable.length
-              }}
+              {{ tradeAvailablePageCount }} ({{ filteredTradeAvailable.length }}
               itens)
             </small>
             <div class="admin-pagination-actions">
@@ -5021,9 +5005,7 @@ const filteredTradeHistoryPaged = computed(() => {
           >
             <small>
               Página {{ tradeIncomingSafePage }} de
-              {{ tradeIncomingPageCount }} ({{
-                filteredTradeIncoming.length
-              }}
+              {{ tradeIncomingPageCount }} ({{ filteredTradeIncoming.length }}
               itens)
             </small>
             <div class="admin-pagination-actions">
@@ -5149,9 +5131,7 @@ const filteredTradeHistoryPaged = computed(() => {
           >
             <small>
               Página {{ tradeOutgoingSafePage }} de
-              {{ tradeOutgoingPageCount }} ({{
-                filteredTradeOutgoing.length
-              }}
+              {{ tradeOutgoingPageCount }} ({{ filteredTradeOutgoing.length }}
               itens)
             </small>
             <div class="admin-pagination-actions">
@@ -5263,9 +5243,7 @@ const filteredTradeHistoryPaged = computed(() => {
           >
             <small>
               Página {{ tradeHistorySafePage }} de
-              {{ tradeHistoryPageCount }} ({{
-                filteredTradeHistory.length
-              }}
+              {{ tradeHistoryPageCount }} ({{ filteredTradeHistory.length }}
               itens)
             </small>
             <div class="admin-pagination-actions">

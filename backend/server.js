@@ -2491,36 +2491,20 @@ app.post("/api/trade/coins/redeem", authMiddleware, async (req, res) => {
 
         const nowTimestamp = nowSqlTimestamp();
         const nextCoins = currentCoins - COINS_PER_COUPON;
-        let code = "";
-
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-            code = `TRADE-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-            const exists = await get("SELECT id FROM user_coupons WHERE code = ?", [code]);
-            if (!exists) break;
-            code = "";
-        }
-
-        if (!code) {
-            return res.status(500).json({ error: "Nao foi possivel gerar cupom no momento" });
-        }
 
         await run(
-            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
-             VALUES(?, ?, ?, 1, 0, 'active', ?)`,
-            [code, req.user.sub, req.user.sub, nowTimestamp]
-        );
-
-        await run(
-            "UPDATE album_states SET trade_coins = ?, updated_at = ? WHERE user_id = ?",
+            "UPDATE album_states SET trade_coins = ?, extra_packs = extra_packs + 1, updated_at = ? WHERE user_id = ?",
             [nextCoins, nowTimestamp, req.user.sub]
         );
 
-        const eventPayload = { code, packs: 1, spentCoins: COINS_PER_COUPON, remainingCoins: nextCoins };
+        const { state: newState } = await getAlbumState(req.user.sub);
+
+        const eventPayload = { packs: 1, spentCoins: COINS_PER_COUPON, remainingCoins: nextCoins };
         await run(
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
-             VALUES('trade_coupon_redeemed', ?, ?, ?, ?, ?)`,
+             VALUES('trade_coins_redeemed', ?, ?, ?, ?, ?)`,
             [
-                `Você trocou ${COINS_PER_COUPON} moedas por 1 cupom de pacote. Código: ${code}`,
+                `Você trocou ${COINS_PER_COUPON} moedas por 1 pacote de figurinhas.`,
                 JSON.stringify(eventPayload),
                 req.user.sub,
                 req.user.sub,
@@ -2530,15 +2514,12 @@ app.post("/api/trade/coins/redeem", authMiddleware, async (req, res) => {
 
         return res.status(201).json({
             ok: true,
-            coupon: {
-                code,
-                packs: 1,
-            },
             tradeCoins: nextCoins,
+            extraPacks: Number(newState.extraPacks || 0),
             requiredCoins: COINS_PER_COUPON,
         });
     } catch (err) {
-        return res.status(500).json({ error: "Erro ao resgatar cupom por moedas", detail: err.message });
+        return res.status(500).json({ error: "Erro ao resgatar moedas", detail: err.message });
     }
 });
 
