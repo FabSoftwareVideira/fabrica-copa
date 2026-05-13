@@ -3623,6 +3623,14 @@ const filteredTradeHistoryPaged = computed(() => {
                 <small>Janela de trocas</small>
                 <strong>{{ tradeWindowStatusText }}</strong>
               </div>
+              <div
+                class="dashboard-coins-chip"
+                title="Moedas de troca acumuladas"
+              >
+                <span>🪙</span>
+                <strong>{{ state.tradeCoins }}</strong>
+                <small>moedas</small>
+              </div>
             </div>
           </div>
         </div>
@@ -3636,22 +3644,14 @@ const filteredTradeHistoryPaged = computed(() => {
           <div
             class="dashboard-ring"
             :style="{
-              background: `conic-gradient(var(--progress-b) ${dashboardPercentDisplay}%, rgba(148, 163, 184, 0.28) ${dashboardPercentDisplay}% 100%)`,
+              background: `conic-gradient(var(--progress-a) 0%, var(--progress-b) ${dashboardPercentDisplay}%, rgba(148, 163, 184, 0.22) ${dashboardPercentDisplay}% 100%)`,
               '--fill-pct': `${dashboardPercentDisplay}%`,
             }"
           >
             <div class="dashboard-ring-img" aria-hidden="true">
               <img src="/ring.webp" alt="" />
             </div>
-            <div class="dashboard-ring-core">
-              <div
-                class="dashboard-ring-coins"
-                title="Moedas ganhas ao aceitar trocas"
-              >
-                <span class="dashboard-ring-coins-icon">🪙</span>
-                <strong>{{ state.tradeCoins }}</strong>
-              </div>
-            </div>
+            <div class="dashboard-ring-core" aria-hidden="true"></div>
             <div class="dashboard-ring-orbit orbit-total">
               <small>Total</small>
               <strong>{{ dashboardTotalDisplay }}</strong>
