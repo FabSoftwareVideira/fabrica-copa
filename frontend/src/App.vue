@@ -257,7 +257,12 @@ const adminTools = reactive({
   sortBy: "name",
   sortDir: "asc",
   couponSearch: "",
-  couponStatusFilter: "all",
+  couponStatusFilter: "active",
+  couponUserFilter: "all",
+  couponPage: 1,
+  couponPageSize: 8,
+  tradeWindowFilter: "all",
+  hidePastTradeWindows: true,
 });
 
 const adminStickerForm = reactive({
@@ -418,6 +423,16 @@ const filteredManagedCoupons = computed(() => {
       return false;
     }
 
+    if (adminTools.couponUserFilter !== "all") {
+      const selectedUserId = Number(adminTools.couponUserFilter || 0);
+      if (
+        Number(c.targetUserId || 0) !== selectedUserId &&
+        Number(c.createdByUserId || 0) !== selectedUserId
+      ) {
+        return false;
+      }
+    }
+
     if (!query) return true;
     const code = String(c.code || "").toLowerCase();
     const target = String(c.targetUserName || "").toLowerCase();
@@ -429,6 +444,40 @@ const filteredManagedCoupons = computed(() => {
     );
   });
 });
+const managedCouponsPageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil(
+      filteredManagedCoupons.value.length /
+        Number(adminTools.couponPageSize || 8),
+    ),
+  ),
+);
+const managedCouponsSafePage = computed(() =>
+  Math.min(
+    Math.max(1, Number(adminTools.couponPage || 1)),
+    managedCouponsPageCount.value,
+  ),
+);
+const managedCouponsPaged = computed(() => {
+  const pageSize = Number(adminTools.couponPageSize || 8);
+  const start = (managedCouponsSafePage.value - 1) * pageSize;
+  return filteredManagedCoupons.value.slice(start, start + pageSize);
+});
+const managedCouponsPageFrom = computed(() => {
+  if (!filteredManagedCoupons.value.length) return 0;
+  return (
+    (managedCouponsSafePage.value - 1) *
+      Number(adminTools.couponPageSize || 8) +
+    1
+  );
+});
+const managedCouponsPageTo = computed(() =>
+  Math.min(
+    managedCouponsSafePage.value * Number(adminTools.couponPageSize || 8),
+    filteredManagedCoupons.value.length,
+  ),
+);
 const editingManagedUser = computed(() => {
   const id = Number(adminTools.editingUserId || 0);
   if (!id) return null;
@@ -522,6 +571,34 @@ const tradeWindowStatusText = computed(() => {
   return tradeWindowIsOpenNow.value
     ? "Janela de trocas aberta"
     : "Janela de trocas fechada";
+});
+const filteredTradeWindows = computed(() => {
+  if (!Array.isArray(state.tradeWindows)) return [];
+
+  const now = Number(ui.tradeWindowClockNow || Date.now());
+  const statusFilter = String(adminTools.tradeWindowFilter || "all");
+  const hidePast = Boolean(adminTools.hidePastTradeWindows);
+
+  return [...state.tradeWindows]
+    .filter((w) => {
+      if (!w || !w.startsAt || !w.endsAt) return false;
+      const startMs = new Date(w.startsAt).getTime();
+      const endMs = new Date(w.endsAt).getTime();
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return false;
+
+      const isOpen = w.isOpen === true;
+      const isUpcoming = startMs > now;
+      const isPast = endMs < now;
+
+      if (hidePast && isPast) return false;
+      if (statusFilter === "open" && !isOpen) return false;
+      if (statusFilter === "upcoming" && !isUpcoming) return false;
+
+      return true;
+    })
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+    );
 });
 const tradeWindowCountdownText = computed(() => {
   if (!tradeWindowConfigured.value) return "Defina no painel de administração.";
@@ -1283,6 +1360,11 @@ function clearAuth() {
   adminTools.editingUserId = "";
   adminTools.couponSearch = "";
   adminTools.couponStatusFilter = "all";
+  adminTools.couponUserFilter = "all";
+  adminTools.couponPage = 1;
+  adminTools.couponPageSize = 8;
+  adminTools.tradeWindowFilter = "all";
+  adminTools.hidePastTradeWindows = true;
   ui.managePanelMsg = "";
   ui.couponPanelMsg = "";
   ui.couponPanelKind = "";
@@ -1827,6 +1909,7 @@ async function loadAdminCoupons() {
   try {
     const data = await apiFetch("/admin/coupons");
     state.managedCoupons = Array.isArray(data.coupons) ? data.coupons : [];
+    adminTools.couponPage = 1;
   } catch (err) {
     ui.adminCouponsMsg = err.message || "Erro ao carregar cupons";
   } finally {
@@ -1860,6 +1943,31 @@ async function deleteManagedCoupon(coupon) {
 function openManagedUserEditor(user) {
   const id = Number(user?.id || 0);
   adminTools.editingUserId = id ? String(id) : "";
+}
+
+async function openCouponsForUser(user) {
+  const userId = Number(user?.id || 0);
+  if (!userId) return;
+  adminTools.couponUserFilter = String(userId);
+  adminTools.couponPage = 1;
+  selectAdminTab("coupons");
+  if (canManageCoupons.value && state.managedCoupons.length === 0) {
+    await loadAdminCoupons();
+  }
+}
+
+function setManagedCouponsPage(nextPage) {
+  const n = Number(nextPage || 1);
+  adminTools.couponPage = Math.min(
+    Math.max(1, n),
+    Math.max(1, managedCouponsPageCount.value),
+  );
+}
+
+function setManagedCouponsPageSize(nextSize) {
+  const n = Number(nextSize || 8);
+  adminTools.couponPageSize = [5, 8, 10, 20].includes(n) ? n : 8;
+  adminTools.couponPage = 1;
 }
 
 function setManagedUsersPage(nextPage) {
@@ -3607,9 +3715,14 @@ const filteredTradeAvailable = computed(() => {
                       <small>{{ formatDateTime(u.createdAt) }}</small>
                     </td>
                     <td>
-                      <button type="button" @click="openManagedUserEditor(u)">
-                        Editar
-                      </button>
+                      <div class="admin-user-actions-inline">
+                        <button type="button" @click="openManagedUserEditor(u)">
+                          Editar
+                        </button>
+                        <button type="button" @click="openCouponsForUser(u)">
+                          Ver cupons
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -3724,11 +3837,28 @@ const filteredTradeAvailable = computed(() => {
                 v-model.trim="adminTools.couponSearch"
                 type="search"
                 placeholder="Buscar por código, usuário alvo ou criador"
+                @input="setManagedCouponsPage(1)"
               />
-              <select v-model="adminTools.couponStatusFilter">
+              <select
+                v-model="adminTools.couponStatusFilter"
+                @change="setManagedCouponsPage(1)"
+              >
                 <option value="all">Todos os status</option>
                 <option value="active">Ativos</option>
                 <option value="redeemed">Resgatados</option>
+              </select>
+              <select
+                v-model="adminTools.couponUserFilter"
+                @change="setManagedCouponsPage(1)"
+              >
+                <option value="all">Todos os usuários</option>
+                <option
+                  v-for="u in state.managedUsers"
+                  :key="`coupon-filter-${u.id}`"
+                  :value="String(u.id)"
+                >
+                  {{ u.name }}
+                </option>
               </select>
             </div>
 
@@ -3754,10 +3884,10 @@ const filteredTradeAvailable = computed(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-if="filteredManagedCoupons.length === 0">
+                  <tr v-if="managedCouponsPaged.length === 0">
                     <td colspan="8">Nenhum cupom encontrado.</td>
                   </tr>
-                  <tr v-for="coupon in filteredManagedCoupons" :key="coupon.id">
+                  <tr v-for="coupon in managedCouponsPaged" :key="coupon.id">
                     <td>
                       <strong>{{ coupon.code }}</strong>
                     </td>
@@ -3799,6 +3929,50 @@ const filteredTradeAvailable = computed(() => {
                 </tbody>
               </table>
             </div>
+
+            <div class="admin-pagination">
+              <div>
+                <small>
+                  Exibindo {{ managedCouponsPageFrom }}-{{
+                    managedCouponsPageTo
+                  }}
+                  de
+                  {{ filteredManagedCoupons.length }}
+                </small>
+                <label class="page-size-label">
+                  Itens por página
+                  <select
+                    :value="adminTools.couponPageSize"
+                    @change="setManagedCouponsPageSize($event.target.value)"
+                  >
+                    <option :value="5">5</option>
+                    <option :value="8">8</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                  </select>
+                </label>
+              </div>
+              <div class="admin-pagination-actions">
+                <button
+                  type="button"
+                  :disabled="managedCouponsSafePage <= 1"
+                  @click="setManagedCouponsPage(managedCouponsSafePage - 1)"
+                >
+                  Anterior
+                </button>
+                <span>
+                  Página {{ managedCouponsSafePage }} de
+                  {{ managedCouponsPageCount }}
+                </span>
+                <button
+                  type="button"
+                  :disabled="managedCouponsSafePage >= managedCouponsPageCount"
+                  @click="setManagedCouponsPage(managedCouponsSafePage + 1)"
+                >
+                  Próxima
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -3809,6 +3983,21 @@ const filteredTradeAvailable = computed(() => {
           <h3 style="margin-bottom: 1.5rem; color: #1f2937">
             Gerenciar Janelas de Trocas
           </h3>
+
+          <div class="trade-windows-toolbar">
+            <select v-model="adminTools.tradeWindowFilter">
+              <option value="all">Todas as janelas atuais/futuras</option>
+              <option value="open">Somente abertas</option>
+              <option value="upcoming">Somente próximas</option>
+            </select>
+            <label class="trade-windows-checkbox">
+              <input
+                v-model="adminTools.hidePastTradeWindows"
+                type="checkbox"
+              />
+              Ocultar janelas antigas
+            </label>
+          </div>
 
           <div class="trade-windows-form">
             <h4 style="margin: 0 0 0.8rem 0; color: #10a3ae">
@@ -3844,13 +4033,13 @@ const filteredTradeAvailable = computed(() => {
             </p>
           </div>
 
-          <div v-if="state.tradeWindows.length > 0">
+          <div v-if="filteredTradeWindows.length > 0">
             <h4 style="margin: 1.5rem 0 1rem 0; color: #1f2937">
-              Janelas Ativas
+              Janelas listadas ({{ filteredTradeWindows.length }})
             </h4>
             <div class="trade-windows-list">
               <div
-                v-for="window in state.tradeWindows"
+                v-for="window in filteredTradeWindows"
                 :key="window.id"
                 class="trade-window-item"
                 :class="{ open: window.isOpen }"
@@ -3885,8 +4074,7 @@ const filteredTradeAvailable = computed(() => {
             </div>
           </div>
           <div v-else class="read-only-hint">
-            ℹ️ Nenhuma janela de troca criada ainda. Crie uma acima para
-            começar.
+            ℹ️ Nenhuma janela encontrada com os filtros atuais.
           </div>
         </div>
       </section>

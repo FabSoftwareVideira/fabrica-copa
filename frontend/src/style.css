@@ -867,6 +867,25 @@ button:disabled {
   gap: 0.8rem;
 }
 
+.trade-windows-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.trade-windows-toolbar select {
+  min-width: 240px;
+}
+
+.trade-windows-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
 .trade-windows-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -1028,6 +1047,16 @@ button:disabled {
 @media (max-width: 768px) {
   .trade-windows-form-row {
     grid-template-columns: 1fr;
+  }
+
+  .trade-windows-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trade-windows-toolbar select {
+    min-width: 0;
+    width: 100%;
   }
 
   .trade-window-item {
@@ -3589,6 +3618,17 @@ button:disabled {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
   gap: 0.5rem;
+}
+
+.manage-users-coupon-filter-btn {
+  width: 100%;
+}
+
+.admin-user-actions-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
 }
 
 .admin-users-table-wrap {
