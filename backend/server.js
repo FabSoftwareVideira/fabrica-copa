@@ -2212,9 +2212,30 @@ app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, r
         const { state: myState } = await getAlbumState(req.user.sub);
         const { state: targetState } = await getAlbumState(userId);
 
+        const pendingRows = await all(
+            `SELECT offered_sticker_id, COUNT(*) AS pending_count
+             FROM trade_offers
+             WHERE from_user_id = ? AND status = 'pending'
+             GROUP BY offered_sticker_id`,
+            [req.user.sub]
+        );
+        const pendingByStickerId = new Map(
+            pendingRows.map((r) => [String(r.offered_sticker_id), Number(r.pending_count || 0)])
+        );
+
         const wantedFromMe = STICKERS
-            .filter((s) => (myState.collected[s.id] || 0) > 1 && (targetState.collected[s.id] || 0) < 1)
-            .map((s) => ({ ...s, count: Number(myState.collected[s.id]) }))
+            .filter((s) => {
+                const myCount = Number(myState.collected[s.id] || 0);
+                const reservedPending = Number(pendingByStickerId.get(String(s.id)) || 0);
+                const tradableCount = Math.max(0, myCount - 1 - reservedPending);
+                return tradableCount > 0 && (targetState.collected[s.id] || 0) < 1;
+            })
+            .map((s) => {
+                const myCount = Number(myState.collected[s.id] || 0);
+                const reservedPending = Number(pendingByStickerId.get(String(s.id)) || 0);
+                const tradableCount = Math.max(0, myCount - 1 - reservedPending);
+                return { ...s, count: tradableCount };
+            })
             .sort((a, b) => a.num - b.num);
 
         return res.json({ user: { id: user.id, name: user.name }, stickers: wantedFromMe });
@@ -2245,10 +2266,41 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
             return res.status(400).json({ error: "Voce precisa ter ao menos uma figurinha repetida para oferecer" });
         }
 
+        const pendingSameSticker = await get(
+            `SELECT id
+             FROM trade_offers
+             WHERE from_user_id = ?
+               AND offered_sticker_id = ?
+               AND status = 'pending'
+             LIMIT 1`,
+            [req.user.sub, offeredStickerId]
+        );
+        if (pendingSameSticker) {
+            return res.status(409).json({
+                error: "Voce ja possui uma troca pendente usando essa figurinha. Aguarde resposta ou cancele a proposta atual.",
+            });
+        }
+
         const toUserRow = await get("SELECT id, is_blocked FROM users WHERE id = ?", [Number(toUserId)]);
         if (!toUserRow) return res.status(404).json({ error: "Usuario destino nao encontrado" });
         if (Number(toUserRow.is_blocked || 0) === 1) {
             return res.status(400).json({ error: "Nao e possivel trocar com usuario bloqueado" });
+        }
+
+        const pendingSameTargetSticker = await get(
+            `SELECT id
+             FROM trade_offers
+             WHERE from_user_id = ?
+               AND to_user_id = ?
+               AND requested_sticker_id = ?
+               AND status = 'pending'
+             LIMIT 1`,
+            [req.user.sub, Number(toUserId), requestedStickerId]
+        );
+        if (pendingSameTargetSticker) {
+            return res.status(409).json({
+                error: "Voce ja possui uma proposta pendente para essa figurinha deste usuario.",
+            });
         }
 
         const { state: toState } = await getAlbumState(Number(toUserId));
@@ -2482,6 +2534,19 @@ app.get("/api/trade/available", authMiddleware, async (req, res) => {
 
         const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
 
+        const pendingRows = await all(
+            `SELECT from_user_id, offered_sticker_id, COUNT(*) AS pending_count
+             FROM trade_offers
+             WHERE status = 'pending'
+             GROUP BY from_user_id, offered_sticker_id`
+        );
+        const pendingByUserSticker = new Map(
+            pendingRows.map((r) => [
+                `${Number(r.from_user_id)}:${String(r.offered_sticker_id)}`,
+                Number(r.pending_count || 0),
+            ])
+        );
+
         const stickerOffers = new Map();
 
         for (const user of users) {
@@ -2492,14 +2557,19 @@ app.get("/api/trade/available", authMiddleware, async (req, res) => {
                 const userCount = Number(userCollected[sticker.id] || 0);
                 const myCount = Number(myCollected[sticker.id] || 0);
 
-                if (userCount > 1 && myCount < 1) {
+                const reservedPending = Number(
+                    pendingByUserSticker.get(`${Number(user.id)}:${String(sticker.id)}`) || 0
+                );
+                const tradableCount = Math.max(0, userCount - 1 - reservedPending);
+
+                if (tradableCount > 0 && myCount < 1) {
                     if (!stickerOffers.has(sticker.id)) {
                         stickerOffers.set(sticker.id, { sticker, offeredBy: [] });
                     }
                     stickerOffers.get(sticker.id).offeredBy.push({
                         userId: user.id,
                         userName: user.name,
-                        count: userCount,
+                        count: tradableCount,
                     });
                 }
             }

@@ -2022,10 +2022,15 @@ button:disabled {
   }
 
   .filters select,
+  .trade-filters input,
   .trade-filters select,
   .trade-tabs button,
   .trade-modal-actions button,
   .trade-offer-actions button {
+    width: 100%;
+  }
+
+  .trade-page-size-label {
     width: 100%;
   }
 
@@ -2293,6 +2298,7 @@ button:disabled {
   margin-bottom: 1.2rem;
 }
 
+.trade-filters input,
 .trade-filters select {
   flex: 1;
   min-width: 140px;
@@ -2305,14 +2311,33 @@ button:disabled {
   transition: all 160ms ease;
 }
 
+.trade-filters input {
+  cursor: text;
+}
+
+.trade-filters input:hover,
 .trade-filters select:hover {
   border-color: color-mix(in srgb, var(--line) 60%, var(--accent) 40%);
 }
 
+.trade-filters input:focus,
 .trade-filters select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.trade-page-size-label {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.trade-page-size-label select {
+  width: 66px;
+}
+
+.trade-pagination {
+  margin-top: 0.8rem;
 }
 
 .trade-offered-by {
