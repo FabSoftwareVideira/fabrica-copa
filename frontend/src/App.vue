@@ -3637,11 +3637,13 @@ const filteredTradeHistoryPaged = computed(() => {
             class="dashboard-ring"
             :style="{
               background: `conic-gradient(var(--progress-b) ${dashboardPercentDisplay}%, rgba(148, 163, 184, 0.28) ${dashboardPercentDisplay}% 100%)`,
+              '--fill-pct': `${dashboardPercentDisplay}%`,
             }"
           >
+            <div class="dashboard-ring-img" aria-hidden="true">
+              <img src="/ring.webp" alt="" />
+            </div>
             <div class="dashboard-ring-core">
-              <strong>{{ dashboardPercentDisplay }}%</strong>
-              <span>Album completo</span>
               <div
                 class="dashboard-ring-coins"
                 title="Moedas ganhas ao aceitar trocas"
