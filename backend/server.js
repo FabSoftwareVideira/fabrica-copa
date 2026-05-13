@@ -2430,6 +2430,10 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [JSON.stringify(toCollected), nowTimestamp, offer.to_user_id]
         );
         await run(
+            "UPDATE album_states SET trade_coins = trade_coins + 1, updated_at = ? WHERE user_id = ?",
+            [nowTimestamp, offer.from_user_id]
+        );
+        await run(
             "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ?",
             [nowTimestamp, offerId]
         );
