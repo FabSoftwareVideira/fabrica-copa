@@ -3350,6 +3350,7 @@ button:disabled {
   display: flex;
   gap: 0.45rem;
   margin-bottom: 0.7rem;
+  flex-wrap: wrap;
 }
 
 .admin-subtab-btn {
@@ -3370,6 +3371,11 @@ button:disabled {
 
 .admin-panel-shell {
   margin-top: 0;
+}
+
+.admin-tab-panel {
+  display: grid;
+  gap: 0.7rem;
 }
 
 .manage-panel {
@@ -3398,6 +3404,10 @@ button:disabled {
 .manage-users-box {
   display: grid;
   gap: 0.55rem;
+}
+
+.manage-trade-window-box {
+  margin-top: 0.4rem;
 }
 
 .manage-create-sticker-box {
@@ -4097,8 +4107,8 @@ button:disabled {
   }
 
   .admin-subtabs {
-    overflow-x: auto;
-    padding-bottom: 0.15rem;
+    justify-content: center;
+    padding-bottom: 0;
   }
 
   .auth-page {

@@ -1664,8 +1664,11 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
     }
 });
 
-app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
     try {
+        const isAdmin = req.user?.role === ROLE_ADMIN;
+        const whereClause = isAdmin ? "" : "WHERE c.created_by_user_id = ?";
+        const params = isAdmin ? [] : [req.user.sub];
         const coupons = await all(
             `SELECT c.id, c.code, c.packs_added, c.is_generic, c.status, c.created_at, c.redeemed_at,
                     c.target_user_id, c.created_by_user_id,
@@ -1674,7 +1677,10 @@ app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN), async (r
              FROM user_coupons c
              LEFT JOIN users tu ON tu.id = c.target_user_id
              LEFT JOIN users cu ON cu.id = c.created_by_user_id
+             ${whereClause}
              ORDER BY c.created_at DESC, c.id DESC`
+            ,
+            params
         );
 
         return res.json({
