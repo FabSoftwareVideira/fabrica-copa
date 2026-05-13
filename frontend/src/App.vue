@@ -1922,7 +1922,7 @@ async function loadManagedUsers() {
 
     adminTools.page = 1;
   } catch (err) {
-    ui.managePanelMsg = err.message || "Erro ao carregar usuarios";
+    ui.managePanelMsg = err.message || "Erro ao carregar usuários";
   } finally {
     ui.managePanelLoading = false;
   }
@@ -2386,9 +2386,9 @@ async function redeemPromo() {
       : state.usedCodes;
     ui.promoMsg = `${data.label}: +${data.packs} pacote(s)`;
     ui.promoCode = "";
-    setToast("Codigo aplicado com sucesso");
+    setToast("Código aplicado com sucesso");
   } catch (err) {
-    ui.promoMsg = err.message || "Codigo invalido";
+    ui.promoMsg = err.message || "Código inválido";
   }
 }
 
@@ -2717,7 +2717,7 @@ async function loadTradeUsers() {
     const data = await apiFetch("/trade/users");
     state.tradeUsers = Array.isArray(data.users) ? data.users : [];
   } catch (err) {
-    setToast(err.message || "Erro ao carregar usuarios");
+    setToast(err.message || "Erro ao carregar usuários");
   } finally {
     ui.tradeUsersLoading = false;
   }
@@ -3243,7 +3243,7 @@ const filteredTradeHistoryPaged = computed(() => {
             <span class="landing-event-label">FIFA World Cup 2026™</span>
             <span class="landing-flags">🇺🇸 🇨🇦 🇲🇽</span>
           </div>
-          <h1 class="landing-title">Album de Figurinhas</h1>
+          <h1 class="landing-title">Álbum de Figurinhas</h1>
           <p class="landing-subtitle">
             Colecione, complete e troque figurinhas com outros fãs da Copa do
             Mundo 2026. Abra pacotinhos diários e construa seu álbum!
@@ -3308,7 +3308,7 @@ const filteredTradeHistoryPaged = computed(() => {
       </div>
       <footer class="landing-footer">
         <p>
-          Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
+          Álbum Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
           World Cup 2026™
         </p>
         <p>
@@ -3329,7 +3329,7 @@ const filteredTradeHistoryPaged = computed(() => {
       <div class="auth-page-inner">
         <div class="auth-page-brand">
           <span class="auth-brand-flags">🇺🇸 🇨🇦 🇲🇽</span>
-          <h1>Album Copa 2026</h1>
+          <h1>Álbum Copa 2026</h1>
           <p>FIFA World Cup 2026™</p>
         </div>
         <div class="auth-card">
@@ -3402,7 +3402,7 @@ const filteredTradeHistoryPaged = computed(() => {
     <header class="topbar">
       <div class="topbar-brand">
         <p class="eyebrow">World Cup Sticker Album</p>
-        <h1>Album Copa 2026</h1>
+        <h1>Álbum Copa 2026</h1>
         <small class="eyebrow">EUA, Canadá e México</small>
       </div>
       <button
@@ -3532,7 +3532,7 @@ const filteredTradeHistoryPaged = computed(() => {
           ui.mobileMenuOpen = false;
         "
       >
-        Inicio
+        Início
       </button>
       <button
         type="button"
@@ -3635,7 +3635,7 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
         <div class="panel-head">
-          <h2>Visao Geral</h2>
+          <h2>Visão Geral</h2>
           <span class="badge-chip"
             >{{ dashboardPercentDisplay }}% completo</span
           >
@@ -3696,14 +3696,14 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
         <div v-if="isAuthenticated" class="history">
-          <h3>Historico de pacotinhos</h3>
+          <h3>Histórico de pacotinhos</h3>
           <p v-if="state.recentPacks.length === 0">
             Nenhum pacote aberto ainda.
           </p>
           <ul v-else>
             <li v-for="item in state.recentPacks" :key="item.id">
               <span>{{ formatDateTime(item.openedAt) }}</span>
-              <span>{{ item.source === "bonus" ? "Bonus" : "Diario" }}</span>
+              <span>{{ item.source === "bonus" ? "Bônus" : "Diário" }}</span>
               <span>{{ item.newCount }} novas</span>
               <span>{{ item.repeatCount }} repetidas</span>
             </li>
@@ -4393,7 +4393,7 @@ const filteredTradeHistoryPaged = computed(() => {
 
       <section v-if="state.view === 'album'" class="panel">
         <div class="panel-head">
-          <h2>Catalogo Completo</h2>
+          <h2>Catálogo Completo</h2>
           <span class="badge-chip">{{ filteredAlbum.length }} exibidas</span>
         </div>
         <div class="filters">
@@ -4508,7 +4508,7 @@ const filteredTradeHistoryPaged = computed(() => {
 
       <section v-if="state.view === 'flip'" class="panel panel-flip">
         <div class="panel-head">
-          <h2>Folhear Album</h2>
+          <h2>Folhear Álbum</h2>
         </div>
 
         <div class="flip-nav">
@@ -4630,7 +4630,7 @@ const filteredTradeHistoryPaged = computed(() => {
           class="search-input"
           v-model="state.searchQuery"
           type="search"
-          placeholder="Buscar por nome, time ou numero"
+          placeholder="Buscar por nome, time ou número"
         />
         <p v-if="state.searchQuery.trim().length < 2">
           Digite pelo menos 2 caracteres.
@@ -5484,7 +5484,7 @@ const filteredTradeHistoryPaged = computed(() => {
 
     <div v-if="ui.promoOpen" class="modal" @click.self="ui.promoOpen = false">
       <div class="modal-box">
-        <h2>Codigo Promocional</h2>
+        <h2>Código Promocional</h2>
         <input
           v-model="ui.promoCode"
           type="text"
@@ -5500,7 +5500,7 @@ const filteredTradeHistoryPaged = computed(() => {
       <div class="app-footer-cols">
         <div class="app-footer-left">
           <p>
-            Album Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México ·
+            Álbum Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México ·
             FIFA World Cup 2026™
           </p>
           <p>
