@@ -788,6 +788,23 @@ button:disabled {
   color: #475569;
   font-size: 0.76rem;
 }
+.trade-window-countdown-box {
+  margin: 0.75rem 0;
+  border: 2px solid #16a34a;
+  background: rgba(22, 163, 74, 0.05);
+  border-radius: 14px;
+  padding: 0.8rem 0.9rem;
+  text-align: center;
+}
+.trade-window-countdown-box p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.trade-window-countdown-box strong {
+  color: #16a34a;
+}
 .dot {
   width: 12px;
   height: 12px;
@@ -824,11 +841,202 @@ button:disabled {
   border-radius: 10px;
   padding: 0.6rem 0.75rem;
 }
+.read-only-hint.trade-window-open {
+  background: #ecfdf5;
+  border-color: #86efac;
+  color: #14532d;
+}
 
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0.7rem;
+}
+
+.trade-windows-form {
+  background: linear-gradient(
+    135deg,
+    rgba(16, 163, 174, 0.05) 0%,
+    rgba(34, 197, 94, 0.05) 100%
+  );
+  border: 1px solid rgba(16, 163, 174, 0.2);
+  border-radius: 16px;
+  padding: 1.2rem;
+  margin-bottom: 1.5rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.trade-windows-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.8rem;
+  align-items: flex-end;
+}
+
+.trade-windows-form-row label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9rem;
+}
+
+.trade-windows-form-row input {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: white;
+  color: #1f2937;
+  font-size: 0.95rem;
+  transition: all 200ms ease;
+}
+
+.trade-windows-form-row input:focus {
+  outline: none;
+  border-color: #10a3ae;
+  box-shadow: 0 0 0 3px rgba(16, 163, 174, 0.1);
+}
+
+.trade-windows-form-row button {
+  padding: 0.65rem 1.2rem;
+  background: linear-gradient(135deg, #10a3ae 0%, #22c55e 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 200ms ease;
+  font-size: 0.95rem;
+}
+
+.trade-windows-form-row button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(16, 163, 174, 0.3);
+}
+
+.trade-windows-form-row button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.trade-windows-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.trade-window-item {
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: start;
+  transition: all 200ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.trade-window-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, #10a3ae 0%, #22c55e 100%);
+}
+
+.trade-window-item.open {
+  border-color: #10a3ae;
+  background: rgba(16, 163, 174, 0.02);
+}
+
+.trade-window-item-content {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.trade-window-item-times {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.trade-window-item-time {
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 0.9rem;
+  color: #1f2937;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trade-window-item-meta {
+  font-size: 0.85rem;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.trade-window-item-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.trade-window-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.trade-window-delete-btn {
+  padding: 0.6rem 0.9rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 200ms ease;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.trade-window-delete-btn:hover:not(:disabled) {
+  background: #fecaca;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(153, 27, 27, 0.2);
+}
+
+.trade-window-delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .trade-windows-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-window-item {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-window-item-time {
+    font-size: 0.85rem;
+  }
 }
 
 .card,
@@ -1517,6 +1725,15 @@ button:disabled {
   animation: reveal 180ms ease-out;
 }
 
+.history {
+  padding: 1.6rem 0;
+}
+
+.history h3 {
+  padding: 0.2rem 0;
+  margin: 0 0 0.6rem;
+}
+
 @keyframes reveal {
   from {
     opacity: 0;
@@ -1574,6 +1791,94 @@ button:disabled {
     opacity: 0.2;
     filter: blur(1.8px);
   }
+}
+
+@keyframes pulse-red {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes pulse-green {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.dashboard-trade-window-status {
+  /* margin: 1.2rem 0 0 0; */
+  /* padding-top: 1.2rem; */
+  /* border-top: 1px solid rgba(16, 33, 47, 0.1); */
+  padding-bottom: 1.2rem;
+}
+
+.trade-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.5rem 1rem;
+  background: linear-gradient(
+    135deg,
+    rgba(59, 130, 246, 0.08),
+    rgba(99, 102, 241, 0.08)
+  );
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 12px;
+  transition: all 300ms ease;
+}
+
+.trade-status-indicator.open {
+  background: linear-gradient(
+    135deg,
+    rgba(34, 197, 94, 0.08),
+    rgba(22, 163, 74, 0.08)
+  );
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+.status-emoji {
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.trade-status-indicator:not(.open) .status-emoji {
+  animation: pulse-red 2s ease-in-out infinite;
+}
+
+.trade-status-indicator.open .status-emoji {
+  animation: pulse-green 2.5s ease-in-out infinite;
+}
+
+.status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.status-text small {
+  font-size: 0.75rem;
+  color: var(--text-dimmed);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.status-text strong {
+  font-size: 0.95rem;
+  color: var(--ink);
 }
 
 @media (max-width: 900px) {

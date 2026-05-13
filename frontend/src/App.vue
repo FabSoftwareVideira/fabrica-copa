@@ -179,6 +179,7 @@ const state = reactive({
   tradeIncoming: [],
   tradeOutgoing: [],
   tradeHistory: [],
+  tradeWindows: [],
   managedUsers: [],
   managedCoupons: [],
   recentCreatedStickers: [],
@@ -218,6 +219,10 @@ const ui = reactive({
   tradeOfferChoicesLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
+  tradeWindowClockNow: Date.now(),
+  adminWindowForm: { startsAt: "", endsAt: "" },
+  adminWindowMsg: "",
+  adminWindowSaving: false,
   managePanelLoading: false,
   managePanelMsg: "",
   couponPanelMsg: "",
@@ -467,6 +472,54 @@ const dailyLeft = computed(() => {
 const packsAvailable = computed(
   () => dailyLeft.value + (state.extraPacks || 0),
 );
+const tradeWindowConfigured = computed(
+  () => Array.isArray(state.tradeWindows) && state.tradeWindows.length > 0,
+);
+const tradeWindowIsOpenNow = computed(() => {
+  if (!tradeWindowConfigured.value) return false;
+  return state.tradeWindows.some((w) => w && w.isOpen === true);
+});
+const nextTradeWindow = computed(() => {
+  if (!Array.isArray(state.tradeWindows)) return null;
+  const now = Date.now();
+  const upcoming = state.tradeWindows.filter(
+    (w) => w && w.startsAt && new Date(w.startsAt).getTime() > now,
+  );
+  if (upcoming.length === 0) return null;
+  return upcoming.sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  )[0];
+});
+const currentOpenWindow = computed(() => {
+  if (!Array.isArray(state.tradeWindows)) return null;
+  return state.tradeWindows.find((w) => w && w.isOpen === true) || null;
+});
+const tradeWindowStatusText = computed(() => {
+  if (!tradeWindowConfigured.value) return "Janela de trocas fechada";
+  return tradeWindowIsOpenNow.value
+    ? "Janela de trocas aberta"
+    : "Janela de trocas fechada";
+});
+const tradeWindowCountdownText = computed(() => {
+  if (!tradeWindowConfigured.value) return "Defina no painel de administração.";
+  const now = Number(ui.tradeWindowClockNow || Date.now());
+
+  if (tradeWindowIsOpenNow.value && currentOpenWindow.value) {
+    const endMs = new Date(currentOpenWindow.value.endsAt).getTime();
+    if (now < endMs) {
+      return `Fecha em ${formatCountdown(endMs - now)}`;
+    }
+  }
+
+  if (nextTradeWindow.value) {
+    const startMs = new Date(nextTradeWindow.value.startsAt).getTime();
+    if (now < startMs) {
+      return `Abre em ${formatCountdownLongFormat(startMs - now)}`;
+    }
+  }
+
+  return "Período encerrado";
+});
 
 const duplicatesList = computed(() =>
   stickers.filter((item) => getCount(item.id) > 1),
@@ -624,7 +677,72 @@ let packRevealTimer = null;
 let systemEventsTimer = null;
 let dashboardRingAnimFrame = null;
 let dashboardStatsAnimFrame = null;
+let tradeWindowClockTimer = null;
 const stickerPhotoCache = new Map();
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
+
+function formatCountdownLongFormat(ms) {
+  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+
+  if (totalSeconds < 60) {
+    return "em breve...";
+  }
+
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+
+  if (days > 0 && hours > 0) {
+    return `${days} dia${days > 1 ? "s" : ""} ${hours} hora${hours > 1 ? "s" : ""}`;
+  } else if (days > 0) {
+    return `${days} dia${days > 1 ? "s" : ""}`;
+  } else if (hours > 0) {
+    return `${hours} hora${hours > 1 ? "s" : ""}`;
+  }
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  return `${minutes} minuto${minutes > 1 ? "s" : ""}`;
+}
+
+function setTradeWindowStateFromPayload(payload) {
+  if (Array.isArray(payload)) {
+    state.tradeWindows = payload;
+  } else {
+    state.tradeWindows = [];
+  }
+}
+
+async function loadAllTradeWindows() {
+  if (!isAuthenticated.value) return;
+  try {
+    const data = await apiFetch("/trade/window");
+    setTradeWindowStateFromPayload(data.tradeWindows || []);
+  } catch (_err) {
+    // non-fatal: keep latest known state
+  }
+}
+
+function startTradeWindowClock() {
+  if (tradeWindowClockTimer) return;
+  tradeWindowClockTimer = setInterval(() => {
+    ui.tradeWindowClockNow = Date.now();
+  }, 1000);
+}
+
+function stopTradeWindowClock() {
+  if (!tradeWindowClockTimer) return;
+  clearInterval(tradeWindowClockTimer);
+  tradeWindowClockTimer = null;
+}
 
 function stopDashboardRingAnimation() {
   if (!dashboardRingAnimFrame) return;
@@ -879,6 +997,8 @@ onMounted(async () => {
   if (isAuthenticated.value) {
     await bootstrapAuth();
   }
+
+  startTradeWindowClock();
 });
 
 onBeforeUnmount(() => {
@@ -887,6 +1007,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("unhandledrejection", handleUnhandledRejection);
   stopDashboardRingAnimation();
   stopDashboardStatsAnimation();
+  stopTradeWindowClock();
   removePackDragListeners();
   clearPackRevealTimer();
   stopSystemEventsPolling();
@@ -1125,6 +1246,8 @@ function clearAuth() {
   state.tradeIncoming = [];
   state.tradeOutgoing = [];
   state.tradeHistory = [];
+  state.tradeWindowStartsAt = "";
+  state.tradeWindowEndsAt = "";
   state.tradeFilterUser = "all";
   state.tradeFilterGroup = "all";
   state.tradeSubView = "available";
@@ -1152,6 +1275,10 @@ function clearAuth() {
   ui.tradeOfferSticker = null;
   ui.tradeOfferChoices = [];
   ui.tradeLoading = false;
+  ui.tradeWindowSaving = false;
+  ui.tradeWindowMsg = "";
+  ui.adminTradeWindowStartInput = "";
+  ui.adminTradeWindowEndInput = "";
   ui.notificationsOpen = false;
   state.systemLastEventId = 0;
   localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
@@ -1272,6 +1399,42 @@ async function loadSystemEvents(silent = false) {
           message: `${evt.message}`,
           createdAt: evt.createdAt,
         });
+      }
+
+      if (evt?.type === "trade_window_created") {
+        pushNotification({
+          id: evt.id,
+          type: "trade_window_created",
+          icon: "📅",
+          title: "Nova janela de trocas agendada",
+          message: evt.message || "Uma nova janela de trocas foi criada.",
+          createdAt: evt.createdAt,
+        });
+        await loadAllTradeWindows();
+      }
+
+      if (evt?.type === "trade_window_opened") {
+        pushNotification({
+          id: evt.id,
+          type: "trade_window_opened",
+          icon: "🟢",
+          title: "Janela de trocas aberta!",
+          message: evt.message || "A janela de trocas está aberta agora.",
+          createdAt: evt.createdAt,
+        });
+        await loadAllTradeWindows();
+      }
+
+      if (evt?.type === "trade_window_closed") {
+        pushNotification({
+          id: evt.id,
+          type: "trade_window_closed",
+          icon: "🔴",
+          title: "Janela de trocas encerrada",
+          message: evt.message || "A janela de trocas foi encerrada.",
+          createdAt: evt.createdAt,
+        });
+        await loadAllTradeWindows();
       }
     }
 
@@ -1798,6 +1961,86 @@ async function loadAlbumState() {
   state.packsUsedToday = Number(data.packsUsedToday || 0);
   state.extraPacks = Number(data.extraPacks || 0);
   state.usedCodes = Array.isArray(data.usedCodes) ? data.usedCodes : [];
+  setTradeWindowStateFromPayload(data.tradeWindows || []);
+}
+
+async function loadTradeWindowConfig() {
+  if (!isAuthenticated.value) return;
+  try {
+    const data = await apiFetch("/trade/window");
+    setTradeWindowStateFromPayload(data.tradeWindow || {});
+  } catch (_err) {
+    // non-fatal: keep latest known state
+  }
+}
+
+async function createTradeWindow() {
+  if (!isAdmin.value) return;
+
+  const startsAtRaw = String(ui.adminWindowForm.startsAt || "").trim();
+  const endsAtRaw = String(ui.adminWindowForm.endsAt || "").trim();
+
+  if (!startsAtRaw || !endsAtRaw) {
+    ui.adminWindowMsg = "Informe data/hora inicial e final válidas.";
+    return;
+  }
+
+  const startsAtDate = new Date(startsAtRaw);
+  const endsAtDate = new Date(endsAtRaw);
+  if (
+    Number.isNaN(startsAtDate.getTime()) ||
+    Number.isNaN(endsAtDate.getTime())
+  ) {
+    ui.adminWindowMsg = "Data/hora inválida.";
+    return;
+  }
+
+  const startsAt = startsAtDate.toISOString();
+  const endsAt = endsAtDate.toISOString();
+  if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+    ui.adminWindowMsg = "A data final deve ser maior que a inicial.";
+    return;
+  }
+
+  ui.adminWindowSaving = true;
+  ui.adminWindowMsg = "";
+  try {
+    const data = await apiFetch("/admin/trade/windows", {
+      method: "POST",
+      body: JSON.stringify({ startsAt, endsAt }),
+    });
+    setTradeWindowStateFromPayload(data.tradeWindows || []);
+    ui.adminWindowForm = { startsAt: "", endsAt: "" };
+    ui.adminWindowMsg = data.message || "Janela criada com sucesso.";
+    setToast(ui.adminWindowMsg);
+  } catch (err) {
+    ui.adminWindowMsg = err.message || "Erro ao criar janela";
+  } finally {
+    ui.adminWindowSaving = false;
+  }
+}
+
+async function deleteTradeWindow(windowId) {
+  if (!isAdmin.value) return;
+
+  const confirm = window.confirm(
+    "Tem certeza que deseja deletar esta janela? Essa ação não pode ser desfeita.",
+  );
+  if (!confirm) return;
+
+  ui.adminWindowSaving = true;
+  try {
+    const data = await apiFetch(`/admin/trade/windows/${windowId}`, {
+      method: "DELETE",
+    });
+    setTradeWindowStateFromPayload(data.tradeWindows || []);
+    ui.adminWindowMsg = data.message || "Janela removida com sucesso.";
+    setToast(ui.adminWindowMsg);
+  } catch (err) {
+    ui.adminWindowMsg = err.message || "Erro ao remover janela";
+  } finally {
+    ui.adminWindowSaving = false;
+  }
 }
 
 async function loadPackHistory() {
@@ -2293,6 +2536,7 @@ function handleAdminRefresh() {
   loadRecentCreatedStickers();
   if (isAdmin.value) {
     loadAdminCoupons();
+    loadAllTradeWindows();
   }
 }
 
@@ -2378,6 +2622,10 @@ async function selectTradeTargetUser(user) {
 }
 
 function openTradeOffer(entry) {
+  if (!tradeWindowIsOpenNow.value) {
+    setToast("A janela de trocas está fechada no momento");
+    return;
+  }
   ui.tradeTargetEntry = entry;
   ui.tradeTargetUser = entry.offeredBy.length === 1 ? entry.offeredBy[0] : null;
   ui.tradeOfferSticker = null;
@@ -2399,6 +2647,10 @@ function closeTradeOffer() {
 async function confirmTradeOffer() {
   if (!ui.tradeTargetEntry || !ui.tradeTargetUser || !ui.tradeOfferSticker)
     return;
+  if (!tradeWindowIsOpenNow.value) {
+    setToast("A janela de trocas está fechada no momento");
+    return;
+  }
   ui.tradeLoading = true;
   try {
     await apiFetch("/trade/offers", {
@@ -2421,6 +2673,10 @@ async function confirmTradeOffer() {
 }
 
 async function acceptTradeOffer(offer) {
+  if (!tradeWindowIsOpenNow.value) {
+    setToast("A janela de trocas está fechada no momento");
+    return;
+  }
   ui.tradeLoading = true;
   try {
     const data = await apiFetch(`/trade/offers/${offer.id}/accept`, {
@@ -2457,6 +2713,10 @@ async function acceptTradeOffer(offer) {
 }
 
 async function rejectTradeOffer(offer) {
+  if (!tradeWindowIsOpenNow.value) {
+    setToast("A janela de trocas está fechada no momento");
+    return;
+  }
   ui.tradeLoading = true;
   try {
     await apiFetch(`/trade/offers/${offer.id}/reject`, { method: "POST" });
@@ -2479,6 +2739,10 @@ async function rejectTradeOffer(offer) {
 }
 
 async function cancelTradeOffer(offer) {
+  if (!tradeWindowIsOpenNow.value) {
+    setToast("A janela de trocas está fechada no momento");
+    return;
+  }
   ui.tradeLoading = true;
   try {
     await apiFetch(`/trade/offers/${offer.id}/reject`, { method: "POST" });
@@ -2506,6 +2770,7 @@ async function openTradeView() {
   ui.mobileMenuOpen = false;
   if (isAuthenticated.value) {
     await Promise.all([
+      loadAllTradeWindows(),
       loadTradeAvailable(),
       loadTradeUsers(),
       loadTradeOffers(),
@@ -2845,7 +3110,7 @@ const filteredTradeAvailable = computed(() => {
         :class="{ active: isCollectionView }"
         @click="openCollectionView('flip')"
       >
-        Album & Folhear
+        Meu Álbum
         <span v-if="hasNewStickerAlerts" class="tab-badge">{{
           state.newStickersUnread
         }}</span>
@@ -2856,7 +3121,7 @@ const filteredTradeAvailable = computed(() => {
         class="tab-trade"
         @click="openTradeView"
       >
-        Trocar
+        Transferências
         <span v-if="tradeIncomingCount > 0" class="tab-badge">{{
           tradeIncomingCount
         }}</span>
@@ -2914,6 +3179,19 @@ const filteredTradeAvailable = computed(() => {
       </div>
 
       <section v-if="state.view === 'dashboard'" class="panel">
+        <div v-if="tradeWindowConfigured" class="dashboard-trade-window-status">
+          <div
+            :class="['trade-status-indicator', { open: tradeWindowIsOpenNow }]"
+          >
+            <span class="status-emoji">{{
+              tradeWindowIsOpenNow ? "🟢" : "🔴"
+            }}</span>
+            <div class="status-text">
+              <small>Janela de trocas</small>
+              <strong>{{ tradeWindowStatusText }}</strong>
+            </div>
+          </div>
+        </div>
         <div class="panel-head">
           <h2>Visao Geral</h2>
           <span class="badge-chip"
@@ -3047,6 +3325,14 @@ const filteredTradeAvailable = computed(() => {
             @click="ui.adminTab = 'coupons'"
           >
             Cupons
+          </button>
+          <button
+            type="button"
+            class="admin-subtab-btn"
+            :class="{ active: ui.adminTab === 'trade-windows' }"
+            @click="ui.adminTab = 'trade-windows'"
+          >
+            Janelas de Troca
           </button>
         </div>
 
@@ -3480,6 +3766,94 @@ const filteredTradeAvailable = computed(() => {
             </div>
           </div>
         </div>
+
+        <div
+          v-if="isAdmin && ui.adminTab === 'trade-windows'"
+          class="manage-users-box"
+        >
+          <h3 style="margin-bottom: 1.5rem; color: #1f2937">
+            Gerenciar Janelas de Trocas
+          </h3>
+
+          <div class="trade-windows-form">
+            <h4 style="margin: 0 0 0.8rem 0; color: #10a3ae">
+              Criar Nova Janela
+            </h4>
+            <div class="trade-windows-form-row">
+              <label>
+                Início
+                <input
+                  v-model="ui.adminWindowForm.startsAt"
+                  type="datetime-local"
+                  placeholder="Data e hora de início"
+                />
+              </label>
+              <label>
+                Fim
+                <input
+                  v-model="ui.adminWindowForm.endsAt"
+                  type="datetime-local"
+                  placeholder="Data e hora de término"
+                />
+              </label>
+              <button
+                type="button"
+                :disabled="ui.adminWindowSaving"
+                @click="createTradeWindow"
+              >
+                {{ ui.adminWindowSaving ? "Criando..." : "Criar Janela" }}
+              </button>
+            </div>
+            <p v-if="ui.adminWindowMsg" class="read-only-hint">
+              {{ ui.adminWindowMsg }}
+            </p>
+          </div>
+
+          <div v-if="state.tradeWindows.length > 0">
+            <h4 style="margin: 1.5rem 0 1rem 0; color: #1f2937">
+              Janelas Ativas
+            </h4>
+            <div class="trade-windows-list">
+              <div
+                v-for="window in state.tradeWindows"
+                :key="window.id"
+                class="trade-window-item"
+                :class="{ open: window.isOpen }"
+              >
+                <div class="trade-window-item-content">
+                  <div class="trade-window-item-times">
+                    <div class="trade-window-item-time">
+                      📅 {{ formatDateTime(window.startsAt) }}
+                    </div>
+                    <div class="trade-window-item-time">
+                      ⏱️ {{ formatDateTime(window.endsAt) }}
+                    </div>
+                  </div>
+                  <div class="trade-window-item-meta">
+                    <span v-if="window.isOpen">
+                      <span class="trade-window-status-badge">🟢 Aberta</span>
+                    </span>
+                    <span>👤 {{ window.createdByUserName }}</span>
+                    <span>📆 {{ formatDateTime(window.createdAt) }}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="trade-window-delete-btn"
+                  :disabled="ui.adminWindowSaving"
+                  @click="deleteTradeWindow(window.id)"
+                  title="Deletar esta janela"
+                >
+                  {{ ui.adminWindowSaving ? "..." : "Deletar" }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="read-only-hint">
+            ℹ️ Nenhuma janela de troca criada ainda. Crie uma acima para
+            começar.
+          </div>
+        </div>
       </section>
 
       <section v-if="state.view === 'album'" class="panel">
@@ -3768,6 +4142,28 @@ const filteredTradeAvailable = computed(() => {
       </div>
 
       <template v-else>
+        <div
+          v-if="!tradeWindowIsOpenNow && nextTradeWindow"
+          class="trade-window-countdown-box"
+        >
+          <p class="read-only-hint">
+            <strong>🕒 Próxima janela de trocas abre em:</strong><br />
+            {{
+              formatCountdownLongFormat(
+                new Date(nextTradeWindow.startsAt).getTime() -
+                  ui.tradeWindowClockNow,
+              )
+            }}
+          </p>
+        </div>
+        <p
+          v-else
+          class="read-only-hint"
+          :class="{ 'trade-window-open': tradeWindowIsOpenNow }"
+        >
+          {{ tradeWindowStatusText }}. {{ tradeWindowCountdownText }}
+        </p>
+
         <div class="trade-tabs">
           <button
             type="button"
@@ -3873,13 +4269,17 @@ const filteredTradeAvailable = computed(() => {
               <button
                 type="button"
                 class="trade-request-btn"
-                :disabled="myDuplicatesForOffer.length === 0"
+                :disabled="
+                  myDuplicatesForOffer.length === 0 || !tradeWindowIsOpenNow
+                "
                 @click="openTradeOffer(entry)"
               >
                 {{
-                  myDuplicatesForOffer.length === 0
-                    ? "Sem repetidas"
-                    : "Pedir troca"
+                  !tradeWindowIsOpenNow
+                    ? "Janela fechada"
+                    : myDuplicatesForOffer.length === 0
+                      ? "Sem repetidas"
+                      : "Pedir troca"
                 }}
               </button>
             </article>
@@ -3938,6 +4338,7 @@ const filteredTradeAvailable = computed(() => {
                   <button
                     type="button"
                     class="trade-accept-btn"
+                    :disabled="!tradeWindowIsOpenNow"
                     @click="acceptTradeOffer(offer)"
                   >
                     Aceitar
@@ -3945,6 +4346,7 @@ const filteredTradeAvailable = computed(() => {
                   <button
                     type="button"
                     class="trade-reject-btn"
+                    :disabled="!tradeWindowIsOpenNow"
                     @click="rejectTradeOffer(offer)"
                   >
                     Recusar
@@ -4020,6 +4422,7 @@ const filteredTradeAvailable = computed(() => {
                   <button
                     type="button"
                     class="trade-reject-btn"
+                    :disabled="!tradeWindowIsOpenNow"
                     @click="cancelTradeOffer(offer)"
                   >
                     Cancelar proposta
@@ -4294,7 +4697,10 @@ const filteredTradeAvailable = computed(() => {
             type="button"
             class="trade-accept-btn"
             :disabled="
-              !ui.tradeTargetUser || !ui.tradeOfferSticker || ui.tradeLoading
+              !tradeWindowIsOpenNow ||
+              !ui.tradeTargetUser ||
+              !ui.tradeOfferSticker ||
+              ui.tradeLoading
             "
             @click="confirmTradeOffer"
           >

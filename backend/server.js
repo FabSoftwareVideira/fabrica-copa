@@ -794,6 +794,72 @@ async function getAlbumState(userId) {
     };
 }
 
+async function getAllTradeWindows() {
+    const rows = await all(
+        `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
+                u.name as created_by_user_name
+         FROM trade_window_config tw
+         LEFT JOIN users u ON u.id = tw.created_by_user_id
+         ORDER BY tw.starts_at ASC`
+    );
+    return Array.isArray(rows) ? rows : [];
+}
+
+function toTradeWindowRowPayload(row) {
+    if (!row || !row.starts_at || !row.ends_at) {
+        return null;
+    }
+
+    const startMs = new Date(row.starts_at).getTime();
+    const endMs = new Date(row.ends_at).getTime();
+
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+        return null;
+    }
+
+    const nowMs = Date.now();
+    const isOpen = nowMs >= startMs && nowMs <= endMs;
+
+    return {
+        id: row.id,
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+        isOpen,
+        createdByUserId: row.created_by_user_id,
+        createdByUserName: row.created_by_user_name || "Admin",
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+
+function toTradeWindowsPayload(rows) {
+    if (!Array.isArray(rows)) return [];
+    return rows.map(r => toTradeWindowRowPayload(r)).filter(p => p !== null);
+}
+
+function isAnyTradeWindowOpen(windows) {
+    if (!Array.isArray(windows)) return false;
+    return windows.some(w => w && w.isOpen === true);
+}
+
+async function requireTradeWindowOpen(req, res, next) {
+    try {
+        const allWindows = await getAllTradeWindows();
+        const windows = toTradeWindowsPayload(allWindows);
+        if (!isAnyTradeWindowOpen(windows)) {
+            return res.status(403).json({
+                error: "A janela de trocas esta fechada no momento",
+                code: "TRADE_WINDOW_CLOSED",
+                tradeWindows: windows,
+            });
+        }
+        req.tradeWindows = windows;
+        return next();
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao validar janela de trocas", detail: err.message });
+    }
+}
+
 function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
 }
@@ -960,6 +1026,62 @@ async function initDb() {
       FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+    await run(`
+        CREATE TABLE IF NOT EXISTS trade_window_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            starts_at TEXT NOT NULL,
+            ends_at TEXT NOT NULL,
+            created_by_user_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    `);
+
+    // Verificar e corrigir a tabela trade_window_config se necessário
+    try {
+        const cols = await all(`PRAGMA table_info(trade_window_config)`);
+        const hasCreatedAt = cols.some((c) => c.name === "created_at");
+        const hasUpdatedAt = cols.some((c) => c.name === "updated_at");
+
+        if (!hasCreatedAt || !hasUpdatedAt) {
+            // Se as colunas faltam, droppe e recria a tabela
+            await run(`DROP TABLE IF EXISTS trade_window_config`);
+            await run(`
+                CREATE TABLE IF NOT EXISTS trade_window_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    starts_at TEXT NOT NULL,
+                    ends_at TEXT NOT NULL,
+                    created_by_user_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+                )
+            `);
+        }
+    } catch (err) {
+        // Se houver qualquer erro ao verificar, droppe e recria
+        try {
+            await run(`DROP TABLE IF EXISTS trade_window_config`);
+            await run(`
+                CREATE TABLE IF NOT EXISTS trade_window_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    starts_at TEXT NOT NULL,
+                    ends_at TEXT NOT NULL,
+                    created_by_user_id INTEGER,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+                )
+            `);
+        } catch (innerErr) {
+            console.error("Erro ao recriar tabela trade_window_config:", innerErr);
+        }
+    }
+
+    await ensureColumn("trade_window_config", "created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+    await ensureColumn("trade_window_config", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
 }
 
 app.use(cors(corsOptions));
@@ -1212,9 +1334,139 @@ app.get("/api/auth/me", authMiddleware, async (req, res) => {
 app.get("/api/album/state", authMiddleware, async (req, res) => {
     try {
         const { state } = await getAlbumState(req.user.sub);
-        return res.json(state);
+        const allWindows = await getAllTradeWindows();
+        const tradeWindows = toTradeWindowsPayload(allWindows);
+        return res.json({
+            ...state,
+            tradeWindows,
+        });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao carregar estado", detail: err.message });
+    }
+});
+
+app.get("/api/trade/window", authMiddleware, async (_req, res) => {
+    try {
+        const allWindows = await getAllTradeWindows();
+        const tradeWindows = toTradeWindowsPayload(allWindows);
+        return res.json({ tradeWindows });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar janelas de trocas", detail: err.message });
+    }
+});
+
+app.get("/api/admin/trade/windows", authMiddleware, requireRoles(ROLE_ADMIN), async (_req, res) => {
+    try {
+        const allWindows = await getAllTradeWindows();
+        const tradeWindows = toTradeWindowsPayload(allWindows);
+        return res.json({ tradeWindows });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar janelas de trocas", detail: err.message });
+    }
+});
+
+app.post("/api/admin/trade/windows", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const startsAtRaw = String(req.body?.startsAt || "").trim();
+        const endsAtRaw = String(req.body?.endsAt || "").trim();
+
+        if (!startsAtRaw || !endsAtRaw) {
+            return res.status(400).json({ error: "Data/hora inicial e final são obrigatórias" });
+        }
+
+        const startsAtDate = new Date(startsAtRaw);
+        const endsAtDate = new Date(endsAtRaw);
+        if (Number.isNaN(startsAtDate.getTime()) || Number.isNaN(endsAtDate.getTime())) {
+            return res.status(400).json({ error: "Data/hora de inicio ou fim inválida" });
+        }
+
+        const startsAt = startsAtDate.toISOString();
+        const endsAt = endsAtDate.toISOString();
+        if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+            return res.status(400).json({ error: "A data/hora final deve ser maior que a inicial" });
+        }
+
+        const createdAt = nowSqlTimestamp();
+        const result = await run(
+            `INSERT INTO trade_window_config(starts_at, ends_at, created_by_user_id, created_at, updated_at)
+             VALUES(?, ?, ?, ?, ?)`,
+            [startsAt, endsAt, req.user.sub, createdAt, createdAt]
+        );
+
+        const allWindows = await getAllTradeWindows();
+        const windows = toTradeWindowsPayload(allWindows);
+
+        const startAtFormatted = new Date(startsAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: APP_TIMEZONE });
+        const endAtFormatted = new Date(endsAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: APP_TIMEZONE });
+        const eventMessage = `${req.user.name} criou uma janela de trocas de ${startAtFormatted} até ${endAtFormatted}.`;
+        const eventPayload = {
+            startsAt,
+            endsAt,
+            createdByUserId: req.user.sub,
+            createdByName: req.user.name,
+            windowId: result.lastID,
+        };
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_window_created', ?, ?, ?, NULL, ?)`,
+            [eventMessage, JSON.stringify(eventPayload), req.user.sub, createdAt]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            tradeWindows: windows,
+            message: "Janela de trocas criada",
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao criar janela de trocas", detail: err.message });
+    }
+});
+
+app.delete("/api/admin/trade/windows/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const windowId = Number(req.params?.id || 0);
+        if (!Number.isFinite(windowId) || windowId <= 0) {
+            return res.status(400).json({ error: "ID da janela inválido" });
+        }
+
+        const row = await get(
+            `SELECT id, starts_at, ends_at FROM trade_window_config WHERE id = ?`,
+            [windowId]
+        );
+
+        if (!row) {
+            return res.status(404).json({ error: "Janela de trocas não encontrada" });
+        }
+
+        await run(
+            `DELETE FROM trade_window_config WHERE id = ?`,
+            [windowId]
+        );
+
+        const allWindows = await getAllTradeWindows();
+        const windows = toTradeWindowsPayload(allWindows);
+
+        const eventMessage = `${req.user.name} removeu uma janela de trocas de ${row.starts_at} até ${row.ends_at}.`;
+        const eventPayload = {
+            windowId,
+            startsAt: row.starts_at,
+            endsAt: row.ends_at,
+            deletedByUserId: req.user.sub,
+            deletedByName: req.user.name,
+        };
+        await run(
+            `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+             VALUES('trade_window_deleted', ?, ?, ?, NULL, ?)`,
+            [eventMessage, JSON.stringify(eventPayload), req.user.sub, nowSqlTimestamp()]
+        );
+
+        return res.json({
+            ok: true,
+            tradeWindows: windows,
+            message: "Janela de trocas removida",
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao remover janela de trocas", detail: err.message });
     }
 });
 
@@ -1965,7 +2217,7 @@ app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, r
     }
 });
 
-app.post("/api/trade/offers", authMiddleware, async (req, res) => {
+app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req, res) => {
     try {
         const { toUserId, offeredStickerId, requestedStickerId } = req.body || {};
 
@@ -2071,7 +2323,7 @@ app.get("/api/trade/offers", authMiddleware, async (req, res) => {
     }
 });
 
-app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
+app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen, async (req, res) => {
     try {
         const offerId = Number(req.params.id);
         const offer = await get(
@@ -2160,7 +2412,7 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, async (req, res) => {
     }
 });
 
-app.post("/api/trade/offers/:id/reject", authMiddleware, async (req, res) => {
+app.post("/api/trade/offers/:id/reject", authMiddleware, requireTradeWindowOpen, async (req, res) => {
     try {
         const offerId = Number(req.params.id);
         const offer = await get(
@@ -2318,9 +2570,64 @@ process.on("uncaughtException", (err) => {
     logError("Uncaught exception", { err });
 });
 
+// ---------- Trade window state watcher ----------
+// Tracks which window IDs are currently open so we can detect open/close transitions
+const tradeWindowOpenStates = new Map(); // windowId -> boolean (wasOpen)
+
+async function checkTradeWindowTransitions() {
+    try {
+        const rows = await getAllTradeWindows();
+        const windows = toTradeWindowsPayload(rows);
+        const now = nowSqlTimestamp();
+
+        for (const w of windows) {
+            const wasOpen = tradeWindowOpenStates.get(w.id);
+            const isNowOpen = w.isOpen === true;
+
+            if (wasOpen === undefined) {
+                // First check after startup — just record state, no event
+                tradeWindowOpenStates.set(w.id, isNowOpen);
+                continue;
+            }
+
+            if (!wasOpen && isNowOpen) {
+                // Window just opened
+                tradeWindowOpenStates.set(w.id, true);
+                const endsAtFormatted = new Date(w.endsAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: APP_TIMEZONE });
+                const msg = `A janela de trocas foi aberta (até ${endsAtFormatted}).`;
+                await run(
+                    `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                     VALUES('trade_window_opened', ?, ?, NULL, NULL, ?)`,
+                    [msg, JSON.stringify({ windowId: w.id, startsAt: w.startsAt, endsAt: w.endsAt }), now]
+                );
+            } else if (wasOpen && !isNowOpen) {
+                // Window just closed
+                tradeWindowOpenStates.set(w.id, false);
+                const msg = `A janela de trocas foi encerrada.`;
+                await run(
+                    `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                     VALUES('trade_window_closed', ?, ?, NULL, NULL, ?)`,
+                    [msg, JSON.stringify({ windowId: w.id, startsAt: w.startsAt, endsAt: w.endsAt }), now]
+                );
+            }
+        }
+
+        // Clean up entries for windows that no longer exist
+        const activeIds = new Set(windows.map(w => w.id));
+        for (const id of tradeWindowOpenStates.keys()) {
+            if (!activeIds.has(id)) tradeWindowOpenStates.delete(id);
+        }
+    } catch (err) {
+        logError("Erro ao verificar transições de janela de trocas", { err });
+    }
+}
+
 initDb()
     .then(async () => {
         await loadCustomStickersFromDb();
+        // Seed initial window states before starting the watcher
+        await checkTradeWindowTransitions();
+        setInterval(checkTradeWindowTransitions, 30_000);
         app.listen(PORT, () => {
             logInfo(`Backend do album rodando em http://localhost:${PORT}`, {
                 env: NODE_ENV,
