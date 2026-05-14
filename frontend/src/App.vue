@@ -2704,7 +2704,10 @@ function stickerBorder(item) {
 
 function stickerStatus(item) {
   const count = getCount(item.id);
-  if (count > 1) return `Repetida (${count}x)`;
+  if (count > 1) {
+    const extra = Math.max(0, count - 1);
+    return `Colada +${extra} repetida${extra > 1 ? "s" : ""}`;
+  }
   if (count === 1) return "Colada";
   return "Faltando";
 }
@@ -2985,6 +2988,48 @@ async function confirmTradeOffer() {
   }
   ui.tradeLoading = true;
   try {
+    // Revalidate just-in-time to avoid stale UI options causing misleading errors.
+    const [freshChoicesData, freshAvailableData] = await Promise.all([
+      apiFetch(`/trade/users/${ui.tradeTargetUser.userId}/wanted-from-me`),
+      apiFetch("/trade/available"),
+    ]);
+
+    const freshChoices = Array.isArray(freshChoicesData?.stickers)
+      ? freshChoicesData.stickers
+      : [];
+    const offeredStillValid = freshChoices.some(
+      (s) => String(s?.id || "") === String(ui.tradeOfferSticker?.id || ""),
+    );
+    if (!offeredStillValid) {
+      ui.tradeOfferChoices = freshChoices;
+      ui.tradeOfferSticker = null;
+      setToast(
+        "Sua figurinha selecionada não está mais disponível para esta troca. Escolha outra.",
+      );
+      return;
+    }
+
+    const freshAvailable = Array.isArray(freshAvailableData?.available)
+      ? freshAvailableData.available
+      : [];
+    const requestedStillValid = freshAvailable.some((entry) => {
+      const stickerId = String(entry?.sticker?.id || "");
+      if (stickerId !== String(ui.tradeTargetEntry?.sticker?.id || ""))
+        return false;
+      const offeredBy = Array.isArray(entry?.offeredBy) ? entry.offeredBy : [];
+      return offeredBy.some(
+        (u) =>
+          Number(u?.userId || 0) === Number(ui.tradeTargetUser?.userId || 0),
+      );
+    });
+    if (!requestedStillValid) {
+      await loadTradeAvailable();
+      setToast(
+        "Esta figurinha não está mais disponível com este usuário. Atualize e tente outra troca.",
+      );
+      return;
+    }
+
     await apiFetch("/trade/offers", {
       method: "POST",
       body: JSON.stringify({
@@ -4736,9 +4781,7 @@ const filteredTradeHistoryPaged = computed(() => {
             <div class="detail-list-meta">
               <span class="detail-chip">{{ item.sectionName }}</span>
               <span class="detail-chip detail-chip-muted">{{ item.type }}</span>
-              <span class="detail-chip detail-chip-success">
-                {{ getCount(item.id) }}x coladas
-              </span>
+              <span class="detail-chip detail-chip-success"> 1x colada </span>
               <span class="detail-chip detail-chip-alert">
                 +{{ Math.max(0, getCount(item.id) - 1) }} repetidas
               </span>

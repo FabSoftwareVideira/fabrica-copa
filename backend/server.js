@@ -2344,8 +2344,8 @@ app.get("/api/trade/users", authMiddleware, async (req, res) => {
         const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
         const result = [];
         for (const user of users) {
-            const { state } = await getAlbumState(user.id);
-            const duplicateCount = Object.values(state.collected).reduce(
+            const validCollected = await getValidCollectedMap(user.id);
+            const duplicateCount = Object.values(validCollected).reduce(
                 (acc, count) => acc + Math.max(0, Number(count) - 1),
                 0
             );
@@ -2485,7 +2485,10 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
 
         const toState = await getValidCollectedMap(Number(toUserId));
         if ((toState[requestedStickerId] || 0) <= 1) {
-            return res.status(400).json({ error: "O outro usuario nao tem essa figurinha repetida" });
+            const requestedSticker = STICKER_BY_ID.get(requestedStickerId);
+            return res.status(400).json({
+                error: `O outro usuario nao possui a figurinha solicitada (#${requestedSticker?.num || "?"} ${requestedSticker?.name || requestedStickerId}) em quantidade repetida.`,
+            });
         }
 
         const nowTimestamp = nowSqlTimestamp();
@@ -2793,8 +2796,7 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, requireTradeWindowOpen,
 
 app.get("/api/trade/available", authMiddleware, async (req, res) => {
     try {
-        const { state: myState } = await getAlbumState(req.user.sub);
-        const myCollected = myState.collected || {};
+        const myCollected = await getValidCollectedMap(req.user.sub);
 
         const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
 
@@ -2814,8 +2816,7 @@ app.get("/api/trade/available", authMiddleware, async (req, res) => {
         const stickerOffers = new Map();
 
         for (const user of users) {
-            const { state: userState } = await getAlbumState(user.id);
-            const userCollected = userState.collected || {};
+            const userCollected = await getValidCollectedMap(user.id);
 
             for (const sticker of STICKERS) {
                 const userCount = Number(userCollected[sticker.id] || 0);
