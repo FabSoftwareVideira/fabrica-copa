@@ -3237,7 +3237,8 @@ const filteredTradeHistoryPaged = computed(() => {
           <h1 class="landing-title">Álbum de Figurinhas</h1>
           <p class="landing-subtitle">
             Colecione, complete e troque figurinhas com outros fãs da Copa do
-            Mundo 2026. Abra pacotinhos diários e construa seu álbum!
+            Mundo 2026. Ganhe moedas nas trocas aceitas, resgate pacotinhos e
+            acompanhe tudo por notificações.
           </p>
           <div class="landing-actions">
             <button
@@ -3278,22 +3279,48 @@ const filteredTradeHistoryPaged = computed(() => {
           <span class="landing-feature-icon">📒</span>
           <strong>Colecione</strong>
           <p>
-            Abra pacotinhos diários e colecione {{ total }} figurinhas únicas
-            das 48 seleções
+            Abra pacotinhos com seus cupons e monte sua coleção com
+            {{ total }} figurinhas das 48 seleções.
           </p>
         </div>
         <div class="landing-feature">
           <span class="landing-feature-icon">🔄</span>
-          <strong>Troque</strong>
+          <strong>Transferências</strong>
           <p>
-            Negocie figurinhas repetidas com outros colecionadores da plataforma
+            Envie e receba propostas de troca durante as janelas de
+            transferências abertas.
+          </p>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">🪙</span>
+          <strong>Moedas de troca</strong>
+          <p>
+            Cada troca aceita gera moedas para os dois usuários. Troque moedas
+            por novos pacotinhos.
+          </p>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">🔔</span>
+          <strong>Notificações</strong>
+          <p>
+            Acompanhe cupons recebidos, ofertas de troca e confirmações em tempo
+            real.
+          </p>
+        </div>
+        <div class="landing-feature">
+          <span class="landing-feature-icon">🎟️</span>
+          <strong>Cupons</strong>
+          <p>
+            Resgate códigos promocionais e cupons gerados pela administração
+            para liberar pacotes.
           </p>
         </div>
         <div class="landing-feature">
           <span class="landing-feature-icon">📊</span>
-          <strong>Acompanhe</strong>
+          <strong>Progresso completo</strong>
           <p>
-            Monitore seu progresso e descubra o que falta para completar o álbum
+            Veja total colado, faltantes e repetidas para completar seu álbum
+            com estratégia.
           </p>
         </div>
       </div>
