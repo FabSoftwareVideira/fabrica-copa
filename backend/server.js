@@ -2258,18 +2258,22 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
             return res.status(400).json({ error: "Voce precisa ter ao menos uma figurinha repetida para oferecer" });
         }
 
-        const pendingSameSticker = await get(
-            `SELECT id
+        // Verifica se tem cópias disponíveis considerando as pendências
+        const pendingCount = await get(
+            `SELECT COUNT(*) AS count
              FROM trade_offers
              WHERE from_user_id = ?
                AND offered_sticker_id = ?
-               AND status = 'pending'
-             LIMIT 1`,
+               AND status = 'pending'`,
             [req.user.sub, offeredStickerId]
         );
-        if (pendingSameSticker) {
+        const myCount = Number(fromState.collected[offeredStickerId] || 0);
+        const reservedPending = Number(pendingCount?.count || 0);
+        const tradableCount = Math.max(0, myCount - 1 - reservedPending);
+
+        if (tradableCount <= 0) {
             return res.status(409).json({
-                error: "Voce ja possui uma troca pendente usando essa figurinha. Aguarde resposta ou cancele a proposta atual.",
+                error: "Voce nao tem cópias disponiveis dessa figurinha para oferecer (todas estao em trocas pendentes ou reservadas).",
             });
         }
 
