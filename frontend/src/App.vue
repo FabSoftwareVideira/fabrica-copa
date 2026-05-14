@@ -3843,10 +3843,16 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
         <div class="panel-head">
-          <h2>Visão Geral</h2>
-          <span class="badge-chip"
-            >{{ dashboardPercentDisplay }}% completo</span
-          >
+          <div>
+            <h2>Visão Geral</h2>
+            <span class="badge-chip"
+              >{{ dashboardPercentDisplay }}% completo</span
+            >
+          </div>
+          <div class="panel-head-ranking" v-if="isAuthenticated">
+            <small>Posição</small>
+            <strong>{{ myRankingDisplay }}</strong>
+          </div>
         </div>
         <div class="dashboard-overview">
           <div
@@ -3861,13 +3867,6 @@ const filteredTradeHistoryPaged = computed(() => {
               <img src="/ring.webp" alt="" />
             </div>
             <div class="dashboard-ring-core" aria-hidden="true"></div>
-            <div
-              class="dashboard-ring-center-rank"
-              title="Sua posição no ranking"
-            >
-              <small>Posição</small>
-              <strong>{{ myRankingDisplay }}</strong>
-            </div>
             <div class="dashboard-ring-orbit orbit-total">
               <small>Total</small>
               <strong>{{ dashboardTotalDisplay }}</strong>

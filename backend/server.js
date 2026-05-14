@@ -872,6 +872,28 @@ async function rebuildCollectedFromPackHistory(userId) {
     return collected;
 }
 
+async function getValidCollectedMap(userId) {
+    const collected = await rebuildCollectedFromPackHistory(userId);
+
+    const tradeHistoryRows = await all(
+        `SELECT offered_sticker_id, requested_sticker_id FROM trade_history WHERE user_id = ? ORDER BY id ASC`,
+        [userId]
+    );
+
+    for (const trade of tradeHistoryRows) {
+        const offeredId = String(trade.offered_sticker_id || "");
+        const requestedId = String(trade.requested_sticker_id || "");
+        if (offeredId && STICKER_BY_ID.has(offeredId)) {
+            collected[offeredId] = Math.max(0, (collected[offeredId] || 0) - 1);
+        }
+        if (requestedId && STICKER_BY_ID.has(requestedId)) {
+            collected[requestedId] = (collected[requestedId] || 0) + 1;
+        }
+    }
+
+    return collected;
+}
+
 async function getAllTradeWindows() {
     const rows = await all(
         `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
@@ -2307,10 +2329,10 @@ app.get("/api/trade/users/:userId/duplicates", authMiddleware, async (req, res) 
         const user = await get("SELECT id, name FROM users WHERE id = ? AND is_blocked = 0", [userId]);
         if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
 
-        const { state } = await getAlbumState(userId);
+        const validCollected = await getValidCollectedMap(userId);
         const duplicates = STICKERS
-            .filter((s) => (state.collected[s.id] || 0) > 1)
-            .map((s) => ({ ...s, count: Number(state.collected[s.id]) }));
+            .filter((s) => (validCollected[s.id] || 0) > 1)
+            .map((s) => ({ ...s, count: Number(validCollected[s.id]) }));
 
         return res.json({ user: { id: user.id, name: user.name }, duplicates });
     } catch (err) {
@@ -2327,8 +2349,8 @@ app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, r
         const user = await get("SELECT id, name FROM users WHERE id = ? AND is_blocked = 0", [userId]);
         if (!user) return res.status(404).json({ error: "Usuario nao encontrado" });
 
-        const { state: myState } = await getAlbumState(req.user.sub);
-        const { state: targetState } = await getAlbumState(userId);
+        const myState = await getValidCollectedMap(req.user.sub);
+        const targetState = await getValidCollectedMap(userId);
 
         const pendingRows = await all(
             `SELECT offered_sticker_id, COUNT(*) AS pending_count
@@ -2343,13 +2365,13 @@ app.get("/api/trade/users/:userId/wanted-from-me", authMiddleware, async (req, r
 
         const wantedFromMe = STICKERS
             .filter((s) => {
-                const myCount = Number(myState.collected[s.id] || 0);
+                const myCount = Number(myState[s.id] || 0);
                 const reservedPending = Number(pendingByStickerId.get(String(s.id)) || 0);
                 const tradableCount = Math.max(0, myCount - 1 - reservedPending);
-                return tradableCount > 0 && (targetState.collected[s.id] || 0) < 1;
+                return tradableCount > 0 && (targetState[s.id] || 0) < 1;
             })
             .map((s) => {
-                const myCount = Number(myState.collected[s.id] || 0);
+                const myCount = Number(myState[s.id] || 0);
                 const reservedPending = Number(pendingByStickerId.get(String(s.id)) || 0);
                 const tradableCount = Math.max(0, myCount - 1 - reservedPending);
                 return { ...s, count: tradableCount };
@@ -2379,8 +2401,8 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
             return res.status(400).json({ error: "Figurinha solicitada nao encontrada" });
         }
 
-        const { state: fromState } = await getAlbumState(req.user.sub);
-        if ((fromState.collected[offeredStickerId] || 0) <= 1) {
+        const fromState = await getValidCollectedMap(req.user.sub);
+        if ((fromState[offeredStickerId] || 0) <= 1) {
             return res.status(400).json({ error: "Voce precisa ter ao menos uma figurinha repetida para oferecer" });
         }
 
@@ -2393,7 +2415,7 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
                AND status = 'pending'`,
             [req.user.sub, offeredStickerId]
         );
-        const myCount = Number(fromState.collected[offeredStickerId] || 0);
+        const myCount = Number(fromState[offeredStickerId] || 0);
         const reservedPending = Number(pendingCount?.count || 0);
         const tradableCount = Math.max(0, myCount - 1 - reservedPending);
 
@@ -2425,8 +2447,8 @@ app.post("/api/trade/offers", authMiddleware, requireTradeWindowOpen, async (req
             });
         }
 
-        const { state: toState } = await getAlbumState(Number(toUserId));
-        if ((toState.collected[requestedStickerId] || 0) <= 1) {
+        const toState = await getValidCollectedMap(Number(toUserId));
+        if ((toState[requestedStickerId] || 0) <= 1) {
             return res.status(400).json({ error: "O outro usuario nao tem essa figurinha repetida" });
         }
 
@@ -2517,24 +2539,24 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
         );
         if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
 
-        const { state: fromState } = await getAlbumState(offer.from_user_id);
-        const { state: toState } = await getAlbumState(offer.to_user_id);
+        const fromState = await getValidCollectedMap(offer.from_user_id);
+        const toState = await getValidCollectedMap(offer.to_user_id);
 
         const nowTimestamp = nowSqlTimestamp();
-        if ((fromState.collected[offer.offered_sticker_id] || 0) <= 1) {
+        if ((fromState[offer.offered_sticker_id] || 0) <= 1) {
             await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
             return res.status(409).json({ error: "O outro usuario nao tem mais essa figurinha repetida" });
         }
-        if ((toState.collected[offer.requested_sticker_id] || 0) <= 1) {
+        if ((toState[offer.requested_sticker_id] || 0) <= 1) {
             await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
             return res.status(409).json({ error: "Voce nao tem mais essa figurinha repetida" });
         }
 
-        const fromCollected = { ...fromState.collected };
+        const fromCollected = { ...fromState };
         fromCollected[offer.offered_sticker_id] = Number(fromCollected[offer.offered_sticker_id]) - 1;
         fromCollected[offer.requested_sticker_id] = (Number(fromCollected[offer.requested_sticker_id]) || 0) + 1;
 
-        const toCollected = { ...toState.collected };
+        const toCollected = { ...toState };
         toCollected[offer.requested_sticker_id] = Number(toCollected[offer.requested_sticker_id]) - 1;
         toCollected[offer.offered_sticker_id] = (Number(toCollected[offer.offered_sticker_id]) || 0) + 1;
 
@@ -2618,7 +2640,8 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
         );
 
         const { state: newState } = await getAlbumState(req.user.sub);
-        return res.json({ ok: true, state: newState });
+        const validCollected = await getValidCollectedMap(req.user.sub);
+        return res.json({ ok: true, state: { ...newState, collected: validCollected } });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
     }
