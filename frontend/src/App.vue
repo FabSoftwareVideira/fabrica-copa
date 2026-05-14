@@ -778,6 +778,30 @@ const packRepeatCount = computed(
   () => ui.wasOwned.filter((owned) => owned).length,
 );
 
+const latestNewStickers = computed(() => {
+  const packs = Array.isArray(state.recentPacks) ? [...state.recentPacks] : [];
+  const oldestToNewest = packs.reverse();
+  const seenStickerIds = new Set();
+  const timeline = [];
+
+  for (const packEntry of oldestToNewest) {
+    const stickersInPack = Array.isArray(packEntry?.stickers)
+      ? packEntry.stickers
+      : [];
+    for (const rawSticker of stickersInPack) {
+      const sticker = normalizeStickerForUi(rawSticker);
+      if (!sticker.id || seenStickerIds.has(sticker.id)) continue;
+      seenStickerIds.add(sticker.id);
+      timeline.push({
+        ...sticker,
+        openedAt: packEntry?.openedAt || "",
+      });
+    }
+  }
+
+  return timeline.slice(-10).reverse();
+});
+
 const packDragStyle = computed(() => ({
   "--tear-progress": `${ui.packDragProgress}%`,
   "--pack-shift": `${Math.round(ui.packDragProgress * 1.2)}px`,
@@ -2206,7 +2230,7 @@ async function deleteTradeWindow(windowId) {
 }
 
 async function loadPackHistory() {
-  const data = await apiFetch("/packs/history?limit=6");
+  const data = await apiFetch("/packs/history?limit=50");
   state.recentPacks = Array.isArray(data.history) ? data.history : [];
 }
 
@@ -3714,18 +3738,40 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
         <div v-if="isAuthenticated" class="history">
-          <h3>Histórico de pacotinhos</h3>
-          <p v-if="state.recentPacks.length === 0">
-            Nenhum pacote aberto ainda.
+          <h3>Últimas figurinhas novas</h3>
+          <p v-if="latestNewStickers.length === 0">
+            Nenhuma figurinha nova ainda.
           </p>
-          <ul v-else>
-            <li v-for="item in state.recentPacks" :key="item.id">
-              <span>{{ formatDateTime(item.openedAt) }}</span>
-              <span>{{ item.source === "bonus" ? "Bônus" : "Diário" }}</span>
-              <span>{{ item.newCount }} novas</span>
-              <span>{{ item.repeatCount }} repetidas</span>
-            </li>
-          </ul>
+          <div v-else class="history-new-strip">
+            <article
+              v-for="item in latestNewStickers"
+              :key="`new-${item.openedAt}-${item.id}`"
+              class="history-new-card"
+              :style="stickerBorder(item)"
+            >
+              <div
+                v-if="getStickerPhotoForDisplay(item)"
+                class="sticker-photo-wrap history-new-photo"
+                :style="packGroupStyle(item)"
+              >
+                <img
+                  class="sticker-photo"
+                  :src="getStickerPhotoForDisplay(item)"
+                  :alt="`Foto de ${item.name}`"
+                  data-photo-index="0"
+                  loading="lazy"
+                  @error="onStickerPhotoError($event, item)"
+                />
+                <span class="sticker-flag">{{ item.icon }}</span>
+              </div>
+              <span class="num">#{{ item.num }}</span>
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.teamName || groupLabel(item) }}</small>
+              <small class="history-new-date">
+                {{ formatDateTime(item.openedAt) }}
+              </small>
+            </article>
+          </div>
         </div>
       </section>
 

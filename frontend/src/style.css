@@ -1861,6 +1861,48 @@ button:disabled {
   margin: 0 0 0.6rem;
 }
 
+.history-new-strip {
+  display: flex;
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding: 0.15rem 0.1rem 0.4rem;
+  scrollbar-width: thin;
+}
+
+.history-new-card {
+  flex: 0 0 156px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.58rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  animation: rise 260ms ease-out;
+}
+
+.history-new-card strong {
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.history-new-card small {
+  color: var(--text-dimmed);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.history-new-date {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+}
+
+.history-new-photo {
+  width: 100%;
+  min-height: 92px;
+  margin-bottom: 0.15rem;
+}
+
 @keyframes reveal {
   from {
     opacity: 0;
