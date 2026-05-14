@@ -452,10 +452,12 @@ const filteredManagedCoupons = computed(() => {
     const code = String(c.code || "").toLowerCase();
     const target = String(c.targetUserName || "").toLowerCase();
     const createdBy = String(c.createdByUserName || "").toLowerCase();
+    const redeemedBy = String(c.redeemedByUserName || "").toLowerCase();
     return (
       code.includes(query) ||
       target.includes(query) ||
-      createdBy.includes(query)
+      createdBy.includes(query) ||
+      redeemedBy.includes(query)
     );
   });
 });
@@ -4248,7 +4250,7 @@ const filteredTradeHistoryPaged = computed(() => {
               <input
                 v-model.trim="adminTools.couponSearch"
                 type="search"
-                placeholder="Buscar por código, usuário alvo ou criador"
+                placeholder="Buscar por código, alvo, criador ou resgatado por"
                 @input="setManagedCouponsPage(1)"
               />
               <select
@@ -4290,6 +4292,7 @@ const filteredTradeHistoryPaged = computed(() => {
                     <th>Pacotes</th>
                     <th>Alvo</th>
                     <th>Criado por</th>
+                    <th>Resgatado por</th>
                     <th>Status</th>
                     <th>Criado em</th>
                     <th>Ações</th>
@@ -4297,7 +4300,7 @@ const filteredTradeHistoryPaged = computed(() => {
                 </thead>
                 <tbody>
                   <tr v-if="managedCouponsPaged.length === 0">
-                    <td colspan="8">Nenhum cupom encontrado.</td>
+                    <td colspan="9">Nenhum cupom encontrado.</td>
                   </tr>
                   <tr v-for="coupon in managedCouponsPaged" :key="coupon.id">
                     <td>
@@ -4311,6 +4314,7 @@ const filteredTradeHistoryPaged = computed(() => {
                     <td>{{ coupon.packs }}</td>
                     <td>{{ coupon.targetUserName || "-" }}</td>
                     <td>{{ coupon.createdByUserName || "-" }}</td>
+                    <td>{{ coupon.redeemedByUserName || "-" }}</td>
                     <td>
                       <span
                         class="table-pill"

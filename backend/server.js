@@ -947,11 +947,14 @@ async function initDb() {
             status TEXT NOT NULL DEFAULT 'active',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             redeemed_at TEXT,
+            redeemed_by_user_id INTEGER,
             FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
         )
     `);
     await ensureColumn("user_coupons", "is_generic", "INTEGER NOT NULL DEFAULT 0");
+    await ensureColumn("user_coupons", "redeemed_by_user_id", "INTEGER");
 
     await run(`
         CREATE TABLE IF NOT EXISTS custom_stickers (
@@ -1548,8 +1551,8 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
             // Uso unico global para cupons gerados (inclui cupom livre/is_generic).
             // A atualizacao condicional evita resgate duplo em concorrencia.
             const redeemResult = await run(
-                "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ? WHERE id = ? AND status = 'active'",
-                [nowSqlTimestamp(), couponRow.id]
+                "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ?, redeemed_by_user_id = ? WHERE id = ? AND status = 'active'",
+                [nowSqlTimestamp(), req.user.sub, couponRow.id]
             );
             if (!redeemResult || Number(redeemResult.changes || 0) !== 1) {
                 return res.status(409).json({ error: "Este cupom ja foi resgatado" });
@@ -1681,12 +1684,14 @@ app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROF
         const params = isAdmin ? [] : [req.user.sub];
         const coupons = await all(
             `SELECT c.id, c.code, c.packs_added, c.is_generic, c.status, c.created_at, c.redeemed_at,
-                    c.target_user_id, c.created_by_user_id,
+                    c.target_user_id, c.created_by_user_id, c.redeemed_by_user_id,
                     tu.name AS target_user_name,
-                    cu.name AS created_by_user_name
+                    cu.name AS created_by_user_name,
+                    ru.name AS redeemed_by_user_name
              FROM user_coupons c
              LEFT JOIN users tu ON tu.id = c.target_user_id
              LEFT JOIN users cu ON cu.id = c.created_by_user_id
+             LEFT JOIN users ru ON ru.id = c.redeemed_by_user_id
              ${whereClause}
              ORDER BY c.created_at DESC, c.id DESC`
             ,
@@ -1706,6 +1711,8 @@ app.get("/api/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROF
                 targetUserName: c.target_user_name || null,
                 createdByUserId: c.created_by_user_id,
                 createdByUserName: c.created_by_user_name || null,
+                redeemedByUserId: c.redeemed_by_user_id || null,
+                redeemedByUserName: c.redeemed_by_user_name || null,
             })),
         });
     } catch (err) {
