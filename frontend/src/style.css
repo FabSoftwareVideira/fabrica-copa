@@ -1903,6 +1903,40 @@ button:disabled {
   margin-bottom: 0.15rem;
 }
 
+.history-new-source {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.15rem;
+}
+
+.source-label {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.22rem 0.38rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.source-pack {
+  background-color: #e3f2fd;
+  color: #1976d2;
+  border: 1px solid #90caf9;
+}
+
+.source-trade {
+  background-color: #fff3e0;
+  color: #f57c00;
+  border: 1px solid #ffb74d;
+}
+
+.history-new-trade {
+  color: var(--text-dimmed);
+  font-size: 0.68rem;
+  font-style: italic;
+}
+
 @keyframes reveal {
   from {
     opacity: 0;

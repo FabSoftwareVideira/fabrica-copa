@@ -779,12 +779,12 @@ const packRepeatCount = computed(
 );
 
 const latestNewStickers = computed(() => {
-  const packs = Array.isArray(state.recentPacks) ? [...state.recentPacks] : [];
-  const oldestToNewest = packs.reverse();
   const seenStickerIds = new Set();
   const timeline = [];
 
-  for (const packEntry of oldestToNewest) {
+  // Adiciona figurinhas de pacotes
+  const packs = Array.isArray(state.recentPacks) ? [...state.recentPacks] : [];
+  for (const packEntry of packs) {
     const stickersInPack = Array.isArray(packEntry?.stickers)
       ? packEntry.stickers
       : [];
@@ -794,12 +794,39 @@ const latestNewStickers = computed(() => {
       seenStickerIds.add(sticker.id);
       timeline.push({
         ...sticker,
-        openedAt: packEntry?.openedAt || "",
+        date: packEntry?.openedAt || "",
+        source: "pacote",
       });
     }
   }
 
-  return timeline.slice(-10).reverse();
+  // Adiciona figurinhas recebidas em trocas
+  const trades = Array.isArray(state.tradeHistory) ? state.tradeHistory : [];
+  for (const trade of trades) {
+    // Determina qual figurinha o usuário recebeu
+    const receivedSticker = trade.iSent
+      ? trade.requestedSticker
+      : trade.offeredSticker;
+    if (!receivedSticker) continue;
+
+    const sticker = normalizeStickerForUi(receivedSticker);
+    if (!sticker.id || seenStickerIds.has(sticker.id)) continue;
+    seenStickerIds.add(sticker.id);
+    timeline.push({
+      ...sticker,
+      date: trade.completedAt || "",
+      source: "troca",
+      tradedWith: trade.partnerName || "Desconhecido",
+    });
+  }
+
+  // Ordena por data (mais recentes primeiro)
+  timeline.sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+
+  // Retorna as últimas 10
+  return timeline.slice(0, 10);
 });
 
 const packDragStyle = computed(() => ({
@@ -1721,6 +1748,7 @@ async function bootstrapAuth() {
       loadStickerCatalog(),
       loadAlbumState(),
       loadPackHistory(),
+      loadTradeHistory(),
     ]);
     await loadManagedUsers();
     await loadSystemEvents(true);
@@ -2050,6 +2078,12 @@ function openCollectionView(view) {
   state.view = view;
   ui.mobileMenuOpen = false;
   state.newStickersUnread = 0;
+}
+
+function openDashboardView() {
+  state.view = "dashboard";
+  ui.mobileMenuOpen = false;
+  loadTradeHistory();
 }
 
 async function generateManagedCoupon() {
@@ -3569,10 +3603,7 @@ const filteredTradeHistoryPaged = computed(() => {
       <button
         type="button"
         :class="{ active: state.view === 'dashboard' }"
-        @click="
-          state.view = 'dashboard';
-          ui.mobileMenuOpen = false;
-        "
+        @click="openDashboardView()"
       >
         Início
       </button>
@@ -3738,14 +3769,14 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
         <div v-if="isAuthenticated" class="history">
-          <h3>Últimas figurinhas novas</h3>
+          <h3>Últimas figurinhas</h3>
           <p v-if="latestNewStickers.length === 0">
             Nenhuma figurinha nova ainda.
           </p>
           <div v-else class="history-new-strip">
             <article
               v-for="item in latestNewStickers"
-              :key="`new-${item.openedAt}-${item.id}`"
+              :key="`new-${item.date}-${item.id}`"
               class="history-new-card"
               :style="stickerBorder(item)"
             >
@@ -3767,8 +3798,11 @@ const filteredTradeHistoryPaged = computed(() => {
               <span class="num">#{{ item.num }}</span>
               <strong>{{ item.name }}</strong>
               <small>{{ item.teamName || groupLabel(item) }}</small>
+              <small v-if="item.source === 'troca'" class="history-new-trade">
+                com {{ item.tradedWith }}
+              </small>
               <small class="history-new-date">
-                {{ formatDateTime(item.openedAt) }}
+                {{ formatDateTime(item.date) }}
               </small>
             </article>
           </div>
