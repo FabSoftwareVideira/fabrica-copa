@@ -3616,17 +3616,40 @@ const filteredTradeHistoryPaged = computed(() => {
         <h1>Álbum Copa 2026</h1>
         <small class="eyebrow">EUA, Canadá e México</small>
       </div>
-      <button
-        class="topbar-menu-toggle"
-        type="button"
-        aria-label="Toggle menu"
-        :class="{ open: ui.mobileMenuOpen }"
-        @click="ui.mobileMenuOpen = !ui.mobileMenuOpen"
-      >
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
+
+      <div class="topbar-actions" :class="{ open: ui.mobileMenuOpen }">
+        <button
+          class="promo-btn"
+          type="button"
+          @click="
+            ui.promoOpen = true;
+            ui.mobileMenuOpen = false;
+          "
+          aria-label="Resgatar código"
+        >
+          <span class="action-icon" aria-hidden="true">🎟️</span>
+          <span class="action-label">Resgatar Código</span>
+        </button>
+        <button
+          class="pack-btn"
+          type="button"
+          :disabled="ui.openingPack || packsAvailable <= 0"
+          @click="
+            openPack();
+            ui.mobileMenuOpen = false;
+          "
+          aria-label="Abrir pacotinho"
+        >
+          <span class="action-icon" aria-hidden="true">📦</span>
+          <span class="action-label">
+            {{
+              ui.openingPack
+                ? "Abrindo..."
+                : `Abrir Pacotinho (${packsAvailable})`
+            }}
+          </span>
+        </button>
+      </div>
       <button
         class="notif-bell-btn topbar-notif-bell"
         type="button"
@@ -3639,33 +3662,6 @@ const filteredTradeHistoryPaged = computed(() => {
           {{ state.notificationsUnread > 9 ? "9+" : state.notificationsUnread }}
         </span>
       </button>
-      <div class="topbar-actions" :class="{ open: ui.mobileMenuOpen }">
-        <button
-          class="promo-btn"
-          type="button"
-          @click="
-            ui.promoOpen = true;
-            ui.mobileMenuOpen = false;
-          "
-        >
-          Resgatar Código
-        </button>
-        <button
-          class="pack-btn"
-          type="button"
-          :disabled="ui.openingPack || packsAvailable <= 0"
-          @click="
-            openPack();
-            ui.mobileMenuOpen = false;
-          "
-        >
-          {{
-            ui.openingPack
-              ? "Abrindo..."
-              : `Abrir Pacotinho (${packsAvailable})`
-          }}
-        </button>
-      </div>
     </header>
 
     <!-- ── Notifications panel ── -->
