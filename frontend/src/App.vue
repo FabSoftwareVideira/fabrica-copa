@@ -815,10 +815,10 @@ const latestNewStickers = computed(() => {
   // Adiciona figurinhas recebidas em trocas
   const trades = Array.isArray(state.tradeHistory) ? state.tradeHistory : [];
   for (const trade of trades) {
-    // Determina qual figurinha o usuário recebeu
-    const receivedSticker = trade.iSent
-      ? trade.requestedSticker
-      : trade.offeredSticker;
+    // Determina qual figurinha o usuário recebeu.
+    // Após a correção do trade_history, requested_sticker_id é sempre o que o usuário RECEBEU,
+    // independente de ser o criador ou o aceitante da oferta.
+    const receivedSticker = trade.requestedSticker;
     if (!receivedSticker) continue;
 
     const sticker = normalizeStickerForUi(receivedSticker);
@@ -5444,9 +5444,7 @@ const filteredTradeHistoryPaged = computed(() => {
               <div class="trade-history-main">
                 <div class="trade-history-stickers">
                   <div class="trade-history-sticker">
-                    <small
-                      >Você {{ entry.iSent ? "ofereceu" : "recebeu" }}</small
-                    >
+                    <small>Você {{ entry.iSent ? "ofereceu" : "deu" }}</small>
                     <div
                       class="trade-history-sticker-info"
                       :style="stickerBorder(entry.offeredSticker)"
@@ -5459,7 +5457,7 @@ const filteredTradeHistoryPaged = computed(() => {
                     {{ entry.iSent ? "→" : "←" }}
                   </span>
                   <div class="trade-history-sticker">
-                    <small>Você {{ entry.iSent ? "pediu" : "deu" }}</small>
+                    <small>Você {{ entry.iSent ? "pediu" : "recebeu" }}</small>
                     <div
                       class="trade-history-sticker-info"
                       :style="stickerBorder(entry.requestedSticker)"

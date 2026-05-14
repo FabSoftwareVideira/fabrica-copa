@@ -1187,6 +1187,33 @@ async function initDb() {
 
     await ensureColumn("trade_window_config", "created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
     await ensureColumn("trade_window_config", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
+
+    // One-time migration: fix trade_history rows for acceptors (to_user_id) where
+    // offered_sticker_id and requested_sticker_id were stored from the creator's perspective.
+    // Convention: offered_sticker_id = what the user GAVE, requested_sticker_id = what they RECEIVED.
+    // Rows where user_id = to_user_id need to have the columns swapped.
+    await run(`
+        CREATE TABLE IF NOT EXISTS db_migrations (
+            name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    const migrationApplied = await get(
+        "SELECT name FROM db_migrations WHERE name = 'fix_trade_history_acceptor_perspective'"
+    );
+    if (!migrationApplied) {
+        await run(`
+            UPDATE trade_history
+            SET offered_sticker_id = requested_sticker_id,
+                requested_sticker_id = offered_sticker_id
+            WHERE user_id = to_user_id
+        `);
+        await run(
+            "INSERT INTO db_migrations(name) VALUES(?)",
+            ['fix_trade_history_acceptor_perspective']
+        );
+        console.log("[migration] fix_trade_history_acceptor_perspective applied");
+    }
 }
 
 app.use(cors(corsOptions));
@@ -1477,11 +1504,20 @@ app.get("/api/auth/me", authMiddleware, async (req, res) => {
 
 app.get("/api/album/state", authMiddleware, async (req, res) => {
     try {
-        const { state } = await getAlbumState(req.user.sub);
+        const { state, row } = await getAlbumState(req.user.sub);
+        // Always derive collected from source-of-truth (pack history + trade history)
+        // to ensure stickers from trades are never stale/pending.
+        const validCollected = await getValidCollectedMap(req.user.sub);
+        const nowTimestamp = nowSqlTimestamp();
+        await run(
+            "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
+            [JSON.stringify(validCollected), nowTimestamp, req.user.sub]
+        );
         const allWindows = await getAllTradeWindows();
         const tradeWindows = toTradeWindowsPayload(allWindows);
         return res.json({
             ...state,
+            collected: validCollected,
             tradeWindows,
         });
     } catch (err) {
@@ -2577,14 +2613,17 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [nowTimestamp, offerId]
         );
 
-        // Register in trade history for both users
+        // Register in trade history for both users.
+        // Convention: offered_sticker_id = what the user GAVE, requested_sticker_id = what they RECEIVED.
+        // Creator (from_user): gave offered_sticker_id, received requested_sticker_id.
+        // Acceptor (to_user): gave requested_sticker_id, received offered_sticker_id — columns are swapped.
         await run(
             "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, completed_at) VALUES(?, ?, ?, ?, ?, ?)",
             [offer.from_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
         );
         await run(
             "INSERT INTO trade_history(user_id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id, completed_at) VALUES(?, ?, ?, ?, ?, ?)",
-            [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.offered_sticker_id, offer.requested_sticker_id, nowTimestamp]
+            [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.requested_sticker_id, offer.offered_sticker_id, nowTimestamp]
         );
 
         const coinsReceived = 1;
