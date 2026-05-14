@@ -1601,6 +1601,9 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
     try {
         const targetUserId = Number(req.body?.targetUserId || 0);
         const hasTargetUser = targetUserId > 0;
+        if (!hasTargetUser && req.user.role !== ROLE_ADMIN) {
+            return res.status(403).json({ error: "Somente administradores podem gerar cupom livre" });
+        }
         if (hasTargetUser && targetUserId === req.user.sub) {
             return res.status(400).json({ error: "Nao pode gerar cupom para si mesmo" });
         }

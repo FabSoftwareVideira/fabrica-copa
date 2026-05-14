@@ -2040,6 +2040,11 @@ async function generateManagedCoupon() {
   ui.couponPanelCode = "";
 
   const targetUserId = Number(adminTools.targetUserId || 0);
+  if (!isAdmin.value && targetUserId <= 0) {
+    ui.couponPanelMsg = "Selecione um usuário para gerar o cupom.";
+    ui.couponPanelKind = "error";
+    return;
+  }
   const payload = {};
   if (targetUserId > 0) {
     payload.targetUserId = targetUserId;
@@ -3877,7 +3882,9 @@ const filteredTradeHistoryPaged = computed(() => {
             </p>
             <div class="manage-coupon-form">
               <select v-model="adminTools.targetUserId">
-                <option value="">Cupom livre (qualquer usuário)</option>
+                <option v-if="isAdmin" value="">
+                  Cupom livre (qualquer usuário)
+                </option>
                 <option
                   v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
                   :key="u.id"
