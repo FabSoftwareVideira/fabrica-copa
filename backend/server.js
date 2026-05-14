@@ -795,6 +795,64 @@ async function getAlbumState(userId) {
     };
 }
 
+function countCollectedStickers(collectedMap) {
+    if (!collectedMap || typeof collectedMap !== "object") return 0;
+    return Object.entries(collectedMap).reduce((acc, [stickerId, count]) => {
+        if (!STICKER_BY_ID.has(String(stickerId))) return acc;
+        return acc + (Number(count) >= 1 ? 1 : 0);
+    }, 0);
+}
+
+function toRankingRows(rows) {
+    const totalStickers = Math.max(0, Number(STICKERS.length || 0));
+    const ranked = (Array.isArray(rows) ? rows : [])
+        .map((row) => {
+            const collectedMap = parseJSON(row.collected_json || "{}", {});
+            const collected = countCollectedStickers(collectedMap);
+            const percent =
+                totalStickers > 0
+                    ? Math.min(100, Math.round((collected / totalStickers) * 100))
+                    : 0;
+
+            return {
+                userId: Number(row.id || 0),
+                name: String(row.name || "Usuário"),
+                collected,
+                percent,
+                updatedAt: String(row.updated_at || ""),
+            };
+        })
+        .sort((a, b) => {
+            if (b.collected !== a.collected) return b.collected - a.collected;
+            if (a.updatedAt && b.updatedAt && a.updatedAt !== b.updatedAt) {
+                return a.updatedAt.localeCompare(b.updatedAt);
+            }
+            return a.name.localeCompare(b.name, "pt-BR");
+        });
+
+    let lastCollected = null;
+    let currentPosition = 0;
+    for (let idx = 0; idx < ranked.length; idx += 1) {
+        if (lastCollected === null || ranked[idx].collected !== lastCollected) {
+            currentPosition = idx + 1;
+            lastCollected = ranked[idx].collected;
+        }
+        ranked[idx].position = currentPosition;
+    }
+
+    return ranked;
+}
+
+async function getGlobalRanking() {
+    const rows = await all(
+        `SELECT u.id, u.name, u.is_blocked, a.collected_json, a.updated_at
+         FROM users u
+         LEFT JOIN album_states a ON a.user_id = u.id
+         WHERE u.is_blocked = 0`
+    );
+    return toRankingRows(rows);
+}
+
 async function getAllTradeWindows() {
     const rows = await all(
         `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
@@ -1184,6 +1242,45 @@ app.post("/api/logs/frontend-error", (req, res) => {
 
 app.get("/api/stickers/catalog", async (_req, res) => {
     return res.json({ stickers: STICKERS, total: STICKERS.length });
+});
+
+app.get("/api/ranking", async (req, res) => {
+    try {
+        const requestedLimit = Number(req.query?.limit || 10);
+        const limit = Number.isFinite(requestedLimit)
+            ? Math.max(1, Math.min(50, Math.floor(requestedLimit)))
+            : 10;
+        const ranking = await getGlobalRanking();
+
+        return res.json({
+            totalStickers: STICKERS.length,
+            ranking: ranking.slice(0, limit).map((row) => ({
+                position: row.position,
+                userId: row.userId,
+                name: row.name,
+                collected: row.collected,
+                percent: row.percent,
+            })),
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar ranking", detail: err.message });
+    }
+});
+
+app.get("/api/ranking/me", authMiddleware, async (req, res) => {
+    try {
+        const ranking = await getGlobalRanking();
+        const me = ranking.find((row) => Number(row.userId) === Number(req.user.sub));
+
+        return res.json({
+            totalStickers: STICKERS.length,
+            position: me?.position || null,
+            collected: me?.collected || 0,
+            percent: me?.percent || 0,
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar posição no ranking", detail: err.message });
+    }
 });
 
 app.post("/api/auth/register", async (req, res) => {

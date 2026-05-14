@@ -202,6 +202,8 @@ const state = reactive({
   newStickersUnread: 0,
   notifications: [],
   notificationsUnread: 0,
+  publicRanking: [],
+  myRankingPosition: 0,
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
   ),
@@ -587,6 +589,10 @@ const tradeWindowStatusText = computed(() => {
   return tradeWindowIsOpenNow.value
     ? "Janela de trocas aberta"
     : "Janela de trocas fechada";
+});
+const myRankingDisplay = computed(() => {
+  const position = Number(state.myRankingPosition || 0);
+  return position > 0 ? `#${position}` : "-";
 });
 const filteredTradeWindows = computed(() => {
   if (!Array.isArray(state.tradeWindows)) return [];
@@ -1164,6 +1170,8 @@ onMounted(async () => {
     apiBaseUrl: API_BASE_URL,
   });
 
+  await loadPublicRanking();
+
   if (isAuthenticated.value) {
     await bootstrapAuth();
   }
@@ -1472,6 +1480,7 @@ function clearAuth() {
   state.tradeIncoming = [];
   state.tradeOutgoing = [];
   state.tradeHistory = [];
+  state.myRankingPosition = 0;
   state.tradeWindowStartsAt = "";
   state.tradeWindowEndsAt = "";
   state.tradeFilterUser = "all";
@@ -1529,11 +1538,35 @@ function clearAuth() {
   localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
   stopSystemEventsPolling();
   saveAuth();
+  loadPublicRanking();
 }
 
 async function loadStickerCatalog() {
   const data = await apiFetch("/stickers/catalog");
   replaceStickerCatalog(data.stickers || []);
+}
+
+async function loadPublicRanking() {
+  try {
+    const data = await apiFetch("/ranking?limit=10");
+    state.publicRanking = Array.isArray(data.ranking) ? data.ranking : [];
+  } catch (_err) {
+    state.publicRanking = [];
+  }
+}
+
+async function loadMyRankingPosition() {
+  if (!isAuthenticated.value) {
+    state.myRankingPosition = 0;
+    return;
+  }
+
+  try {
+    const data = await apiFetch("/ranking/me");
+    state.myRankingPosition = Number(data.position || 0);
+  } catch (_err) {
+    state.myRankingPosition = 0;
+  }
 }
 
 async function loadSystemEvents(silent = false) {
@@ -1813,6 +1846,7 @@ async function bootstrapAuth() {
       loadAlbumState(),
       loadPackHistory(),
       loadTradeHistory(),
+      loadMyRankingPosition(),
     ]);
     await loadManagedUsers();
     await loadSystemEvents(true);
@@ -2148,6 +2182,7 @@ function openDashboardView() {
   state.view = "dashboard";
   ui.mobileMenuOpen = false;
   loadTradeHistory();
+  loadMyRankingPosition();
 }
 
 async function generateManagedCoupon() {
@@ -2623,6 +2658,7 @@ async function submitGoogleAuth(idToken) {
       loadStickerCatalog(),
       loadAlbumState(),
       loadPackHistory(),
+      loadMyRankingPosition(),
     ]);
     await loadManagedUsers();
     await loadSystemEvents(true);
@@ -3457,6 +3493,30 @@ const filteredTradeHistoryPaged = computed(() => {
           </p>
         </div>
       </div>
+
+      <section class="landing-ranking" aria-label="Ranking de jogadores">
+        <h3>Ranking de quem mais colou figurinhas</h3>
+        <p
+          v-if="state.publicRanking.length === 0"
+          class="landing-ranking-empty"
+        >
+          O ranking aparecerá assim que houver progresso dos participantes.
+        </p>
+        <ol v-else class="landing-ranking-list">
+          <li
+            v-for="entry in state.publicRanking"
+            :key="`rank-${entry.userId || entry.position}-${entry.position}`"
+            class="landing-ranking-item"
+          >
+            <span class="landing-ranking-position">#{{ entry.position }}</span>
+            <strong class="landing-ranking-name">{{ entry.name }}</strong>
+            <span class="landing-ranking-score"
+              >{{ entry.collected }} coladas</span
+            >
+          </li>
+        </ol>
+      </section>
+
       <footer class="landing-footer">
         <p>
           Álbum Copa 2026 · {{ total }} figurinhas · EUA, Canadá e México · FIFA
@@ -3801,6 +3861,13 @@ const filteredTradeHistoryPaged = computed(() => {
               <img src="/ring.webp" alt="" />
             </div>
             <div class="dashboard-ring-core" aria-hidden="true"></div>
+            <div
+              class="dashboard-ring-center-rank"
+              title="Sua posição no ranking"
+            >
+              <small>Posição</small>
+              <strong>{{ myRankingDisplay }}</strong>
+            </div>
             <div class="dashboard-ring-orbit orbit-total">
               <small>Total</small>
               <strong>{{ dashboardTotalDisplay }}</strong>
