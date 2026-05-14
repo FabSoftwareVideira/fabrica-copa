@@ -2051,12 +2051,10 @@ app.get("/api/system/events", authMiddleware, async (req, res) => {
 app.post("/api/packs/open", authMiddleware, async (req, res) => {
     try {
         const { state } = await getAlbumState(req.user.sub);
-        const today = todayStr();
-        const usedToday = state.packsUsedDate === today ? state.packsUsedToday : 0;
-        const available = Math.max(0, PACKS_PER_DAY - usedToday) + (state.extraPacks || 0);
+        const available = Math.max(0, Number(state.extraPacks || 0));
 
         if (available <= 0) {
-            return res.status(400).json({ error: "Limite diario atingido" });
+            return res.status(400).json({ error: "Sem pacotes disponíveis" });
         }
 
         const collectedMap = state.collected || {};
@@ -2075,23 +2073,9 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
             collectedMap[sticker.id] = (collectedMap[sticker.id] || 0) + 1;
         }
 
-        let nextPacksUsedDate = state.packsUsedDate;
-        let nextPacksUsedToday = usedToday;
         let nextExtraPacks = state.extraPacks || 0;
-        let source = "daily";
-
-        if (state.packsUsedDate !== today) {
-            nextPacksUsedDate = today;
-            nextPacksUsedToday = 0;
-        }
-
-        if (nextPacksUsedToday < PACKS_PER_DAY) {
-            nextPacksUsedToday += 1;
-            source = "daily";
-        } else {
-            nextExtraPacks = Math.max(0, nextExtraPacks - 1);
-            source = "bonus";
-        }
+        let source = "bonus";
+        nextExtraPacks = Math.max(0, nextExtraPacks - 1);
 
         const newCount = wasOwned.filter((x) => !x).length;
         const repeatCount = 5 - newCount;
@@ -2109,8 +2093,8 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
       `,
             [
                 JSON.stringify(collectedMap),
-                nextPacksUsedDate,
-                nextPacksUsedToday,
+                state.packsUsedDate || "",
+                state.packsUsedToday || 0,
                 nextExtraPacks,
                 nowTimestamp,
                 req.user.sub,
@@ -2128,8 +2112,8 @@ app.post("/api/packs/open", authMiddleware, async (req, res) => {
             wasOwned,
             state: {
                 collected: collectedMap,
-                packsUsedDate: nextPacksUsedDate,
-                packsUsedToday: nextPacksUsedToday,
+                packsUsedDate: state.packsUsedDate || "",
+                packsUsedToday: state.packsUsedToday || 0,
                 extraPacks: nextExtraPacks,
                 usedCodes: state.usedCodes,
             },

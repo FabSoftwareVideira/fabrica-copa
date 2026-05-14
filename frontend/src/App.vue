@@ -551,13 +551,8 @@ const progressTheme = computed(() => {
   }
   return { key: "theme-kickoff", label: "Fase 1: Abertura" };
 });
-const dailyLeft = computed(() => {
-  const today = todayStr();
-  const used = state.packsUsedDate === today ? state.packsUsedToday : 0;
-  return Math.max(0, PACKS_PER_DAY - used);
-});
-const packsAvailable = computed(
-  () => dailyLeft.value + (state.extraPacks || 0),
+const packsAvailable = computed(() =>
+  Math.max(0, Number(state.extraPacks || 0)),
 );
 const tradeWindowConfigured = computed(
   () => Array.isArray(state.tradeWindows) && state.tradeWindows.length > 0,
