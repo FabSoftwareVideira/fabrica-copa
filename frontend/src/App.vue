@@ -3641,6 +3641,9 @@ const filteredTradeHistoryPaged = computed(() => {
           aria-label="Abrir pacotinho"
         >
           <span class="action-icon" aria-hidden="true">📦</span>
+          <span class="pack-btn-badge">
+            {{ packsAvailable > 99 ? "99+" : packsAvailable }}
+          </span>
           <span class="action-label">
             {{
               ui.openingPack

@@ -219,6 +219,10 @@ a {
   display: inline;
 }
 
+.pack-btn-badge {
+  display: none;
+}
+
 .header-subtitle {
   text-align: center;
   padding: 0.3rem 0 0;
@@ -2268,6 +2272,30 @@ button:disabled {
 
   .action-label {
     display: none;
+  }
+
+  .pack-btn {
+    position: relative;
+    overflow: visible;
+  }
+
+  .pack-btn-badge {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 800;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    padding: 0 0.18em;
+    pointer-events: none;
   }
 
   .user-actions {
