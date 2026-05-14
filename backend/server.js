@@ -1534,10 +1534,7 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
 
         if (!promo) return res.status(400).json({ error: "Codigo invalido ou expirado" });
 
-        const isGenericGeneratedCoupon =
-            isGeneratedCoupon && Number(couponRow?.is_generic || 0) === 1;
-
-        if (!isGeneratedCoupon || isGenericGeneratedCoupon) {
+        if (!isGeneratedCoupon) {
             const already = await get("SELECT id FROM redeemed_codes WHERE user_id = ? AND code = ?", [req.user.sub, code]);
             if (already) return res.status(409).json({ error: "Este codigo ja foi resgatado" });
         }
@@ -1547,11 +1544,16 @@ app.post("/api/promo/redeem", authMiddleware, async (req, res) => {
         usedCodes.push(code);
         const extraPacks = (state.extraPacks || 0) + promo.packs;
 
-        if (isGeneratedCoupon && couponRow && !isGenericGeneratedCoupon) {
-            await run(
-                "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ? WHERE id = ?",
+        if (isGeneratedCoupon && couponRow) {
+            // Uso unico global para cupons gerados (inclui cupom livre/is_generic).
+            // A atualizacao condicional evita resgate duplo em concorrencia.
+            const redeemResult = await run(
+                "UPDATE user_coupons SET status = 'redeemed', redeemed_at = ? WHERE id = ? AND status = 'active'",
                 [nowSqlTimestamp(), couponRow.id]
             );
+            if (!redeemResult || Number(redeemResult.changes || 0) !== 1) {
+                return res.status(409).json({ error: "Este cupom ja foi resgatado" });
+            }
         } else {
             await run("INSERT INTO redeemed_codes(user_id, code, packs_added) VALUES(?, ?, ?)", [
                 req.user.sub,
