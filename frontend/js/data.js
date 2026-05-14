@@ -13,16 +13,16 @@ const ALBUM_DATA = {
         name: "Especial",
         color: "#FFD700",
         stickers: [
-            { num: 1, name: "Capa do Álbum", type: "cover", icon: "📖", image: "public/specials/especial_capa.png" },
-            { num: 2, name: "Troféu FIFA World Cup", type: "trophy", icon: "🏆", image: "public/specials/especial_trophy.png" },
-            { num: 3, name: "Talisma Oficial", type: "mascot", icon: "🎭", image: "public/specials/especial_mascot.png" },
-            { num: 4, name: "Bola Oficial", type: "ball", icon: "⚽", image: "public/specials/especial_ball.png" },
-            { num: 5, name: "Sede: Nova York / NJ", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_ny.png" },
-            { num: 6, name: "Sede: Los Angeles", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_la.png" },
-            { num: 7, name: "Sede: Dallas", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_dallas.png" },
-            { num: 8, name: "Sede: Cidade do México", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_mexico.png" },
-            { num: 9, name: "Sede: Toronto", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_toronto.png" },
-            { num: 10, name: "Sede: Vancouver", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_vancouver.png" },
+            { num: 1, name: "Capa do Álbum", type: "cover", icon: "📖", image: "public/specials/especial_capa.webp" },
+            { num: 2, name: "Troféu FIFA World Cup", type: "trophy", icon: "🏆", image: "public/specials/especial_trophy.webp" },
+            { num: 3, name: "Talisma Oficial", type: "mascot", icon: "🎭", image: "public/specials/especial_mascot.webp" },
+            { num: 4, name: "Bola Oficial", type: "ball", icon: "⚽", image: "public/specials/especial_ball.webp" },
+            { num: 5, name: "Sede: Nova York / NJ", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_ny.webp" },
+            { num: 6, name: "Sede: Los Angeles", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_la.webp" },
+            { num: 7, name: "Sede: Dallas", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_dallas.webp" },
+            { num: 8, name: "Sede: Cidade do México", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_mexico.webp" },
+            { num: 9, name: "Sede: Toronto", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_toronto.webp" },
+            { num: 10, name: "Sede: Vancouver", type: "stadium", icon: "🏟️", image: "public/specials/especial_stadium_vancouver.webp" },
         ]
     },
 
@@ -298,7 +298,7 @@ const ALBUM_DATA = {
 const TEAM_IMAGE_BASE_PATH = "/teams";
 
 function getTeamImagePath(teamId) {
-    return `${TEAM_IMAGE_BASE_PATH}/${teamId}.png`;
+    return `${TEAM_IMAGE_BASE_PATH}/${teamId}.webp`;
 }
 
 ALBUM_DATA.groups = ALBUM_DATA.groups.map(group => ({
