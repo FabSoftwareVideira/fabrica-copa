@@ -1619,7 +1619,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
         const { row } = await getAlbumState(req.user.sub);
         const updatedAt = nowSqlTimestamp();
 
-        const validatedCollected = await rebuildCollectedFromPackHistory(req.user.sub);
+        const validatedCollected = await getValidCollectedMap(req.user.sub);
 
         await run(
             `
