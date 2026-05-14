@@ -1854,8 +1854,8 @@ button:disabled {
 
 .toasty-easter-egg {
   position: fixed;
-  right: 1rem;
-  bottom: 2rem;
+  right: 0rem;
+  bottom: 0rem;
   z-index: 1200;
   display: block;
   animation: toastyPop 220ms ease-out;
