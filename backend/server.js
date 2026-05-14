@@ -28,6 +28,13 @@ const ROLE_ADMIN = "admin";
 const ROLE_PROFESSOR = "servidor";
 const ROLE_PLAYER = "jogador";
 const ALLOWED_ROLES = new Set([ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]);
+const LINEUP_POSITION_IDS = [
+    "gk",
+    "lb", "cb1", "cb2", "rb",
+    "cm1", "cm2", "cm3",
+    "lw", "st", "rw",
+];
+const LINEUP_POSITION_SET = new Set(LINEUP_POSITION_IDS);
 
 const PROMO_CODES = {};
 
@@ -894,6 +901,27 @@ async function getValidCollectedMap(userId) {
     return collected;
 }
 
+function buildEmptyLineupSlots() {
+    const slots = {};
+    for (const id of LINEUP_POSITION_IDS) {
+        slots[id] = "";
+    }
+    return slots;
+}
+
+function normalizeLineupSlots(rawSlots) {
+    const base = buildEmptyLineupSlots();
+    if (!rawSlots || typeof rawSlots !== "object") return base;
+
+    for (const [positionId, stickerIdRaw] of Object.entries(rawSlots)) {
+        if (!LINEUP_POSITION_SET.has(String(positionId))) continue;
+        const stickerId = String(stickerIdRaw || "").trim();
+        base[positionId] = stickerId;
+    }
+
+    return base;
+}
+
 async function getAllTradeWindows() {
     const rows = await all(
         `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
@@ -1010,6 +1038,15 @@ async function initDb() {
     )
   `);
     await ensureColumn("album_states", "trade_coins", "INTEGER NOT NULL DEFAULT 0");
+
+    await run(`
+        CREATE TABLE IF NOT EXISTS user_lineups (
+            user_id INTEGER PRIMARY KEY,
+            slots_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -1522,6 +1559,85 @@ app.get("/api/album/state", authMiddleware, async (req, res) => {
         });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao carregar estado", detail: err.message });
+    }
+});
+
+app.get("/api/lineup", authMiddleware, async (req, res) => {
+    try {
+        let row = await get(
+            "SELECT slots_json, updated_at FROM user_lineups WHERE user_id = ?",
+            [req.user.sub]
+        );
+
+        if (!row) {
+            const nowTimestamp = nowSqlTimestamp();
+            await run(
+                "INSERT INTO user_lineups(user_id, slots_json, updated_at) VALUES(?, ?, ?)",
+                [req.user.sub, JSON.stringify(buildEmptyLineupSlots()), nowTimestamp]
+            );
+            row = await get(
+                "SELECT slots_json, updated_at FROM user_lineups WHERE user_id = ?",
+                [req.user.sub]
+            );
+        }
+
+        const slots = normalizeLineupSlots(parseJSON(row?.slots_json || "{}", {}));
+        return res.json({
+            lineup: {
+                slots,
+                updatedAt: row?.updated_at || "",
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao carregar selecao", detail: err.message });
+    }
+});
+
+app.put("/api/lineup", authMiddleware, async (req, res) => {
+    try {
+        const inputSlots = normalizeLineupSlots(req.body?.slots || {});
+        const seenStickerIds = new Set();
+        const validCollected = await getValidCollectedMap(req.user.sub);
+
+        for (const [positionId, stickerId] of Object.entries(inputSlots)) {
+            if (!LINEUP_POSITION_SET.has(String(positionId))) {
+                return res.status(400).json({ error: "Posicao invalida na selecao" });
+            }
+            const id = String(stickerId || "").trim();
+            if (!id) continue;
+
+            if (seenStickerIds.has(id)) {
+                return res.status(400).json({ error: "A mesma figurinha nao pode ocupar duas posicoes" });
+            }
+            seenStickerIds.add(id);
+
+            const sticker = STICKER_BY_ID.get(id);
+            if (!sticker || sticker.type !== "player") {
+                return res.status(400).json({ error: "Somente figurinhas de jogadores podem ser usadas na selecao" });
+            }
+            if (Number(validCollected[id] || 0) < 1) {
+                return res.status(400).json({ error: `Voce nao possui a figurinha #${sticker?.num || "?"} colada no album` });
+            }
+        }
+
+        const nowTimestamp = nowSqlTimestamp();
+        await run(
+            `INSERT INTO user_lineups(user_id, slots_json, updated_at)
+             VALUES(?, ?, ?)
+             ON CONFLICT(user_id)
+             DO UPDATE SET slots_json = excluded.slots_json, updated_at = excluded.updated_at`,
+            [req.user.sub, JSON.stringify(inputSlots), nowTimestamp]
+        );
+
+        return res.json({
+            ok: true,
+            lineup: {
+                slots: inputSlots,
+                updatedAt: nowTimestamp,
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao salvar selecao", detail: err.message });
     }
 });
 
