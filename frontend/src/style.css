@@ -2308,7 +2308,7 @@ button:disabled {
   }
 
   .panel-head {
-    align-items: flex-start;
+    /* align-items: flex-start; */
   }
 
   .header-subtitle {
@@ -2377,8 +2377,8 @@ button:disabled {
   }
 
   .panel-head {
-    flex-direction: column;
-    align-items: flex-start;
+    /* flex-direction: column;
+    align-items: flex-start; */
   }
 
   .stats {

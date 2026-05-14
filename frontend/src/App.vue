@@ -3844,7 +3844,6 @@ const filteredTradeHistoryPaged = computed(() => {
         </div>
         <div class="panel-head">
           <div>
-            <h2>Visão Geral</h2>
             <span class="badge-chip"
               >{{ dashboardPercentDisplay }}% completo</span
             >
