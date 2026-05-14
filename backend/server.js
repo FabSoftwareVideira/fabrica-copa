@@ -853,6 +853,25 @@ async function getGlobalRanking() {
     return toRankingRows(rows);
 }
 
+async function rebuildCollectedFromPackHistory(userId) {
+    const rows = await all(
+        `SELECT stickers_json FROM pack_history WHERE user_id = ? ORDER BY id ASC`,
+        [userId]
+    );
+
+    const collected = {};
+    for (const row of rows) {
+        const stickers = parseJSON(row.stickers_json || "[]", []);
+        for (const sticker of stickers) {
+            const stickerId = String(sticker?.id || "");
+            if (!stickerId || !STICKER_BY_ID.has(stickerId)) continue;
+            collected[stickerId] = (collected[stickerId] || 0) + 1;
+        }
+    }
+
+    return collected;
+}
+
 async function getAllTradeWindows() {
     const rows = await all(
         `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
@@ -1576,8 +1595,9 @@ app.delete("/api/admin/trade/windows/:id", authMiddleware, requireRoles(ROLE_ADM
 app.put("/api/album/state", authMiddleware, async (req, res) => {
     try {
         const { row } = await getAlbumState(req.user.sub);
-        const clientCollected = req.body?.collected || {};
         const updatedAt = nowSqlTimestamp();
+
+        const validatedCollected = await rebuildCollectedFromPackHistory(req.user.sub);
 
         await run(
             `
@@ -1592,7 +1612,7 @@ app.put("/api/album/state", authMiddleware, async (req, res) => {
       WHERE user_id = ?
       `,
             [
-                JSON.stringify(clientCollected),
+                JSON.stringify(validatedCollected),
                 row.packs_used_date || "",
                 row.packs_used_today || 0,
                 row.extra_packs || 0,
