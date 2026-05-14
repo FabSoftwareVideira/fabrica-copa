@@ -40,6 +40,8 @@ const NOTIFICATIONS_UNREAD_KEY_PREFIX = "album-notifications-unread";
 const DEFAULT_PLAYER_IMAGE = withBasePath("/player-default.png");
 const DEFAULT_TEAM_IMAGE = withBasePath("/teams/default.png");
 const DEFAULT_SPECIAL_IMAGE = withBasePath("/specials/especial_default.png");
+const TOASTY_IMAGE = withBasePath("/ee.gif");
+const TOASTY_SOUND = withBasePath("/toasty.mp3");
 const TEAM_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "svg"];
 const TEAM_IMAGE_CODES = {
   usa: "us",
@@ -256,6 +258,8 @@ const ui = reactive({
   dashboardAnimatedMissing: 0,
   dashboardAnimatedDuplicates: 0,
   notificationsOpen: false,
+  invalidPromoStreak: 0,
+  toastyVisible: false,
 });
 
 restoreNotificationsFromStorage();
@@ -841,6 +845,8 @@ let systemEventsTimer = null;
 let dashboardRingAnimFrame = null;
 let dashboardStatsAnimFrame = null;
 let tradeWindowClockTimer = null;
+let toastyTimer = null;
+let toastyAudio = null;
 const stickerPhotoCache = new Map();
 
 function formatCountdown(ms) {
@@ -1174,6 +1180,8 @@ onBeforeUnmount(() => {
   stopTradeWindowClock();
   removePackDragListeners();
   clearPackRevealTimer();
+  clearToastyTimer();
+  clearToastyAudio();
   stopSystemEventsPolling();
 });
 
@@ -1331,6 +1339,60 @@ function setToast(message) {
   setTimeout(() => {
     if (ui.toast === message) ui.toast = "";
   }, 2200);
+}
+
+function isInvalidCouponAttempt(err) {
+  const status = Number(err?.status || 0);
+  const message = String(err?.message || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (status !== 400) return false;
+  return message.includes("invalido") || message.includes("expirado");
+}
+
+function clearToastyTimer() {
+  if (!toastyTimer) return;
+  clearTimeout(toastyTimer);
+  toastyTimer = null;
+}
+
+function playToastySound() {
+  try {
+    if (!toastyAudio) {
+      toastyAudio = new Audio(TOASTY_SOUND);
+      toastyAudio.preload = "auto";
+    }
+    toastyAudio.currentTime = 0;
+    const playPromise = toastyAudio.play();
+    if (playPromise?.catch) {
+      playPromise.catch(() => {
+        // ignore blocked autoplay errors silently
+      });
+    }
+  } catch {
+    // no-op when audio cannot be initialized
+  }
+}
+
+function clearToastyAudio() {
+  if (!toastyAudio) return;
+  try {
+    toastyAudio.pause();
+    toastyAudio.currentTime = 0;
+  } catch {
+    // ignore cleanup failures
+  }
+}
+
+function showToastyEasterEgg() {
+  clearToastyTimer();
+  playToastySound();
+  ui.toastyVisible = true;
+  toastyTimer = setTimeout(() => {
+    ui.toastyVisible = false;
+    toastyTimer = null;
+  }, 1400);
 }
 
 async function copyTextToClipboard(text) {
@@ -2431,6 +2493,7 @@ async function redeemPromo() {
   const code = ui.promoCode.trim().toUpperCase();
   if (!code) {
     ui.promoMsg = "Digite um codigo valido";
+    ui.invalidPromoStreak = 0;
     return;
   }
 
@@ -2446,9 +2509,19 @@ async function redeemPromo() {
       : state.usedCodes;
     ui.promoMsg = `${data.label}: +${data.packs} pacote(s)`;
     ui.promoCode = "";
+    ui.invalidPromoStreak = 0;
     setToast("Código aplicado com sucesso");
   } catch (err) {
     ui.promoMsg = err.message || "Código inválido";
+    if (isInvalidCouponAttempt(err)) {
+      ui.invalidPromoStreak += 1;
+      if (ui.invalidPromoStreak >= 2) {
+        ui.invalidPromoStreak = 0;
+        showToastyEasterEgg();
+      }
+    } else {
+      ui.invalidPromoStreak = 0;
+    }
   }
 }
 
@@ -5659,5 +5732,15 @@ const filteredTradeHistoryPaged = computed(() => {
   <!-- Toast global (visível em qualquer estado) -->
   <Teleport to="body">
     <div v-if="ui.toast" class="toast toast-teleport">{{ ui.toast }}</div>
+  </Teleport>
+  <Teleport to="body">
+    <div
+      v-if="ui.toastyVisible"
+      class="toasty-easter-egg"
+      role="status"
+      aria-live="polite"
+    >
+      <img :src="TOASTY_IMAGE" alt="Toasty" class="toasty-image" />
+    </div>
   </Teleport>
 </template>
