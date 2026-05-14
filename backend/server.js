@@ -1478,8 +1478,44 @@ app.delete("/api/admin/trade/windows/:id", authMiddleware, requireRoles(ROLE_ADM
 
 app.put("/api/album/state", authMiddleware, async (req, res) => {
     try {
-        const { row } = await getAlbumState(req.user.sub);
-        const clientCollected = req.body?.collected || {};
+        const { row, state } = await getAlbumState(req.user.sub);
+        const clientCollectedRaw = req.body?.collected || {};
+        const serverCollected = state.collected || {};
+        const clientCollected = {};
+
+        for (const [stickerId, rawCount] of Object.entries(clientCollectedRaw)) {
+            if (!STICKER_BY_ID.has(stickerId)) continue;
+            const normalizedCount = Math.max(0, Math.floor(Number(rawCount) || 0));
+            const serverCount = Math.max(0, Math.floor(Number(serverCollected[stickerId]) || 0));
+
+            // Prevent tampering: client cannot add stickers directly via state sync.
+            // New stickers must come from server-side flows (packs/trades/coupons).
+            if (normalizedCount > serverCount) {
+                logWarn("Blocked forged album state update attempt", {
+                    userId: req.user.sub,
+                    stickerId,
+                    serverCount,
+                    attemptedCount: normalizedCount,
+                });
+                return res.status(403).json({
+                    error: "Nao e permitido adicionar figurinhas manualmente",
+                    code: "CLIENT_STATE_TAMPERING",
+                });
+            }
+
+            if (normalizedCount > 0) {
+                clientCollected[stickerId] = normalizedCount;
+            }
+        }
+
+        // Keep stickers not sent by the client to avoid accidental data loss.
+        for (const [stickerId, rawCount] of Object.entries(serverCollected)) {
+            if (clientCollected[stickerId] !== undefined) continue;
+            const normalizedCount = Math.max(0, Math.floor(Number(rawCount) || 0));
+            if (normalizedCount > 0) {
+                clientCollected[stickerId] = normalizedCount;
+            }
+        }
         const updatedAt = nowSqlTimestamp();
 
         await run(
