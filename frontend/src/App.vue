@@ -260,6 +260,7 @@ const ui = reactive({
   pack: [],
   wasOwned: [],
   mobileMenuOpen: false,
+  tradeSideMenuOpen: false,
   tradeOfferOpen: false,
   tradeTargetEntry: null,
   tradeTargetUser: null,
@@ -5217,523 +5218,614 @@ const filteredTradeHistoryPaged = computed(() => {
           </div>
         </div>
 
-        <div class="trade-tabs">
-          <button
-            type="button"
-            :class="{ active: state.tradeSubView === 'available' }"
-            @click="state.tradeSubView = 'available'"
-          >
-            Disponíveis
-          </button>
-          <button
-            type="button"
-            :class="{ active: state.tradeSubView === 'incoming' }"
-            @click="
-              state.tradeSubView = 'incoming';
-              loadTradeOffers();
-            "
-          >
-            Recebidas
-            <span
-              v-if="tradeIncomingCount > 0"
-              class="tab-badge inline-badge"
-              >{{ tradeIncomingCount }}</span
-            >
-          </button>
-          <button
-            type="button"
-            :class="{ active: state.tradeSubView === 'outgoing' }"
-            @click="
-              state.tradeSubView = 'outgoing';
-              loadTradeOffers();
-            "
-          >
-            Enviadas
-          </button>
-          <button
-            type="button"
-            :class="{ active: state.tradeSubView === 'history' }"
-            @click="
-              state.tradeSubView = 'history';
-              loadTradeHistory();
-            "
-          >
-            Histórico
-          </button>
-        </div>
+        <button
+          type="button"
+          class="trade-side-open-btn"
+          @click="ui.tradeSideMenuOpen = true"
+        >
+          Menu de trocas
+        </button>
 
-        <!-- Available stickers -->
-        <div v-if="state.tradeSubView === 'available'">
-          <div class="trade-header trade-header-available">
-            <div class="trade-available-summary">
-              <strong>
-                {{ filteredTradeAvailable.length }} figurinhas em destaque
-              </strong>
-              <span>
-                Veja até {{ TRADE_AVAILABLE_LIMIT }} por rodada e gaste 1 coin
-                para trocar o conjunto.
-              </span>
+        <div
+          class="trade-side-overlay"
+          :class="{ open: ui.tradeSideMenuOpen }"
+          @click="ui.tradeSideMenuOpen = false"
+        />
+
+        <div class="trade-layout">
+          <div class="trade-main-column">
+            <!-- Available stickers -->
+            <div v-if="state.tradeSubView === 'available'">
+              <div class="trade-header trade-header-available">
+                <div class="trade-available-summary">
+                  <strong>
+                    {{ filteredTradeAvailable.length }} figurinhas em destaque
+                  </strong>
+                  <span>
+                    Veja até {{ TRADE_AVAILABLE_LIMIT }} por rodada e gaste 1
+                    coin para trocar o conjunto.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="trade-coins-btn-compact"
+                  :disabled="
+                    !canRerollTradeAvailable ||
+                    ui.tradeAvailableRerollLoading ||
+                    ui.tradeAvailableLoading
+                  "
+                  @click="rerollTradeAvailable"
+                >
+                  {{
+                    ui.tradeAvailableRerollLoading
+                      ? "Sorteando..."
+                      : state.tradeAvailableHasMore
+                        ? `Ver outras ${TRADE_AVAILABLE_LIMIT} (-${TRADE_AVAILABLE_REROLL_COST} coin)`
+                        : "Sem mais opções"
+                  }}
+                </button>
+              </div>
+              <p v-if="ui.tradeAvailableLoading" class="trade-hint">
+                Carregando...
+              </p>
+              <p
+                v-else-if="filteredTradeAvailable.length === 0"
+                class="trade-hint"
+              >
+                Nenhuma figurinha disponível no momento.
+              </p>
+              <div v-else class="trade-available-list">
+                <article
+                  v-for="entry in filteredTradeAvailable"
+                  :key="entry.sticker.id"
+                  class="trade-available-row"
+                  :style="{
+                    borderLeftColor: stickerBorder(entry.sticker)
+                      .backgroundColor,
+                  }"
+                >
+                  <div class="trade-row-main">
+                    <span class="trade-row-num">#{{ entry.sticker.num }}</span>
+                    <div class="trade-row-info">
+                      <strong>{{ entry.sticker.name }}</strong>
+                      <small>{{ groupLabel(entry.sticker) }}</small>
+                    </div>
+                  </div>
+                  <div class="trade-row-offered">
+                    <span
+                      v-for="u in entry.offeredBy"
+                      :key="u.userId"
+                      class="trade-user-chip"
+                      >{{ u.userName }}</span
+                    >
+                  </div>
+                  <button
+                    type="button"
+                    class="trade-request-btn"
+                    :disabled="
+                      myTradableDuplicatesForOffer.length === 0 ||
+                      !tradeWindowIsOpenNow
+                    "
+                    @click="openTradeOffer(entry)"
+                  >
+                    {{
+                      !tradeWindowIsOpenNow
+                        ? "Janela fechada"
+                        : myTradableDuplicatesForOffer.length === 0
+                          ? "Sem repetidas"
+                          : "Pedir troca"
+                    }}
+                  </button>
+                </article>
+              </div>
             </div>
-            <button
-              type="button"
-              class="trade-coins-btn-compact"
-              :disabled="
-                !canRerollTradeAvailable ||
-                ui.tradeAvailableRerollLoading ||
-                ui.tradeAvailableLoading
-              "
-              @click="rerollTradeAvailable"
-            >
-              {{
-                ui.tradeAvailableRerollLoading
-                  ? "Sorteando..."
-                  : state.tradeAvailableHasMore
-                    ? `Ver outras ${TRADE_AVAILABLE_LIMIT} (-${TRADE_AVAILABLE_REROLL_COST} coin)`
-                    : "Sem mais opções"
-              }}
-            </button>
-          </div>
-          <div class="trade-header">
-            <span class="trade-coins-compact">
-              🪙 {{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}
-              <span class="trade-coins-hint">(+1 por troca)</span>
-            </span>
-            <button
-              type="button"
-              class="trade-coins-btn-compact"
-              :disabled="
-                !canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading
-              "
-              @click="redeemTradeCoinsCoupon"
-            >
-              {{
-                ui.tradeCoinRedeemLoading
-                  ? "Resgatando..."
-                  : canRedeemTradeCoinsCoupon
-                    ? "Trocar"
-                    : `Faltam ${tradeCoinsNeeded}`
-              }}
-            </button>
-          </div>
-          <p v-if="ui.tradeAvailableLoading" class="trade-hint">
-            Carregando...
-          </p>
-          <p v-else-if="filteredTradeAvailable.length === 0" class="trade-hint">
-            Nenhuma figurinha disponível no momento.
-          </p>
-          <div v-else class="trade-available-list">
-            <article
-              v-for="entry in filteredTradeAvailable"
-              :key="entry.sticker.id"
-              class="trade-available-row"
-              :style="{
-                borderLeftColor: stickerBorder(entry.sticker).backgroundColor,
-              }"
-            >
-              <div class="trade-row-main">
-                <span class="trade-row-num">#{{ entry.sticker.num }}</span>
-                <div class="trade-row-info">
-                  <strong>{{ entry.sticker.name }}</strong>
-                  <small>{{ groupLabel(entry.sticker) }}</small>
+
+            <!-- Incoming offers -->
+            <div v-if="state.tradeSubView === 'incoming'">
+              <div class="trade-filters">
+                <input
+                  v-model.trim="state.tradeSearchIncoming"
+                  type="search"
+                  placeholder="Buscar por usuário ou figurinha"
+                  @input="setTradePage('incoming', 1)"
+                />
+                <select
+                  v-model="state.tradeIncomingUserFilter"
+                  @change="setTradePage('incoming', 1)"
+                >
+                  <option value="all">Todos os remetentes</option>
+                  <option
+                    v-for="user in tradeIncomingUsers"
+                    :key="`in-${user.id}`"
+                    :value="String(user.id)"
+                  >
+                    {{ user.name }}
+                  </option>
+                </select>
+              </div>
+              <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
+              <p
+                v-else-if="filteredTradeIncoming.length === 0"
+                class="trade-hint"
+              >
+                Nenhuma proposta de troca recebida.
+              </p>
+              <div v-else class="trade-offer-list">
+                <article
+                  v-for="offer in filteredTradeIncomingPaged"
+                  :key="offer.id"
+                  class="trade-offer-card"
+                >
+                  <div class="trade-offer-header">
+                    <strong>{{ offer.fromUserName }}</strong>
+                    <small>{{ formatDateTime(offer.createdAt) }}</small>
+                  </div>
+                  <div class="trade-offer-stickers">
+                    <div class="trade-offer-sticker">
+                      <span class="trade-offer-label">Eles oferecem</span>
+                      <div
+                        class="trade-offer-sticker-info"
+                        :style="stickerBorder(offer.offeredSticker)"
+                      >
+                        <span class="num">#{{ offer.offeredSticker.num }}</span>
+                        <strong>{{ offer.offeredSticker.name }}</strong>
+                        <small>{{
+                          offer.offeredSticker.teamName ||
+                          groupLabel(offer.offeredSticker)
+                        }}</small>
+                      </div>
+                    </div>
+                    <div class="trade-offer-arrow">⇄</div>
+                    <div class="trade-offer-sticker">
+                      <span class="trade-offer-label">Eles querem sua</span>
+                      <div
+                        class="trade-offer-sticker-info"
+                        :style="stickerBorder(offer.requestedSticker)"
+                      >
+                        <span class="num"
+                          >#{{ offer.requestedSticker.num }}</span
+                        >
+                        <strong>{{ offer.requestedSticker.name }}</strong>
+                        <small>{{
+                          offer.requestedSticker.teamName ||
+                          groupLabel(offer.requestedSticker)
+                        }}</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="trade-offer-actions">
+                    <template v-if="offer.status === 'pending'">
+                      <button
+                        type="button"
+                        class="trade-accept-btn"
+                        :disabled="!tradeWindowIsOpenNow"
+                        @click="acceptTradeOffer(offer)"
+                      >
+                        Aceitar
+                      </button>
+                      <button
+                        type="button"
+                        class="trade-reject-btn"
+                        :disabled="!tradeWindowIsOpenNow"
+                        @click="rejectTradeOffer(offer)"
+                      >
+                        Recusar
+                      </button>
+                    </template>
+                    <span
+                      v-else
+                      class="trade-status-badge"
+                      :data-status="offer.status"
+                    >
+                      {{
+                        offer.status === "accepted"
+                          ? "Aceita"
+                          : offer.status === "rejected"
+                            ? "Rejeitada"
+                            : "Cancelada"
+                      }}
+                    </span>
+                  </div>
+                </article>
+              </div>
+              <div
+                v-if="filteredTradeIncoming.length > 0"
+                class="admin-pagination trade-pagination"
+              >
+                <small>
+                  Página {{ tradeIncomingSafePage }} de
+                  {{ tradeIncomingPageCount }} ({{
+                    filteredTradeIncoming.length
+                  }}
+                  itens)
+                </small>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="tradeIncomingSafePage <= 1"
+                    @click="setTradePage('incoming', tradeIncomingSafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span
+                    >{{ tradeIncomingSafePage }}/{{
+                      tradeIncomingPageCount
+                    }}</span
+                  >
+                  <button
+                    type="button"
+                    :disabled="tradeIncomingSafePage >= tradeIncomingPageCount"
+                    @click="setTradePage('incoming', tradeIncomingSafePage + 1)"
+                  >
+                    Próxima
+                  </button>
                 </div>
               </div>
-              <div class="trade-row-offered">
-                <span
-                  v-for="u in entry.offeredBy"
-                  :key="u.userId"
-                  class="trade-user-chip"
-                  >{{ u.userName }}</span
+            </div>
+
+            <!-- Outgoing offers -->
+            <div v-if="state.tradeSubView === 'outgoing'">
+              <div class="trade-filters">
+                <input
+                  v-model.trim="state.tradeSearchOutgoing"
+                  type="search"
+                  placeholder="Buscar por usuário ou figurinha"
+                  @input="setTradePage('outgoing', 1)"
+                />
+                <select
+                  v-model="state.tradeOutgoingUserFilter"
+                  @change="setTradePage('outgoing', 1)"
                 >
+                  <option value="all">Todos os destinatários</option>
+                  <option
+                    v-for="user in tradeOutgoingUsers"
+                    :key="`out-${user.id}`"
+                    :value="String(user.id)"
+                  >
+                    {{ user.name }}
+                  </option>
+                </select>
+              </div>
+              <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
+              <p
+                v-else-if="filteredTradeOutgoing.length === 0"
+                class="trade-hint"
+              >
+                Nenhuma proposta enviada aguardando resposta.
+              </p>
+              <div v-else class="trade-offer-list">
+                <article
+                  v-for="offer in filteredTradeOutgoingPaged"
+                  :key="offer.id"
+                  class="trade-offer-card"
+                >
+                  <div class="trade-offer-header">
+                    <strong>Para: {{ offer.toUserName }}</strong>
+                    <small>{{ formatDateTime(offer.createdAt) }}</small>
+                  </div>
+                  <div class="trade-offer-stickers">
+                    <div class="trade-offer-sticker">
+                      <span class="trade-offer-label">Você oferece</span>
+                      <div
+                        class="trade-offer-sticker-info"
+                        :style="stickerBorder(offer.offeredSticker)"
+                      >
+                        <span class="num">#{{ offer.offeredSticker.num }}</span>
+                        <strong>{{ offer.offeredSticker.name }}</strong>
+                        <small>{{
+                          offer.offeredSticker.teamName ||
+                          groupLabel(offer.offeredSticker)
+                        }}</small>
+                      </div>
+                    </div>
+                    <div class="trade-offer-arrow">⇄</div>
+                    <div class="trade-offer-sticker">
+                      <span class="trade-offer-label">Você quer</span>
+                      <div
+                        class="trade-offer-sticker-info"
+                        :style="stickerBorder(offer.requestedSticker)"
+                      >
+                        <span class="num"
+                          >#{{ offer.requestedSticker.num }}</span
+                        >
+                        <strong>{{ offer.requestedSticker.name }}</strong>
+                        <small>{{
+                          offer.requestedSticker.teamName ||
+                          groupLabel(offer.requestedSticker)
+                        }}</small>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="trade-offer-actions">
+                    <template v-if="offer.status === 'pending'">
+                      <button
+                        type="button"
+                        class="trade-reject-btn"
+                        :disabled="!tradeWindowIsOpenNow"
+                        @click="cancelTradeOffer(offer)"
+                      >
+                        Cancelar proposta
+                      </button>
+                    </template>
+                    <span
+                      v-else
+                      class="trade-status-badge"
+                      :data-status="offer.status"
+                    >
+                      {{
+                        offer.status === "accepted"
+                          ? "Aceita"
+                          : offer.status === "rejected"
+                            ? "Rejeitada"
+                            : "Cancelada"
+                      }}
+                    </span>
+                  </div>
+                </article>
+              </div>
+              <div
+                v-if="filteredTradeOutgoing.length > 0"
+                class="admin-pagination trade-pagination"
+              >
+                <small>
+                  Página {{ tradeOutgoingSafePage }} de
+                  {{ tradeOutgoingPageCount }} ({{
+                    filteredTradeOutgoing.length
+                  }}
+                  itens)
+                </small>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="tradeOutgoingSafePage <= 1"
+                    @click="setTradePage('outgoing', tradeOutgoingSafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span
+                    >{{ tradeOutgoingSafePage }}/{{
+                      tradeOutgoingPageCount
+                    }}</span
+                  >
+                  <button
+                    type="button"
+                    :disabled="tradeOutgoingSafePage >= tradeOutgoingPageCount"
+                    @click="setTradePage('outgoing', tradeOutgoingSafePage + 1)"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Trade history -->
+            <div v-if="state.tradeSubView === 'history'">
+              <div class="trade-filters">
+                <input
+                  v-model.trim="state.tradeSearchHistory"
+                  type="search"
+                  placeholder="Buscar por parceiro ou figurinha"
+                  @input="setTradePage('history', 1)"
+                />
+                <select
+                  v-model="state.tradeHistoryUserFilter"
+                  @change="setTradePage('history', 1)"
+                >
+                  <option value="all">Todos os parceiros</option>
+                  <option
+                    v-for="user in tradeHistoryUsers"
+                    :key="`hist-${user.id}`"
+                    :value="String(user.id)"
+                  >
+                    {{ user.name }}
+                  </option>
+                </select>
+                <select
+                  v-model="state.tradeHistoryDirection"
+                  @change="setTradePage('history', 1)"
+                >
+                  <option value="all">Enviadas e recebidas</option>
+                  <option value="sent">Somente enviadas</option>
+                  <option value="received">Somente recebidas</option>
+                </select>
+              </div>
+              <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
+              <p
+                v-else-if="filteredTradeHistory.length === 0"
+                class="trade-hint"
+              >
+                Nenhuma troca realizada ainda.
+              </p>
+              <div v-else class="trade-history-list">
+                <article
+                  v-for="entry in filteredTradeHistoryPaged"
+                  :key="entry.id"
+                  class="trade-history-row"
+                >
+                  <div class="trade-history-main">
+                    <div class="trade-history-stickers">
+                      <div class="trade-history-sticker">
+                        <small
+                          >Você {{ entry.iSent ? "ofereceu" : "deu" }}</small
+                        >
+                        <div
+                          class="trade-history-sticker-info"
+                          :style="stickerBorder(entry.offeredSticker)"
+                        >
+                          <span class="num"
+                            >#{{ entry.offeredSticker.num }}</span
+                          >
+                          <strong>{{ entry.offeredSticker.name }}</strong>
+                        </div>
+                      </div>
+                      <span class="trade-history-arrow">
+                        {{ entry.iSent ? "→" : "←" }}
+                      </span>
+                      <div class="trade-history-sticker">
+                        <small
+                          >Você {{ entry.iSent ? "pediu" : "recebeu" }}</small
+                        >
+                        <div
+                          class="trade-history-sticker-info"
+                          :style="stickerBorder(entry.requestedSticker)"
+                        >
+                          <span class="num"
+                            >#{{ entry.requestedSticker.num }}</span
+                          >
+                          <strong>{{ entry.requestedSticker.name }}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="trade-history-details">
+                      <small class="trade-history-partner">
+                        {{ entry.iSent ? "para" : "de" }}
+                        <strong>{{ entry.partnerName }}</strong>
+                      </small>
+                      <small class="trade-history-date">
+                        {{ formatDateTime(entry.completedAt) }}
+                      </small>
+                    </div>
+                  </div>
+                </article>
+              </div>
+              <div
+                v-if="filteredTradeHistory.length > 0"
+                class="admin-pagination trade-pagination"
+              >
+                <small>
+                  Página {{ tradeHistorySafePage }} de
+                  {{ tradeHistoryPageCount }} ({{ filteredTradeHistory.length }}
+                  itens)
+                </small>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="tradeHistorySafePage <= 1"
+                    @click="setTradePage('history', tradeHistorySafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span
+                    >{{ tradeHistorySafePage }}/{{
+                      tradeHistoryPageCount
+                    }}</span
+                  >
+                  <button
+                    type="button"
+                    :disabled="tradeHistorySafePage >= tradeHistoryPageCount"
+                    @click="setTradePage('history', tradeHistorySafePage + 1)"
+                  >
+                    Próxima
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside
+            class="trade-side-column"
+            :class="{ open: ui.tradeSideMenuOpen }"
+          >
+            <div class="trade-side-head">
+              <div>
+                <strong>Operações de troca</strong>
+                <small>
+                  {{
+                    state.tradeSubView === "incoming"
+                      ? "Recebidas"
+                      : state.tradeSubView === "outgoing"
+                        ? "Enviadas"
+                        : state.tradeSubView === "history"
+                          ? "Histórico"
+                          : "Disponíveis"
+                  }}
+                </small>
               </div>
               <button
                 type="button"
-                class="trade-request-btn"
-                :disabled="
-                  myTradableDuplicatesForOffer.length === 0 ||
-                  !tradeWindowIsOpenNow
+                class="trade-side-close"
+                aria-label="Fechar menu lateral"
+                @click="ui.tradeSideMenuOpen = false"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div class="trade-tabs trade-tabs-side">
+              <button
+                type="button"
+                :class="{ active: state.tradeSubView === 'available' }"
+                @click="
+                  state.tradeSubView = 'available';
+                  ui.tradeSideMenuOpen = false;
                 "
-                @click="openTradeOffer(entry)"
+              >
+                Disponíveis
+              </button>
+              <button
+                type="button"
+                :class="{ active: state.tradeSubView === 'incoming' }"
+                @click="
+                  state.tradeSubView = 'incoming';
+                  loadTradeOffers();
+                  ui.tradeSideMenuOpen = false;
+                "
+              >
+                Recebidas
+                <span
+                  v-if="tradeIncomingCount > 0"
+                  class="tab-badge inline-badge"
+                  >{{ tradeIncomingCount }}</span
+                >
+              </button>
+              <button
+                type="button"
+                :class="{ active: state.tradeSubView === 'outgoing' }"
+                @click="
+                  state.tradeSubView = 'outgoing';
+                  loadTradeOffers();
+                  ui.tradeSideMenuOpen = false;
+                "
+              >
+                Enviadas
+              </button>
+              <button
+                type="button"
+                :class="{ active: state.tradeSubView === 'history' }"
+                @click="
+                  state.tradeSubView = 'history';
+                  loadTradeHistory();
+                  ui.tradeSideMenuOpen = false;
+                "
+              >
+                Histórico
+              </button>
+            </div>
+
+            <div class="trade-coin-panel">
+              <strong>Troca de moedas</strong>
+              <p>
+                🪙 {{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}
+                <span class="trade-coins-hint">(+3 por troca aceita)</span>
+              </p>
+              <button
+                type="button"
+                class="trade-coins-btn-compact"
+                :disabled="
+                  !canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading
+                "
+                @click="redeemTradeCoinsCoupon"
               >
                 {{
-                  !tradeWindowIsOpenNow
-                    ? "Janela fechada"
-                    : myTradableDuplicatesForOffer.length === 0
-                      ? "Sem repetidas"
-                      : "Pedir troca"
+                  ui.tradeCoinRedeemLoading
+                    ? "Resgatando..."
+                    : canRedeemTradeCoinsCoupon
+                      ? "Trocar por 1 pacote"
+                      : `Faltam ${tradeCoinsNeeded}`
                 }}
               </button>
-            </article>
-          </div>
-        </div>
-
-        <!-- Incoming offers -->
-        <div v-if="state.tradeSubView === 'incoming'">
-          <div class="trade-filters">
-            <input
-              v-model.trim="state.tradeSearchIncoming"
-              type="search"
-              placeholder="Buscar por usuário ou figurinha"
-              @input="setTradePage('incoming', 1)"
-            />
-            <select
-              v-model="state.tradeIncomingUserFilter"
-              @change="setTradePage('incoming', 1)"
-            >
-              <option value="all">Todos os remetentes</option>
-              <option
-                v-for="user in tradeIncomingUsers"
-                :key="`in-${user.id}`"
-                :value="String(user.id)"
-              >
-                {{ user.name }}
-              </option>
-            </select>
-          </div>
-          <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
-          <p v-else-if="filteredTradeIncoming.length === 0" class="trade-hint">
-            Nenhuma proposta de troca recebida.
-          </p>
-          <div v-else class="trade-offer-list">
-            <article
-              v-for="offer in filteredTradeIncomingPaged"
-              :key="offer.id"
-              class="trade-offer-card"
-            >
-              <div class="trade-offer-header">
-                <strong>{{ offer.fromUserName }}</strong>
-                <small>{{ formatDateTime(offer.createdAt) }}</small>
-              </div>
-              <div class="trade-offer-stickers">
-                <div class="trade-offer-sticker">
-                  <span class="trade-offer-label">Eles oferecem</span>
-                  <div
-                    class="trade-offer-sticker-info"
-                    :style="stickerBorder(offer.offeredSticker)"
-                  >
-                    <span class="num">#{{ offer.offeredSticker.num }}</span>
-                    <strong>{{ offer.offeredSticker.name }}</strong>
-                    <small>{{
-                      offer.offeredSticker.teamName ||
-                      groupLabel(offer.offeredSticker)
-                    }}</small>
-                  </div>
-                </div>
-                <div class="trade-offer-arrow">⇄</div>
-                <div class="trade-offer-sticker">
-                  <span class="trade-offer-label">Eles querem sua</span>
-                  <div
-                    class="trade-offer-sticker-info"
-                    :style="stickerBorder(offer.requestedSticker)"
-                  >
-                    <span class="num">#{{ offer.requestedSticker.num }}</span>
-                    <strong>{{ offer.requestedSticker.name }}</strong>
-                    <small>{{
-                      offer.requestedSticker.teamName ||
-                      groupLabel(offer.requestedSticker)
-                    }}</small>
-                  </div>
-                </div>
-              </div>
-              <div class="trade-offer-actions">
-                <template v-if="offer.status === 'pending'">
-                  <button
-                    type="button"
-                    class="trade-accept-btn"
-                    :disabled="!tradeWindowIsOpenNow"
-                    @click="acceptTradeOffer(offer)"
-                  >
-                    Aceitar
-                  </button>
-                  <button
-                    type="button"
-                    class="trade-reject-btn"
-                    :disabled="!tradeWindowIsOpenNow"
-                    @click="rejectTradeOffer(offer)"
-                  >
-                    Recusar
-                  </button>
-                </template>
-                <span
-                  v-else
-                  class="trade-status-badge"
-                  :data-status="offer.status"
-                >
-                  {{
-                    offer.status === "accepted"
-                      ? "Aceita"
-                      : offer.status === "rejected"
-                        ? "Rejeitada"
-                        : "Cancelada"
-                  }}
-                </span>
-              </div>
-            </article>
-          </div>
-          <div
-            v-if="filteredTradeIncoming.length > 0"
-            class="admin-pagination trade-pagination"
-          >
-            <small>
-              Página {{ tradeIncomingSafePage }} de
-              {{ tradeIncomingPageCount }} ({{ filteredTradeIncoming.length }}
-              itens)
-            </small>
-            <div class="admin-pagination-actions">
-              <button
-                type="button"
-                :disabled="tradeIncomingSafePage <= 1"
-                @click="setTradePage('incoming', tradeIncomingSafePage - 1)"
-              >
-                Anterior
-              </button>
-              <span
-                >{{ tradeIncomingSafePage }}/{{ tradeIncomingPageCount }}</span
-              >
-              <button
-                type="button"
-                :disabled="tradeIncomingSafePage >= tradeIncomingPageCount"
-                @click="setTradePage('incoming', tradeIncomingSafePage + 1)"
-              >
-                Próxima
-              </button>
             </div>
-          </div>
-        </div>
-
-        <!-- Outgoing offers -->
-        <div v-if="state.tradeSubView === 'outgoing'">
-          <div class="trade-filters">
-            <input
-              v-model.trim="state.tradeSearchOutgoing"
-              type="search"
-              placeholder="Buscar por usuário ou figurinha"
-              @input="setTradePage('outgoing', 1)"
-            />
-            <select
-              v-model="state.tradeOutgoingUserFilter"
-              @change="setTradePage('outgoing', 1)"
-            >
-              <option value="all">Todos os destinatários</option>
-              <option
-                v-for="user in tradeOutgoingUsers"
-                :key="`out-${user.id}`"
-                :value="String(user.id)"
-              >
-                {{ user.name }}
-              </option>
-            </select>
-          </div>
-          <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
-          <p v-else-if="filteredTradeOutgoing.length === 0" class="trade-hint">
-            Nenhuma proposta enviada aguardando resposta.
-          </p>
-          <div v-else class="trade-offer-list">
-            <article
-              v-for="offer in filteredTradeOutgoingPaged"
-              :key="offer.id"
-              class="trade-offer-card"
-            >
-              <div class="trade-offer-header">
-                <strong>Para: {{ offer.toUserName }}</strong>
-                <small>{{ formatDateTime(offer.createdAt) }}</small>
-              </div>
-              <div class="trade-offer-stickers">
-                <div class="trade-offer-sticker">
-                  <span class="trade-offer-label">Você oferece</span>
-                  <div
-                    class="trade-offer-sticker-info"
-                    :style="stickerBorder(offer.offeredSticker)"
-                  >
-                    <span class="num">#{{ offer.offeredSticker.num }}</span>
-                    <strong>{{ offer.offeredSticker.name }}</strong>
-                    <small>{{
-                      offer.offeredSticker.teamName ||
-                      groupLabel(offer.offeredSticker)
-                    }}</small>
-                  </div>
-                </div>
-                <div class="trade-offer-arrow">⇄</div>
-                <div class="trade-offer-sticker">
-                  <span class="trade-offer-label">Você quer</span>
-                  <div
-                    class="trade-offer-sticker-info"
-                    :style="stickerBorder(offer.requestedSticker)"
-                  >
-                    <span class="num">#{{ offer.requestedSticker.num }}</span>
-                    <strong>{{ offer.requestedSticker.name }}</strong>
-                    <small>{{
-                      offer.requestedSticker.teamName ||
-                      groupLabel(offer.requestedSticker)
-                    }}</small>
-                  </div>
-                </div>
-              </div>
-              <div class="trade-offer-actions">
-                <template v-if="offer.status === 'pending'">
-                  <button
-                    type="button"
-                    class="trade-reject-btn"
-                    :disabled="!tradeWindowIsOpenNow"
-                    @click="cancelTradeOffer(offer)"
-                  >
-                    Cancelar proposta
-                  </button>
-                </template>
-                <span
-                  v-else
-                  class="trade-status-badge"
-                  :data-status="offer.status"
-                >
-                  {{
-                    offer.status === "accepted"
-                      ? "Aceita"
-                      : offer.status === "rejected"
-                        ? "Rejeitada"
-                        : "Cancelada"
-                  }}
-                </span>
-              </div>
-            </article>
-          </div>
-          <div
-            v-if="filteredTradeOutgoing.length > 0"
-            class="admin-pagination trade-pagination"
-          >
-            <small>
-              Página {{ tradeOutgoingSafePage }} de
-              {{ tradeOutgoingPageCount }} ({{ filteredTradeOutgoing.length }}
-              itens)
-            </small>
-            <div class="admin-pagination-actions">
-              <button
-                type="button"
-                :disabled="tradeOutgoingSafePage <= 1"
-                @click="setTradePage('outgoing', tradeOutgoingSafePage - 1)"
-              >
-                Anterior
-              </button>
-              <span
-                >{{ tradeOutgoingSafePage }}/{{ tradeOutgoingPageCount }}</span
-              >
-              <button
-                type="button"
-                :disabled="tradeOutgoingSafePage >= tradeOutgoingPageCount"
-                @click="setTradePage('outgoing', tradeOutgoingSafePage + 1)"
-              >
-                Próxima
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Trade history -->
-        <div v-if="state.tradeSubView === 'history'">
-          <div class="trade-filters">
-            <input
-              v-model.trim="state.tradeSearchHistory"
-              type="search"
-              placeholder="Buscar por parceiro ou figurinha"
-              @input="setTradePage('history', 1)"
-            />
-            <select
-              v-model="state.tradeHistoryUserFilter"
-              @change="setTradePage('history', 1)"
-            >
-              <option value="all">Todos os parceiros</option>
-              <option
-                v-for="user in tradeHistoryUsers"
-                :key="`hist-${user.id}`"
-                :value="String(user.id)"
-              >
-                {{ user.name }}
-              </option>
-            </select>
-            <select
-              v-model="state.tradeHistoryDirection"
-              @change="setTradePage('history', 1)"
-            >
-              <option value="all">Enviadas e recebidas</option>
-              <option value="sent">Somente enviadas</option>
-              <option value="received">Somente recebidas</option>
-            </select>
-          </div>
-          <p v-if="ui.tradeLoading" class="trade-hint">Carregando...</p>
-          <p v-else-if="filteredTradeHistory.length === 0" class="trade-hint">
-            Nenhuma troca realizada ainda.
-          </p>
-          <div v-else class="trade-history-list">
-            <article
-              v-for="entry in filteredTradeHistoryPaged"
-              :key="entry.id"
-              class="trade-history-row"
-            >
-              <div class="trade-history-main">
-                <div class="trade-history-stickers">
-                  <div class="trade-history-sticker">
-                    <small>Você {{ entry.iSent ? "ofereceu" : "deu" }}</small>
-                    <div
-                      class="trade-history-sticker-info"
-                      :style="stickerBorder(entry.offeredSticker)"
-                    >
-                      <span class="num">#{{ entry.offeredSticker.num }}</span>
-                      <strong>{{ entry.offeredSticker.name }}</strong>
-                    </div>
-                  </div>
-                  <span class="trade-history-arrow">
-                    {{ entry.iSent ? "→" : "←" }}
-                  </span>
-                  <div class="trade-history-sticker">
-                    <small>Você {{ entry.iSent ? "pediu" : "recebeu" }}</small>
-                    <div
-                      class="trade-history-sticker-info"
-                      :style="stickerBorder(entry.requestedSticker)"
-                    >
-                      <span class="num">#{{ entry.requestedSticker.num }}</span>
-                      <strong>{{ entry.requestedSticker.name }}</strong>
-                    </div>
-                  </div>
-                </div>
-                <div class="trade-history-details">
-                  <small class="trade-history-partner">
-                    {{ entry.iSent ? "para" : "de" }}
-                    <strong>{{ entry.partnerName }}</strong>
-                  </small>
-                  <small class="trade-history-date">
-                    {{ formatDateTime(entry.completedAt) }}
-                  </small>
-                </div>
-              </div>
-            </article>
-          </div>
-          <div
-            v-if="filteredTradeHistory.length > 0"
-            class="admin-pagination trade-pagination"
-          >
-            <small>
-              Página {{ tradeHistorySafePage }} de
-              {{ tradeHistoryPageCount }} ({{ filteredTradeHistory.length }}
-              itens)
-            </small>
-            <div class="admin-pagination-actions">
-              <button
-                type="button"
-                :disabled="tradeHistorySafePage <= 1"
-                @click="setTradePage('history', tradeHistorySafePage - 1)"
-              >
-                Anterior
-              </button>
-              <span
-                >{{ tradeHistorySafePage }}/{{ tradeHistoryPageCount }}</span
-              >
-              <button
-                type="button"
-                :disabled="tradeHistorySafePage >= tradeHistoryPageCount"
-                @click="setTradePage('history', tradeHistorySafePage + 1)"
-              >
-                Próxima
-              </button>
-            </div>
-          </div>
+          </aside>
         </div>
       </template>
     </section>
