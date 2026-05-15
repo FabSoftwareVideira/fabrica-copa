@@ -5198,16 +5198,14 @@ const filteredTradeHistoryPaged = computed(() => {
       </div>
 
       <template v-else>
-        <div class="trade-coins-bar">
-          <span class="trade-coins-bar-info">
-            🪙
-            <strong>{{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}</strong>
-            moedas
-            <span class="trade-coins-bar-hint">(+1 por troca aceita)</span>
+        <div class="trade-header">
+          <span class="trade-coins-compact">
+            🪙 {{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}
+            <span class="trade-coins-hint">(+1 por troca)</span>
           </span>
           <button
             type="button"
-            class="trade-coins-bar-btn"
+            class="trade-coins-btn-compact"
             :disabled="!canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading"
             @click="redeemTradeCoinsCoupon"
           >
@@ -5215,33 +5213,27 @@ const filteredTradeHistoryPaged = computed(() => {
               ui.tradeCoinRedeemLoading
                 ? "Resgatando..."
                 : canRedeemTradeCoinsCoupon
-                  ? "Trocar por 1 pacote"
+                  ? "Trocar"
                   : `Faltam ${tradeCoinsNeeded}`
             }}
           </button>
         </div>
 
-        <div
-          v-if="!tradeWindowIsOpenNow && nextTradeWindow"
-          class="trade-window-countdown-box"
-        >
-          <p class="read-only-hint">
-            <strong>🕒 Próxima janela de trocas abre em:</strong><br />
-            {{
-              formatCountdownLongFormat(
-                new Date(nextTradeWindow.startsAt).getTime() -
-                  ui.tradeWindowClockNow,
-              )
-            }}
-          </p>
+        <div class="trade-info-panel">
+          <div v-if="!tradeWindowIsOpenNow && nextTradeWindow" class="trade-info-item">
+            <span class="trade-info-label">🕒 Próxima janela abre em</span>
+            <span class="trade-info-value">
+              {{ formatCountdownLongFormat(new Date(nextTradeWindow.startsAt).getTime() - ui.tradeWindowClockNow) }}
+            </span>
+          </div>
+          <div v-else class="trade-info-item">
+            <span class="trade-info-label" :class="{ 'trade-open': tradeWindowIsOpenNow }">
+              ⏱️ {{ tradeWindowStatusText }}
+            </span>
+            <span class="trade-info-value">{{ tradeWindowCountdownText }}</span>
+            <span v-if="tradeWindowIsOpenNow" class="trade-warning-inline">⚠️ Ofertas pendentes serão canceladas ao fechar</span>
+          </div>
         </div>
-        <p
-          v-else
-          class="read-only-hint"
-          :class="{ 'trade-window-open': tradeWindowIsOpenNow }"
-        >
-          {{ tradeWindowStatusText }}. {{ tradeWindowCountdownText }}
-        </p>
 
         <div class="trade-tabs">
           <button

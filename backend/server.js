@@ -3055,8 +3055,9 @@ process.on("uncaughtException", (err) => {
 });
 
 // ---------- Trade window state watcher ----------
-// Tracks which window IDs are currently open so we can detect open/close transitions
-const tradeWindowOpenStates = new Map(); // windowId -> boolean (wasOpen)
+// Tracks which window IDs are currently open and when they opened (to detect open/close transitions)
+// windowId -> { isOpen: boolean, openedAt: timestamp }
+const tradeWindowOpenStates = new Map();
 
 async function checkTradeWindowTransitions() {
     try {
@@ -3065,18 +3066,23 @@ async function checkTradeWindowTransitions() {
         const now = nowSqlTimestamp();
 
         for (const w of windows) {
-            const wasOpen = tradeWindowOpenStates.get(w.id);
+            const prevState = tradeWindowOpenStates.get(w.id);
+            const wasOpen = prevState?.isOpen ?? false;
             const isNowOpen = w.isOpen === true;
 
-            if (wasOpen === undefined) {
+            if (prevState === undefined) {
                 // First check after startup — just record state, no event
-                tradeWindowOpenStates.set(w.id, isNowOpen);
+                if (isNowOpen) {
+                    tradeWindowOpenStates.set(w.id, { isOpen: true, openedAt: now });
+                } else {
+                    tradeWindowOpenStates.set(w.id, { isOpen: false, openedAt: null });
+                }
                 continue;
             }
 
             if (!wasOpen && isNowOpen) {
-                // Window just opened
-                tradeWindowOpenStates.set(w.id, true);
+                // Window just opened — record the exact moment it opened
+                tradeWindowOpenStates.set(w.id, { isOpen: true, openedAt: now });
                 const endsAtFormatted = new Date(w.endsAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: APP_TIMEZONE });
                 const msg = `A janela de trocas foi aberta (até ${endsAtFormatted}).`;
                 await run(
@@ -3085,13 +3091,52 @@ async function checkTradeWindowTransitions() {
                     [msg, JSON.stringify({ windowId: w.id, startsAt: w.startsAt, endsAt: w.endsAt }), now]
                 );
             } else if (wasOpen && !isNowOpen) {
-                // Window just closed
-                tradeWindowOpenStates.set(w.id, false);
-                const msg = `A janela de trocas foi encerrada.`;
+                // Window just closed — cancel ALL pending offers (window ended, so all pending trades are void)
+                tradeWindowOpenStates.set(w.id, { isOpen: false, openedAt: null });
+                
+                // Get all PENDING offers (regardless of when created — the window is closed)
+                const pendingOffers = await all(
+                    `SELECT id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id
+                     FROM trade_offers
+                     WHERE status = 'pending'`
+                );
+
+                // Cancel all pending offers and create notifications
+                for (const offer of pendingOffers) {
+                    await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [now, offer.id]);
+                    
+                    // Notify both users that the offer was cancelled
+                    const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
+                    const requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
+                    const notificationPayload = {
+                        offerId: offer.id,
+                        offeredStickerId: offer.offered_sticker_id,
+                        offeredStickerNum: offeredSticker?.num || "?",
+                        requestedStickerId: offer.requested_sticker_id,
+                        requestedStickerNum: requestedSticker?.num || "?",
+                        reason: "window_closed",
+                    };
+                    
+                    // Notify initiator
+                    await run(
+                        `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                         VALUES('trade_offer_cancelled', ?, ?, ?, ?, ?)`,
+                        ["trade_offer_cancelled", JSON.stringify(notificationPayload), offer.from_user_id, offer.from_user_id, now]
+                    );
+                    
+                    // Notify receiver
+                    await run(
+                        `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                         VALUES('trade_offer_cancelled', ?, ?, ?, ?, ?)`,
+                        ["trade_offer_cancelled", JSON.stringify(notificationPayload), offer.from_user_id, offer.to_user_id, now]
+                    );
+                }
+
+                const msg = `A janela de trocas foi encerrada. ${pendingOffers.length} oferta(s) pendente(s) cancelada(s).`;
                 await run(
                     `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
                      VALUES('trade_window_closed', ?, ?, NULL, NULL, ?)`,
-                    [msg, JSON.stringify({ windowId: w.id, startsAt: w.startsAt, endsAt: w.endsAt }), now]
+                    [msg, JSON.stringify({ windowId: w.id, startsAt: w.startsAt, endsAt: w.endsAt, cancelledOffers: pendingOffers.length }), now]
                 );
             }
         }
