@@ -3093,7 +3093,7 @@ async function checkTradeWindowTransitions() {
             } else if (wasOpen && !isNowOpen) {
                 // Window just closed — cancel ALL pending offers (window ended, so all pending trades are void)
                 tradeWindowOpenStates.set(w.id, { isOpen: false, openedAt: null });
-                
+
                 // Get all PENDING offers (regardless of when created — the window is closed)
                 const pendingOffers = await all(
                     `SELECT id, from_user_id, to_user_id, offered_sticker_id, requested_sticker_id
@@ -3104,7 +3104,7 @@ async function checkTradeWindowTransitions() {
                 // Cancel all pending offers and create notifications
                 for (const offer of pendingOffers) {
                     await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [now, offer.id]);
-                    
+
                     // Notify both users that the offer was cancelled
                     const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
                     const requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
@@ -3116,14 +3116,14 @@ async function checkTradeWindowTransitions() {
                         requestedStickerNum: requestedSticker?.num || "?",
                         reason: "window_closed",
                     };
-                    
+
                     // Notify initiator
                     await run(
                         `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
                          VALUES('trade_offer_cancelled', ?, ?, ?, ?, ?)`,
                         ["trade_offer_cancelled", JSON.stringify(notificationPayload), offer.from_user_id, offer.from_user_id, now]
                     );
-                    
+
                     // Notify receiver
                     await run(
                         `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)

@@ -2992,7 +2992,9 @@ button:disabled {
   color: #92400e;
   font-weight: 600;
   cursor: pointer;
-  transition: background 150ms, opacity 150ms;
+  transition:
+    background 150ms,
+    opacity 150ms;
   white-space: nowrap;
 }
 

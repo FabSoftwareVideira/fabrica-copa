@@ -5220,18 +5220,31 @@ const filteredTradeHistoryPaged = computed(() => {
         </div>
 
         <div class="trade-info-panel">
-          <div v-if="!tradeWindowIsOpenNow && nextTradeWindow" class="trade-info-item">
+          <div
+            v-if="!tradeWindowIsOpenNow && nextTradeWindow"
+            class="trade-info-item"
+          >
             <span class="trade-info-label">🕒 Próxima janela abre em</span>
             <span class="trade-info-value">
-              {{ formatCountdownLongFormat(new Date(nextTradeWindow.startsAt).getTime() - ui.tradeWindowClockNow) }}
+              {{
+                formatCountdownLongFormat(
+                  new Date(nextTradeWindow.startsAt).getTime() -
+                    ui.tradeWindowClockNow,
+                )
+              }}
             </span>
           </div>
           <div v-else class="trade-info-item">
-            <span class="trade-info-label" :class="{ 'trade-open': tradeWindowIsOpenNow }">
+            <span
+              class="trade-info-label"
+              :class="{ 'trade-open': tradeWindowIsOpenNow }"
+            >
               ⏱️ {{ tradeWindowStatusText }}
             </span>
             <span class="trade-info-value">{{ tradeWindowCountdownText }}</span>
-            <span v-if="tradeWindowIsOpenNow" class="trade-warning-inline">⚠️ Ofertas pendentes serão canceladas ao fechar</span>
+            <span v-if="tradeWindowIsOpenNow" class="trade-warning-inline"
+              >⚠️ Ofertas pendentes serão canceladas ao fechar</span
+            >
           </div>
         </div>
 
