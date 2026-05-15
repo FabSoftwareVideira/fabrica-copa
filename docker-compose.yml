@@ -117,6 +117,14 @@ services:
     restart: unless-stopped
     networks:
       - fabrica-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
 
   frontend-prod:
     build:
@@ -138,6 +146,14 @@ services:
     restart: unless-stopped
     networks:
       - fabrica-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.10"
+          memory: 32M
 
 networks:
   album-network:
