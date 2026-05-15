@@ -1919,14 +1919,14 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
             : Math.max(1, Math.min(3, Number.isFinite(requestedPacks) ? requestedPacks : 1));
         const isGeneric = hasTargetUser ? 0 : 1;
         const couponTargetUserId = hasTargetUser ? targetUserId : req.user.sub;
+        const todayDate = todayStr();
 
         if (hasTargetUser) {
-            const todayDate = todayStr();
             const alreadyToday = await get(
                 `SELECT id FROM user_coupons
-                 WHERE target_user_id = ? AND created_by_user_id = ? AND date(created_at) = ? AND status = 'active'
+                 WHERE target_user_id = ? AND is_generic = 0 AND date(created_at) = ?
                  LIMIT 1`,
-                [targetUserId, req.user.sub, todayDate]
+                [targetUserId, todayDate]
             );
             if (alreadyToday) {
                 return res.status(409).json({ error: "Ja foi gerado um cupom para este usuario hoje" });
@@ -1936,11 +1936,38 @@ app.post("/api/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_
         const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
         const couponCreatedAt = nowSqlTimestamp();
-        await run(
-            `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
-             VALUES(?, ?, ?, ?, ?, 'active', ?)`,
-            [code, couponTargetUserId, req.user.sub, packs, isGeneric, couponCreatedAt]
-        );
+        let insertResult = null;
+
+        if (hasTargetUser) {
+            // Insert atomico para impedir dupla geracao no mesmo dia em concorrencia/redeploy.
+            insertResult = await run(
+                `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
+                 SELECT ?, ?, ?, ?, 0, 'active', ?
+                 WHERE NOT EXISTS (
+                    SELECT 1 FROM user_coupons
+                    WHERE target_user_id = ? AND is_generic = 0 AND date(created_at) = ?
+                 )`,
+                [
+                    code,
+                    couponTargetUserId,
+                    req.user.sub,
+                    packs,
+                    couponCreatedAt,
+                    couponTargetUserId,
+                    todayDate,
+                ]
+            );
+
+            if (!insertResult || Number(insertResult.changes || 0) !== 1) {
+                return res.status(409).json({ error: "Ja foi gerado um cupom para este usuario hoje" });
+            }
+        } else {
+            insertResult = await run(
+                `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
+                 VALUES(?, ?, ?, ?, ?, 'active', ?)`,
+                [code, couponTargetUserId, req.user.sub, packs, isGeneric, couponCreatedAt]
+            );
+        }
 
         if (hasTargetUser) {
             const eventMessage = `Você recebeu um cupom de ${packs} pacote(s) de ${req.user.name}.`;
