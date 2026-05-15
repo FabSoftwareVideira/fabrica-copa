@@ -176,7 +176,8 @@ function normalizeNameKey(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\./g, "")
     .replace(/\bjr\b/g, "junior")
-    .replace(/\s+/g, " ");
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function playerImageKey(name, teamId) {
@@ -207,6 +208,8 @@ const state = reactive({
   tradeSubView: "available",
   tradeUsers: [],
   tradeAvailable: [],
+  tradeAvailableTotal: 0,
+  tradeAvailableHasMore: false,
   tradeFilterUser: "all",
   tradeFilterGroup: "all",
   tradeSearchAvailable: "",
@@ -269,6 +272,7 @@ const ui = reactive({
   tradeLoading: false,
   tradeOfferChoicesLoading: false,
   tradeCoinRedeemLoading: false,
+  tradeAvailableRerollLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
   lineupSaving: false,
@@ -653,25 +657,24 @@ const filteredTradeWindows = computed(() => {
 
       return true;
     })
-    .sort(
-      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-    );
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 });
+
 const tradeWindowCountdownText = computed(() => {
   if (!tradeWindowConfigured.value) return "Defina no painel de administração.";
   const now = Number(ui.tradeWindowClockNow || Date.now());
 
   if (tradeWindowIsOpenNow.value && currentOpenWindow.value) {
     const endMs = new Date(currentOpenWindow.value.endsAt).getTime();
-    if (now < endMs) {
+    if (Number.isFinite(endMs) && endMs > now) {
       return `Fecha em ${formatCountdown(endMs - now)}`;
     }
   }
 
   if (nextTradeWindow.value) {
     const startMs = new Date(nextTradeWindow.value.startsAt).getTime();
-    if (now < startMs) {
-      return `Abre em ${formatCountdownLongFormat(startMs - now)}`;
+    if (Number.isFinite(startMs) && startMs > now) {
+      return `Abre em ${formatCountdown(startMs - now)}`;
     }
   }
 
@@ -760,24 +763,31 @@ const albumPages = computed(() => {
         selectionsMap.get(selectionKey).stickers.push(sticker);
       }
 
-      const selections = [...selectionsMap.values()].map((sel) => {
-        const collectedItems = sel.stickers.filter(
-          (s) => getCount(s.id) >= 1,
-        ).length;
-        const pendingItems = sel.stickers.length - collectedItems;
-        const pct = sel.stickers.length
-          ? Math.round((collectedItems / sel.stickers.length) * 100)
-          : 0;
-        return {
-          ...sel,
-          collectedItems,
-          pendingItems,
-          pct,
-        };
-      });
+      const selections = [...selectionsMap.values()]
+        .map((sel) => {
+          const collectedItems = sel.stickers.filter(
+            (s) => getCount(s.id) >= 1,
+          ).length;
+          const pendingItems = sel.stickers.length - collectedItems;
+          const pct = sel.stickers.length
+            ? Math.round((collectedItems / sel.stickers.length) * 100)
+            : 0;
+          return {
+            ...sel,
+            collectedItems,
+            pendingItems,
+            pct,
+          };
+        })
+        .sort((a, b) =>
+          String(a.teamName || "").localeCompare(
+            String(b.teamName || ""),
+            "pt-BR",
+          ),
+        );
 
       const collectedItems = orderedStickers.filter(
-        (s) => getCount(s.id) >= 1,
+        (item) => getCount(item.id) >= 1,
       ).length;
       const pendingItems = orderedStickers.length - collectedItems;
       const pct = orderedStickers.length
@@ -793,6 +803,7 @@ const albumPages = computed(() => {
         pct,
       };
     })
+    .filter((page) => page.stickers.length > 0)
     .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
 });
 
@@ -1631,6 +1642,8 @@ function clearAuth() {
   state.notificationsUnread = 0;
   state.tradeUsers = [];
   state.tradeAvailable = [];
+  state.tradeAvailableTotal = 0;
+  state.tradeAvailableHasMore = false;
   state.tradeIncoming = [];
   state.tradeOutgoing = [];
   state.tradeHistory = [];
@@ -1683,6 +1696,7 @@ function clearAuth() {
   ui.tradeTargetEntry = null;
   ui.tradeTargetUser = null;
   ui.tradeOfferSticker = null;
+  ui.tradeAvailableRerollLoading = false;
   ui.tradeOfferChoices = [];
   ui.tradeLoading = false;
   ui.lineupSaving = false;
@@ -3112,10 +3126,59 @@ async function loadTradeAvailable() {
   try {
     const data = await apiFetch("/trade/available");
     state.tradeAvailable = Array.isArray(data.available) ? data.available : [];
+    state.tradeAvailableTotal = Number(
+      data.totalAvailable ?? state.tradeAvailable.length,
+    );
+    state.tradeAvailableHasMore = Boolean(
+      data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
+    );
+    if (data.tradeCoins != null) {
+      state.tradeCoins = Number(data.tradeCoins);
+    }
+    setTradePage("available", 1);
   } catch (err) {
     setToast(err.message || "Erro ao carregar figurinhas disponíveis");
   } finally {
     ui.tradeAvailableLoading = false;
+  }
+}
+
+async function rerollTradeAvailable() {
+  if (ui.tradeAvailableRerollLoading || ui.tradeAvailableLoading) return;
+  if (Number(state.tradeCoins || 0) < TRADE_AVAILABLE_REROLL_COST) {
+    setToast("Você precisa de 1 coin para ver outras figurinhas");
+    return;
+  }
+  if (!state.tradeAvailableHasMore) {
+    setToast("Não há outras figurinhas disponíveis para sortear agora");
+    return;
+  }
+
+  ui.tradeAvailableRerollLoading = true;
+  try {
+    const data = await apiFetch("/trade/available/reroll", {
+      method: "POST",
+      body: JSON.stringify({
+        excludeStickerIds: state.tradeAvailable
+          .map((entry) => String(entry?.sticker?.id || ""))
+          .filter(Boolean),
+      }),
+    });
+
+    state.tradeAvailable = Array.isArray(data.available) ? data.available : [];
+    state.tradeAvailableTotal = Number(
+      data.totalAvailable ?? state.tradeAvailable.length,
+    );
+    state.tradeAvailableHasMore = Boolean(
+      data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
+    );
+    state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
+    setTradePage("available", 1);
+    setToast("Você gastou 1 coin para ver outras figurinhas");
+  } catch (err) {
+    setToast(err.message || "Erro ao sortear novas figurinhas");
+  } finally {
+    ui.tradeAvailableRerollLoading = false;
   }
 }
 
@@ -3188,10 +3251,9 @@ async function confirmTradeOffer() {
   ui.tradeLoading = true;
   try {
     // Revalidate just-in-time to avoid stale UI options causing misleading errors.
-    const [freshChoicesData, freshAvailableData] = await Promise.all([
-      apiFetch(`/trade/users/${ui.tradeTargetUser.userId}/wanted-from-me`),
-      apiFetch("/trade/available"),
-    ]);
+    const freshChoicesData = await apiFetch(
+      `/trade/users/${ui.tradeTargetUser.userId}/wanted-from-me`,
+    );
 
     const freshChoices = Array.isArray(freshChoicesData?.stickers)
       ? freshChoicesData.stickers
@@ -3204,27 +3266,6 @@ async function confirmTradeOffer() {
       ui.tradeOfferSticker = null;
       setToast(
         "Sua figurinha selecionada não está mais disponível para esta troca. Escolha outra.",
-      );
-      return;
-    }
-
-    const freshAvailable = Array.isArray(freshAvailableData?.available)
-      ? freshAvailableData.available
-      : [];
-    const requestedStillValid = freshAvailable.some((entry) => {
-      const stickerId = String(entry?.sticker?.id || "");
-      if (stickerId !== String(ui.tradeTargetEntry?.sticker?.id || ""))
-        return false;
-      const offeredBy = Array.isArray(entry?.offeredBy) ? entry.offeredBy : [];
-      return offeredBy.some(
-        (u) =>
-          Number(u?.userId || 0) === Number(ui.tradeTargetUser?.userId || 0),
-      );
-    });
-    if (!requestedStillValid) {
-      await loadTradeAvailable();
-      setToast(
-        "Esta figurinha não está mais disponível com este usuário. Atualize e tente outra troca.",
       );
       return;
     }
@@ -3426,9 +3467,16 @@ const myTradableDuplicatesForOffer = computed(() => {
 });
 
 const tradeIncomingCount = computed(() => state.tradeIncoming.length);
+const TRADE_AVAILABLE_LIMIT = 5;
+const TRADE_AVAILABLE_REROLL_COST = 1;
 const TRADE_COINS_PER_COUPON = 10;
 const tradeCoinsNeeded = computed(() =>
   Math.max(0, TRADE_COINS_PER_COUPON - Number(state.tradeCoins || 0)),
+);
+const canRerollTradeAvailable = computed(
+  () =>
+    Number(state.tradeCoins || 0) >= TRADE_AVAILABLE_REROLL_COST &&
+    state.tradeAvailableHasMore,
 );
 const canRedeemTradeCoinsCoupon = computed(
   () => Number(state.tradeCoins || 0) >= TRADE_COINS_PER_COUPON,
@@ -3449,38 +3497,7 @@ function setTradePage(view, value) {
 }
 
 const filteredTradeAvailable = computed(() => {
-  let list = state.tradeAvailable;
-  if (state.tradeFilterUser !== "all") {
-    const uid = Number(state.tradeFilterUser);
-    list = list.filter((entry) =>
-      entry.offeredBy.some((u) => u.userId === uid),
-    );
-  }
-  if (state.tradeFilterGroup !== "all") {
-    list = list.filter((entry) => {
-      if (state.tradeFilterGroup === "especial")
-        return entry.sticker.section === "especial";
-      return entry.sticker.groupId === state.tradeFilterGroup;
-    });
-  }
-  const query = normalizeTradeQuery(state.tradeSearchAvailable);
-  if (query) {
-    list = list.filter((entry) => {
-      const stickerName = String(entry?.sticker?.name || "").toLowerCase();
-      const stickerNum = String(entry?.sticker?.num || "");
-      const offeredBy = Array.isArray(entry?.offeredBy)
-        ? entry.offeredBy
-            .map((u) => String(u?.userName || "").toLowerCase())
-            .join(" ")
-        : "";
-      return (
-        stickerName.includes(query) ||
-        stickerNum.includes(query) ||
-        offeredBy.includes(query)
-      );
-    });
-  }
-  return list;
+  return Array.isArray(state.tradeAvailable) ? state.tradeAvailable : [];
 });
 
 const tradeIncomingUsers = computed(() => {
@@ -5295,63 +5312,44 @@ const filteredTradeHistoryPaged = computed(() => {
 
         <!-- Available stickers -->
         <div v-if="state.tradeSubView === 'available'">
-          <div class="trade-filters">
-            <input
-              v-model.trim="state.tradeSearchAvailable"
-              type="search"
-              placeholder="Buscar por figurinha, número ou usuário"
-              @input="setTradePage('available', 1)"
-            />
-            <select
-              v-model="state.tradeFilterUser"
-              @change="setTradePage('available', 1)"
+          <div class="trade-header trade-header-available">
+            <div class="trade-available-summary">
+              <strong>
+                {{ filteredTradeAvailable.length }} figurinhas em destaque
+              </strong>
+              <span>
+                Veja até {{ TRADE_AVAILABLE_LIMIT }} por rodada e gaste 1 coin
+                para trocar o conjunto.
+              </span>
+            </div>
+            <button
+              type="button"
+              class="trade-coins-btn-compact"
+              :disabled="
+                !canRerollTradeAvailable ||
+                ui.tradeAvailableRerollLoading ||
+                ui.tradeAvailableLoading
+              "
+              @click="rerollTradeAvailable"
             >
-              <option value="all">Todos os usuários</option>
-              <option
-                v-for="user in state.tradeUsers"
-                :key="user.id"
-                :value="String(user.id)"
-              >
-                {{ user.name }}
-              </option>
-            </select>
-            <select
-              v-model="state.tradeFilterGroup"
-              @change="setTradePage('available', 1)"
-            >
-              <option value="all">Todos os grupos</option>
-              <option value="especial">Especial</option>
-              <option
-                v-for="group in Object.keys(GROUP_COLORS).filter(
-                  (x) => x !== 'especial',
-                )"
-                :key="group"
-                :value="group"
-              >
-                Grupo {{ group }}
-              </option>
-            </select>
-            <label class="page-size-label trade-page-size-label">
-              Itens por página
-              <select
-                v-model.number="state.tradePageSize"
-                @change="setTradePage('available', 1)"
-              >
-                <option :value="5">5</option>
-                <option :value="8">8</option>
-                <option :value="12">12</option>
-              </select>
-            </label>
+              {{
+                ui.tradeAvailableRerollLoading
+                  ? "Sorteando..."
+                  : state.tradeAvailableHasMore
+                    ? `Ver outras ${TRADE_AVAILABLE_LIMIT} (-${TRADE_AVAILABLE_REROLL_COST} coin)`
+                    : "Sem mais opções"
+              }}
+            </button>
           </div>
           <p v-if="ui.tradeAvailableLoading" class="trade-hint">
             Carregando...
           </p>
           <p v-else-if="filteredTradeAvailable.length === 0" class="trade-hint">
-            Nenhuma figurinha disponível com os filtros selecionados.
+            Nenhuma figurinha disponível no momento.
           </p>
           <div v-else class="trade-available-list">
             <article
-              v-for="entry in filteredTradeAvailablePaged"
+              v-for="entry in filteredTradeAvailable"
               :key="entry.sticker.id"
               class="trade-available-row"
               :style="{
@@ -5370,8 +5368,7 @@ const filteredTradeHistoryPaged = computed(() => {
                   v-for="u in entry.offeredBy"
                   :key="u.userId"
                   class="trade-user-chip"
-                  >{{ u.userName }}</span
-                >
+                >{{ u.userName }}</span>
               </div>
               <button
                 type="button"
@@ -5391,37 +5388,6 @@ const filteredTradeHistoryPaged = computed(() => {
                 }}
               </button>
             </article>
-          </div>
-          <div
-            v-if="filteredTradeAvailable.length > 0"
-            class="admin-pagination trade-pagination"
-          >
-            <small>
-              Página {{ tradeAvailableSafePage }} de
-              {{ tradeAvailablePageCount }} ({{ filteredTradeAvailable.length }}
-              itens)
-            </small>
-            <div class="admin-pagination-actions">
-              <button
-                type="button"
-                :disabled="tradeAvailableSafePage <= 1"
-                @click="setTradePage('available', tradeAvailableSafePage - 1)"
-              >
-                Anterior
-              </button>
-              <span
-                >{{ tradeAvailableSafePage }}/{{
-                  tradeAvailablePageCount
-                }}</span
-              >
-              <button
-                type="button"
-                :disabled="tradeAvailableSafePage >= tradeAvailablePageCount"
-                @click="setTradePage('available', tradeAvailableSafePage + 1)"
-              >
-                Próxima
-              </button>
-            </div>
           </div>
         </div>
 

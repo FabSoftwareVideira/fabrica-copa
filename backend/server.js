@@ -2937,56 +2937,130 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, requireTradeWindowOpen,
     }
 });
 
-app.get("/api/trade/available", authMiddleware, async (req, res) => {
-    try {
-        const myCollected = await getValidCollectedMap(req.user.sub);
+const TRADE_AVAILABLE_LIMIT = 5;
+const TRADE_AVAILABLE_REROLL_COST = 1;
 
-        const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [req.user.sub]);
+function pickRandomItems(list, limit) {
+    const items = Array.isArray(list) ? [...list] : [];
+    for (let i = items.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [items[i], items[j]] = [items[j], items[i]];
+    }
+    return items.slice(0, Math.max(0, Number(limit || 0)));
+}
 
-        const pendingRows = await all(
-            `SELECT from_user_id, offered_sticker_id, COUNT(*) AS pending_count
-             FROM trade_offers
-             WHERE status = 'pending'
-             GROUP BY from_user_id, offered_sticker_id`
-        );
-        const pendingByUserSticker = new Map(
-            pendingRows.map((r) => [
-                `${Number(r.from_user_id)}:${String(r.offered_sticker_id)}`,
-                Number(r.pending_count || 0),
-            ])
-        );
+async function buildTradeAvailableEntries(userId) {
+    const myCollected = await getValidCollectedMap(userId);
 
-        const stickerOffers = new Map();
+    const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [userId]);
 
-        for (const user of users) {
-            const userCollected = await getValidCollectedMap(user.id);
+    const pendingRows = await all(
+        `SELECT from_user_id, offered_sticker_id, COUNT(*) AS pending_count
+         FROM trade_offers
+         WHERE status = 'pending'
+         GROUP BY from_user_id, offered_sticker_id`
+    );
+    const pendingByUserSticker = new Map(
+        pendingRows.map((r) => [
+            `${Number(r.from_user_id)}:${String(r.offered_sticker_id)}`,
+            Number(r.pending_count || 0),
+        ])
+    );
 
-            for (const sticker of STICKERS) {
-                const userCount = Number(userCollected[sticker.id] || 0);
-                const myCount = Number(myCollected[sticker.id] || 0);
+    const stickerOffers = new Map();
 
-                const reservedPending = Number(
-                    pendingByUserSticker.get(`${Number(user.id)}:${String(sticker.id)}`) || 0
-                );
-                const tradableCount = Math.max(0, userCount - 1 - reservedPending);
+    for (const user of users) {
+        const userCollected = await getValidCollectedMap(user.id);
 
-                if (tradableCount > 0 && myCount < 1) {
-                    if (!stickerOffers.has(sticker.id)) {
-                        stickerOffers.set(sticker.id, { sticker, offeredBy: [] });
-                    }
-                    stickerOffers.get(sticker.id).offeredBy.push({
-                        userId: user.id,
-                        userName: user.name,
-                        count: tradableCount,
-                    });
+        for (const sticker of STICKERS) {
+            const userCount = Number(userCollected[sticker.id] || 0);
+            const myCount = Number(myCollected[sticker.id] || 0);
+
+            const reservedPending = Number(
+                pendingByUserSticker.get(`${Number(user.id)}:${String(sticker.id)}`) || 0
+            );
+            const tradableCount = Math.max(0, userCount - 1 - reservedPending);
+
+            if (tradableCount > 0 && myCount < 1) {
+                if (!stickerOffers.has(sticker.id)) {
+                    stickerOffers.set(sticker.id, { sticker, offeredBy: [] });
                 }
+                stickerOffers.get(sticker.id).offeredBy.push({
+                    userId: user.id,
+                    userName: user.name,
+                    count: tradableCount,
+                });
             }
         }
+    }
 
-        const available = [...stickerOffers.values()].sort((a, b) => a.sticker.num - b.sticker.num);
-        return res.json({ available });
+    return [...stickerOffers.values()].sort((a, b) => a.sticker.num - b.sticker.num);
+}
+
+app.get("/api/trade/available", authMiddleware, async (req, res) => {
+    try {
+        const allAvailable = await buildTradeAvailableEntries(req.user.sub);
+        const available = allAvailable.slice(0, TRADE_AVAILABLE_LIMIT);
+        return res.json({
+            available,
+            totalAvailable: allAvailable.length,
+            hasMore: allAvailable.length > TRADE_AVAILABLE_LIMIT,
+            limit: TRADE_AVAILABLE_LIMIT,
+        });
     } catch (err) {
         return res.status(500).json({ error: "Erro ao buscar figurinhas disponíveis", detail: err.message });
+    }
+});
+
+app.post("/api/trade/available/reroll", authMiddleware, async (req, res) => {
+    try {
+        const { state } = await getAlbumState(req.user.sub);
+        const currentCoins = Number(state.tradeCoins || 0);
+        if (currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+            return res.status(400).json({
+                error: "Moedas insuficientes para ver novas figurinhas",
+                tradeCoins: currentCoins,
+                requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+            });
+        }
+
+        const allAvailable = await buildTradeAvailableEntries(req.user.sub);
+        if (allAvailable.length <= TRADE_AVAILABLE_LIMIT) {
+            return res.status(400).json({
+                error: "Nao ha mais figurinhas disponiveis para sortear no momento",
+                tradeCoins: currentCoins,
+                totalAvailable: allAvailable.length,
+                limit: TRADE_AVAILABLE_LIMIT,
+            });
+        }
+
+        const excludeStickerIds = new Set(
+            (Array.isArray(req.body?.excludeStickerIds) ? req.body.excludeStickerIds : [])
+                .map((id) => String(id || "").trim())
+                .filter(Boolean)
+        );
+        const withoutCurrent = allAvailable.filter((entry) => !excludeStickerIds.has(String(entry?.sticker?.id || "")));
+        const candidatePool = withoutCurrent.length >= TRADE_AVAILABLE_LIMIT ? withoutCurrent : allAvailable;
+        const available = pickRandomItems(candidatePool, TRADE_AVAILABLE_LIMIT);
+
+        const nowTimestamp = nowSqlTimestamp();
+        const nextCoins = Math.max(0, currentCoins - TRADE_AVAILABLE_REROLL_COST);
+        await run(
+            "UPDATE album_states SET trade_coins = ?, updated_at = ? WHERE user_id = ?",
+            [nextCoins, nowTimestamp, req.user.sub]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            available,
+            tradeCoins: nextCoins,
+            spentCoins: TRADE_AVAILABLE_REROLL_COST,
+            totalAvailable: allAvailable.length,
+            hasMore: allAvailable.length > TRADE_AVAILABLE_LIMIT,
+            limit: TRADE_AVAILABLE_LIMIT,
+        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao sortear novas figurinhas", detail: err.message });
     }
 });
 
