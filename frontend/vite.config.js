@@ -4,13 +4,13 @@ import { VitePWA } from "vite-plugin-pwa";
 
 function normalizeBasePath(rawBasePath) {
     const value = String(rawBasePath || "").trim();
-    if (!value) return "/copa/";
+    if (!value) return "/";
     const withLeadingSlash = value.startsWith("/") ? value : `/${value}`;
     return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
 }
 
 export default defineConfig(({ mode }) => {
-    const configuredBase = process.env.VITE_BASE_PATH || "/copa/";
+    const configuredBase = process.env.VITE_BASE_PATH || "/";
     const base = mode === "development" ? "/" : normalizeBasePath(configuredBase);
 
     return {

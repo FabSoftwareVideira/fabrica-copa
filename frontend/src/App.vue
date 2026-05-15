@@ -42,7 +42,7 @@ const DEFAULT_TEAM_IMAGE = withBasePath("/teams/default.webp");
 const DEFAULT_SPECIAL_IMAGE = withBasePath("/specials/especial_default.webp");
 const TOASTY_IMAGE = withBasePath("/ee.gif");
 const TOASTY_SOUND = withBasePath("/toasty.mp3");
-const TEAM_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "svg"];
+const TEAM_IMAGE_EXTENSIONS = ["webp", "jpg", "jpeg", "png", "svg"];
 const TEAM_IMAGE_CODES = {
   usa: "us",
   mar: "ma",
