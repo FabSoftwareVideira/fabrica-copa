@@ -1345,6 +1345,53 @@ app.post("/api/logs/frontend-error", (req, res) => {
     }
 });
 
+// Endpoint: Admin libera 1 pacote para todos os usuários ativos elegíveis
+app.post("/api/admin/coupons/grant-daily-pack", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+    try {
+        const todayDate = todayStr();
+        // Busca todos usuários ativos e não bloqueados
+        const users = await all(
+            `SELECT id, name FROM users WHERE is_blocked = 0 AND role = ? OR role = ? OR role = ?`,
+            [ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]
+        );
+        let granted = 0, skipped = 0, errors = 0;
+        for (const user of users) {
+            try {
+                // Verifica se já recebeu cupom de pacote hoje
+                const alreadyToday = await get(
+                    `SELECT id FROM user_coupons WHERE target_user_id = ? AND is_generic = 0 AND date(created_at) = ? LIMIT 1`,
+                    [user.id, todayDate]
+                );
+                if (alreadyToday) {
+                    skipped++;
+                    continue;
+                }
+                const code = `BONUS-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+                const couponCreatedAt = nowSqlTimestamp();
+                await run(
+                    `INSERT INTO user_coupons(code, target_user_id, created_by_user_id, packs_added, is_generic, status, created_at)
+                     VALUES(?, ?, ?, 1, 0, 'active', ?)`,
+                    [code, user.id, req.user.sub, couponCreatedAt]
+                );
+                // Notifica usuário
+                const eventMessage = `Você recebeu 1 pacote de figurinhas do admin.`;
+                const eventPayload = { code, packs: 1, createdByName: req.user.name, createdByRole: req.user.role };
+                await run(
+                    `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
+                     VALUES('coupon_created', ?, ?, ?, ?, ?)`,
+                    [eventMessage, JSON.stringify(eventPayload), req.user.sub, user.id, couponCreatedAt]
+                );
+                granted++;
+            } catch (err) {
+                errors++;
+            }
+        }
+        return res.json({ ok: true, granted, skipped, errors, total: users.length });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao liberar pacotes", detail: err.message });
+    }
+});
+
 app.get("/api/stickers/catalog", async (_req, res) => {
     return res.json({ stickers: STICKERS, total: STICKERS.length });
 });

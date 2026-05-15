@@ -298,6 +298,8 @@ const ui = reactive({
   notificationsOpen: false,
   invalidPromoStreak: 0,
   toastyVisible: false,
+  grantDailyPackLoading: false,
+  grantDailyPackMsg: "",
 });
 
 restoreNotificationsFromStorage();
@@ -2400,6 +2402,30 @@ async function generateManagedCoupon() {
   }
 }
 
+async function grantDailyPackToAll() {
+  if (!isAdmin.value) return;
+  ui.grantDailyPackLoading = true;
+  ui.grantDailyPackMsg = "";
+
+  try {
+    const resp = await apiFetch("/admin/coupons/grant-daily-pack", {
+      method: "POST",
+    });
+
+    if (resp?.ok) {
+      ui.grantDailyPackMsg = `Pacote liberado: ${resp.granted} usuários receberam, ${resp.skipped} já tinham recebido hoje, ${resp.errors} erros.`;
+      await loadAdminCoupons();
+      return;
+    }
+
+    ui.grantDailyPackMsg = resp?.error || "Erro ao liberar pacotes.";
+  } catch (err) {
+    ui.grantDailyPackMsg = err.message || "Erro ao liberar pacotes.";
+  } finally {
+    ui.grantDailyPackLoading = false;
+  }
+}
+
 async function saveManagedUser(user) {
   if (!isAdmin.value || !user?.id) return;
   ui.managePanelMsg = "";
@@ -4425,6 +4451,20 @@ const filteredTradeHistoryPaged = computed(() => {
               <button type="button" @click="generateManagedCoupon">
                 Gerar Cupom
               </button>
+              <button
+                v-if="isAdmin"
+                type="button"
+                class="grant-daily-pack-btn"
+                :disabled="ui.grantDailyPackLoading"
+                @click="grantDailyPackToAll"
+                style="margin-left: 1rem"
+              >
+                {{
+                  ui.grantDailyPackLoading
+                    ? "Liberando..."
+                    : "Liberar 1 pacote para todos"
+                }}
+              </button>
             </div>
             <div v-if="ui.couponPanelKind" class="coupon-feedback-row">
               <span class="coupon-kind-badge" :class="ui.couponPanelKind">
@@ -4442,6 +4482,12 @@ const filteredTradeHistoryPaged = computed(() => {
             </div>
             <p v-if="ui.couponPanelMsg" class="read-only-hint">
               {{ ui.couponPanelMsg }}
+            </p>
+            <p
+              v-if="ui.grantDailyPackMsg"
+              class="read-only-hint grant-daily-pack-msg"
+            >
+              {{ ui.grantDailyPackMsg }}
             </p>
           </div>
 
