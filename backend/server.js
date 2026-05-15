@@ -2747,12 +2747,12 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [JSON.stringify(fromCollected), nowTimestamp, offer.from_user_id]
         );
         await run(
-            "UPDATE album_states SET collected_json = ?, trade_coins = trade_coins + 1, updated_at = ? WHERE user_id = ?",
-            [JSON.stringify(toCollected), nowTimestamp, offer.to_user_id]
+            "UPDATE album_states SET collected_json = ?, trade_coins = trade_coins + ?, updated_at = ? WHERE user_id = ?",
+            [JSON.stringify(toCollected), TRADE_COINS_PER_TRADE, nowTimestamp, offer.to_user_id]
         );
         await run(
-            "UPDATE album_states SET trade_coins = trade_coins + 1, updated_at = ? WHERE user_id = ?",
-            [nowTimestamp, offer.from_user_id]
+            "UPDATE album_states SET trade_coins = trade_coins + ?, updated_at = ? WHERE user_id = ?",
+            [TRADE_COINS_PER_TRADE, nowTimestamp, offer.from_user_id]
         );
         await run(
             "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ?",
@@ -2772,7 +2772,7 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.requested_sticker_id, offer.offered_sticker_id, nowTimestamp]
         );
 
-        const coinsReceived = 1;
+        const coinsReceived = TRADE_COINS_PER_TRADE;
         const offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
         const requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
         const creatorUser = await get("SELECT name FROM users WHERE id = ?", [offer.from_user_id]);
@@ -2795,7 +2795,7 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
              VALUES('trade_accepted', ?, ?, ?, ?, ?)`,
             [
-                `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moeda.`,
+                `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
                 JSON.stringify({
                     ...sharedPayload,
                     recipientUserId: offer.from_user_id,
@@ -2811,7 +2811,7 @@ app.post("/api/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen,
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
              VALUES('trade_accepted', ?, ?, ?, ?, ?)` ,
             [
-                `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moeda.`,
+                `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
                 JSON.stringify({
                     ...sharedPayload,
                     recipientUserId: offer.to_user_id,
@@ -2939,6 +2939,8 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, requireTradeWindowOpen,
 
 const TRADE_AVAILABLE_LIMIT = 5;
 const TRADE_AVAILABLE_REROLL_COST = 1;
+const TRADE_COINS_PER_TRADE = 3;
+const tradeAvailableCache = new Map();
 
 function pickRandomItems(list, limit) {
     const items = Array.isArray(list) ? [...list] : [];
@@ -2997,14 +2999,49 @@ async function buildTradeAvailableEntries(userId) {
     return [...stickerOffers.values()].sort((a, b) => a.sticker.num - b.sticker.num);
 }
 
+function cloneTradeAvailableEntry(entry) {
+    return {
+        sticker: entry.sticker,
+        offeredBy: Array.isArray(entry.offeredBy)
+            ? entry.offeredBy.map((item) => ({ ...item }))
+            : [],
+    };
+}
+
+function pickTradeAvailableSelection(allAvailable, excludeStickerIds = []) {
+    const excludeSet = new Set(
+        (Array.isArray(excludeStickerIds) ? excludeStickerIds : [])
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+    );
+
+    const filtered = allAvailable.filter(
+        (entry) => !excludeSet.has(String(entry?.sticker?.id || ""))
+    );
+    const source = filtered.length >= TRADE_AVAILABLE_LIMIT ? filtered : allAvailable;
+    return pickRandomItems(source, TRADE_AVAILABLE_LIMIT);
+}
+
+function getCachedTradeAvailableSelection(userId, allAvailable) {
+    const cacheKey = String(userId);
+    const cached = tradeAvailableCache.get(cacheKey);
+    if (Array.isArray(cached) && cached.length > 0) {
+        return cached.map(cloneTradeAvailableEntry);
+    }
+
+    const selection = pickTradeAvailableSelection(allAvailable);
+    tradeAvailableCache.set(cacheKey, selection.map(cloneTradeAvailableEntry));
+    return selection.map(cloneTradeAvailableEntry);
+}
+
 app.get("/api/trade/available", authMiddleware, async (req, res) => {
     try {
         const allAvailable = await buildTradeAvailableEntries(req.user.sub);
-        const available = allAvailable.slice(0, TRADE_AVAILABLE_LIMIT);
+        const available = getCachedTradeAvailableSelection(req.user.sub, allAvailable);
         return res.json({
             available,
             totalAvailable: allAvailable.length,
-            hasMore: allAvailable.length > TRADE_AVAILABLE_LIMIT,
+            hasMore: allAvailable.length > available.length,
             limit: TRADE_AVAILABLE_LIMIT,
         });
     } catch (err) {
@@ -3034,14 +3071,15 @@ app.post("/api/trade/available/reroll", authMiddleware, async (req, res) => {
             });
         }
 
-        const excludeStickerIds = new Set(
-            (Array.isArray(req.body?.excludeStickerIds) ? req.body.excludeStickerIds : [])
-                .map((id) => String(id || "").trim())
-                .filter(Boolean)
+        const available = pickTradeAvailableSelection(
+            allAvailable,
+            Array.isArray(req.body?.excludeStickerIds) ? req.body.excludeStickerIds : []
         );
-        const withoutCurrent = allAvailable.filter((entry) => !excludeStickerIds.has(String(entry?.sticker?.id || "")));
-        const candidatePool = withoutCurrent.length >= TRADE_AVAILABLE_LIMIT ? withoutCurrent : allAvailable;
-        const available = pickRandomItems(candidatePool, TRADE_AVAILABLE_LIMIT);
+
+        tradeAvailableCache.set(
+            String(req.user.sub),
+            available.map(cloneTradeAvailableEntry)
+        );
 
         const nowTimestamp = nowSqlTimestamp();
         const nextCoins = Math.max(0, currentCoins - TRADE_AVAILABLE_REROLL_COST);
@@ -3056,7 +3094,7 @@ app.post("/api/trade/available/reroll", authMiddleware, async (req, res) => {
             tradeCoins: nextCoins,
             spentCoins: TRADE_AVAILABLE_REROLL_COST,
             totalAvailable: allAvailable.length,
-            hasMore: allAvailable.length > TRADE_AVAILABLE_LIMIT,
+            hasMore: allAvailable.length > available.length,
             limit: TRADE_AVAILABLE_LIMIT,
         });
     } catch (err) {
