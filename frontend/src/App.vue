@@ -4045,13 +4045,6 @@ const filteredTradeHistoryPaged = computed(() => {
         }}</span>
       </button>
       <button
-        type="button"
-        :class="{ active: state.view === 'lineup' }"
-        @click="openLineupView"
-      >
-        Minha Seleção
-      </button>
-      <button
         v-if="canManageCoupons"
         type="button"
         :class="{ active: state.view === 'admin' }"
@@ -4232,108 +4225,6 @@ const filteredTradeHistoryPaged = computed(() => {
               <small class="history-new-date">
                 {{ formatDateTime(item.date) }}
               </small>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section v-if="state.view === 'lineup'" class="panel lineup-panel">
-        <div class="panel-head lineup-head">
-          <div>
-            <h2>Minha Seleção (11)</h2>
-            <span class="badge-chip">{{ lineupFilledCount }}/11 posições</span>
-          </div>
-          <div class="lineup-head-actions">
-            <small v-if="state.lineupUpdatedAt" class="lineup-updated-at">
-              Atualizado em {{ formatDateTime(state.lineupUpdatedAt) }}
-            </small>
-            <button
-              type="button"
-              :disabled="ui.lineupSaving"
-              @click="saveLineup"
-            >
-              {{ ui.lineupSaving ? "Salvando..." : "Salvar Seleção" }}
-            </button>
-          </div>
-        </div>
-
-        <p class="lineup-hint">
-          Arraste os jogadores colados no álbum para o campo. Cada jogador ocupa
-          apenas uma posição.
-        </p>
-
-        <div class="lineup-field">
-          <div
-            v-for="(row, rowIndex) in lineupSlotsByRow"
-            :key="`lineup-row-${rowIndex}`"
-            class="lineup-row"
-          >
-            <div
-              v-for="slot in row"
-              :key="slot.id"
-              class="lineup-slot"
-              :class="{ filled: !!slot.sticker }"
-              @dragover.prevent
-              @drop="onLineupDrop($event, slot.id)"
-            >
-              <small class="lineup-slot-label">{{ slot.label }}</small>
-              <div
-                v-if="slot.sticker"
-                class="lineup-slot-player"
-                draggable="true"
-                @dragstart="onLineupSlotDragStart($event, slot.id)"
-                @dragend="onLineupDragEnd"
-              >
-                <span class="num">#{{ slot.sticker.num }}</span>
-                <strong>{{ slot.sticker.name }}</strong>
-                <small>{{
-                  slot.sticker.teamName || groupLabel(slot.sticker)
-                }}</small>
-                <button
-                  type="button"
-                  class="lineup-remove-btn"
-                  @click="clearLineupPosition(slot.id)"
-                >
-                  Remover
-                </button>
-              </div>
-              <span v-else class="lineup-slot-empty">Solte aqui</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ... dentro da seção de lineup ... -->
-        <div class="lineup-bench">
-          <h3>Jogadores Colados Disponíveis</h3>
-          <p v-if="lineupBenchPlayers.length === 0" class="lineup-bench-empty">
-            Sem jogadores disponíveis para colocar no campo.
-          </p>
-
-          <!-- Mudamos de grid para list para facilitar o scroll horizontal -->
-          <div v-else class="lineup-bench-list">
-            <article
-              v-for="item in lineupBenchPlayers"
-              :key="`lineup-bench-${item.id}`"
-              class="lineup-bench-card"
-              :style="stickerBorder(item)"
-              draggable="true"
-              @dragstart="onLineupBenchDragStart($event, item.id)"
-              @dragend="onLineupDragEnd"
-            >
-              <!-- Adicionando o container da imagem -->
-              <div class="player-photo-container">
-                <img
-                  :src="item.image || '/img/placeholder-player.png'"
-                  :alt="item.name"
-                  class="player-photo"
-                />
-                <span class="num">#{{ item.num }}</span>
-              </div>
-
-              <div class="player-info">
-                <strong>{{ item.name }}</strong>
-                <small>{{ item.teamName || groupLabel(item) }}</small>
-              </div>
             </article>
           </div>
         </div>
