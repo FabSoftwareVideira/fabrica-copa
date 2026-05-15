@@ -210,9 +210,6 @@ const state = reactive({
   tradeAvailable: [],
   tradeAvailableTotal: 0,
   tradeAvailableHasMore: false,
-  tradeFilterUser: "all",
-  tradeFilterGroup: "all",
-  tradeSearchAvailable: "",
   tradeSearchIncoming: "",
   tradeSearchOutgoing: "",
   tradeSearchHistory: "",
@@ -220,7 +217,6 @@ const state = reactive({
   tradeOutgoingUserFilter: "all",
   tradeHistoryUserFilter: "all",
   tradeHistoryDirection: "all",
-  tradeAvailablePage: 1,
   tradeIncomingPage: 1,
   tradeOutgoingPage: 1,
   tradeHistoryPage: 1,
@@ -657,7 +653,9 @@ const filteredTradeWindows = computed(() => {
 
       return true;
     })
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    .sort(
+      (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+    );
 });
 
 const tradeWindowCountdownText = computed(() => {
@@ -1652,9 +1650,6 @@ function clearAuth() {
   state.lineupUpdatedAt = "";
   state.tradeWindowStartsAt = "";
   state.tradeWindowEndsAt = "";
-  state.tradeFilterUser = "all";
-  state.tradeFilterGroup = "all";
-  state.tradeSearchAvailable = "";
   state.tradeSearchIncoming = "";
   state.tradeSearchOutgoing = "";
   state.tradeSearchHistory = "";
@@ -1662,7 +1657,6 @@ function clearAuth() {
   state.tradeOutgoingUserFilter = "all";
   state.tradeHistoryUserFilter = "all";
   state.tradeHistoryDirection = "all";
-  state.tradeAvailablePage = 1;
   state.tradeIncomingPage = 1;
   state.tradeOutgoingPage = 1;
   state.tradeHistoryPage = 1;
@@ -3490,7 +3484,6 @@ function normalizeTradeQuery(value) {
 
 function setTradePage(view, value) {
   const next = Math.max(1, Number(value || 1));
-  if (view === "available") state.tradeAvailablePage = next;
   if (view === "incoming") state.tradeIncomingPage = next;
   if (view === "outgoing") state.tradeOutgoingPage = next;
   if (view === "history") state.tradeHistoryPage = next;
@@ -3635,12 +3628,6 @@ const filteredTradeHistory = computed(() => {
   return list;
 });
 
-const tradeAvailablePageCount = computed(() =>
-  Math.max(
-    1,
-    Math.ceil(filteredTradeAvailable.value.length / state.tradePageSize),
-  ),
-);
 const tradeIncomingPageCount = computed(() =>
   Math.max(
     1,
@@ -3660,9 +3647,6 @@ const tradeHistoryPageCount = computed(() =>
   ),
 );
 
-const tradeAvailableSafePage = computed(() =>
-  Math.min(state.tradeAvailablePage, tradeAvailablePageCount.value),
-);
 const tradeIncomingSafePage = computed(() =>
   Math.min(state.tradeIncomingPage, tradeIncomingPageCount.value),
 );
@@ -3673,10 +3657,6 @@ const tradeHistorySafePage = computed(() =>
   Math.min(state.tradeHistoryPage, tradeHistoryPageCount.value),
 );
 
-const filteredTradeAvailablePaged = computed(() => {
-  const start = (tradeAvailableSafePage.value - 1) * state.tradePageSize;
-  return filteredTradeAvailable.value.slice(start, start + state.tradePageSize);
-});
 const filteredTradeIncomingPaged = computed(() => {
   const start = (tradeIncomingSafePage.value - 1) * state.tradePageSize;
   return filteredTradeIncoming.value.slice(start, start + state.tradePageSize);
@@ -5202,40 +5182,12 @@ const filteredTradeHistoryPaged = computed(() => {
 
     <!-- ─── Trade view ──────────────────────────────────────────────────── -->
     <section v-if="state.view === 'trade'" class="panel">
-      <div class="panel-head">
-        <h2>Trocar Figurinhas</h2>
-        <span class="badge-chip"
-          >{{ myDuplicatesForOffer.length }} repetidas suas</span
-        >
-      </div>
-
       <div v-if="!isAuthenticated" class="trade-login-prompt">
         <p>Faça login para trocar figurinhas com outros colecionadores.</p>
         <button type="button" @click="openAuth('login')">Entrar</button>
       </div>
 
       <template v-else>
-        <div class="trade-header">
-          <span class="trade-coins-compact">
-            🪙 {{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}
-            <span class="trade-coins-hint">(+1 por troca)</span>
-          </span>
-          <button
-            type="button"
-            class="trade-coins-btn-compact"
-            :disabled="!canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading"
-            @click="redeemTradeCoinsCoupon"
-          >
-            {{
-              ui.tradeCoinRedeemLoading
-                ? "Resgatando..."
-                : canRedeemTradeCoinsCoupon
-                  ? "Trocar"
-                  : `Faltam ${tradeCoinsNeeded}`
-            }}
-          </button>
-        </div>
-
         <div class="trade-info-panel">
           <div
             v-if="!tradeWindowIsOpenNow && nextTradeWindow"
@@ -5341,6 +5293,28 @@ const filteredTradeHistoryPaged = computed(() => {
               }}
             </button>
           </div>
+          <div class="trade-header">
+            <span class="trade-coins-compact">
+              🪙 {{ state.tradeCoins }}/{{ TRADE_COINS_PER_COUPON }}
+              <span class="trade-coins-hint">(+1 por troca)</span>
+            </span>
+            <button
+              type="button"
+              class="trade-coins-btn-compact"
+              :disabled="
+                !canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading
+              "
+              @click="redeemTradeCoinsCoupon"
+            >
+              {{
+                ui.tradeCoinRedeemLoading
+                  ? "Resgatando..."
+                  : canRedeemTradeCoinsCoupon
+                    ? "Trocar"
+                    : `Faltam ${tradeCoinsNeeded}`
+              }}
+            </button>
+          </div>
           <p v-if="ui.tradeAvailableLoading" class="trade-hint">
             Carregando...
           </p>
@@ -5368,7 +5342,8 @@ const filteredTradeHistoryPaged = computed(() => {
                   v-for="u in entry.offeredBy"
                   :key="u.userId"
                   class="trade-user-chip"
-                >{{ u.userName }}</span>
+                  >{{ u.userName }}</span
+                >
               </div>
               <button
                 type="button"
