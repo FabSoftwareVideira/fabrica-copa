@@ -92,11 +92,16 @@ services:
       TRUST_PROXY: "true"
       DB_PATH: /app/data/album.db
       BACKUP_DIR: /backups
+      LOG_ROTATION_ENABLED: "true"
+      LOG_DIR: /app/logs
+      LOG_ROTATION_INTERVAL: ${LOG_ROTATION_INTERVAL:-1d}
+      LOG_ROTATION_MAX_FILES: ${LOG_ROTATION_MAX_FILES:-14}
     volumes:
       - ./scripts:/app/scripts:ro
       - ${HOST_DB_DIR:-/srv/fabrica-copa-data}:/app/data
       - ${HOST_UPLOAD_DIR:-/srv/fabrica-copa-data/uploads}:/app/backend/uploads
       - ${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}:/backups
+      - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}:/app/logs
     command: npm start
     init: true
     ports:

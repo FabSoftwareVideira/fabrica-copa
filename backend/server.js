@@ -4,6 +4,10 @@ const crypto = require("crypto");
 const vm = require("vm");
 const express = require("express");
 const cors = require("cors");
+const morgan = require("morgan");
+const pino = require("pino");
+const pinoHttp = require("pino-http");
+const rfs = require("rotating-file-stream");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const swaggerUi = require("swagger-ui-express");
@@ -19,6 +23,10 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const NODE_ENV = String(process.env.NODE_ENV || "development").toLowerCase();
 const IS_PROD = NODE_ENV === "production";
 const LOG_LEVEL = String(process.env.LOG_LEVEL || (IS_PROD ? "info" : "debug")).toLowerCase();
+const LOG_ROTATION_ENABLED = String(process.env.LOG_ROTATION_ENABLED || (IS_PROD ? "true" : "false")).toLowerCase() === "true";
+const LOG_DIR = path.resolve(process.env.LOG_DIR || path.join(__dirname, "logs"));
+const LOG_ROTATION_INTERVAL = String(process.env.LOG_ROTATION_INTERVAL || "1d");
+const LOG_ROTATION_MAX_FILES = Number(process.env.LOG_ROTATION_MAX_FILES || 14);
 const ACCESS_TOKEN_TTL = process.env.ACCESS_TOKEN_TTL || "15m";
 const REFRESH_TOKEN_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
@@ -53,13 +61,49 @@ const API_BASE_SERVER_URL = `${PUBLIC_BASE_URL.replace(/\/$/, "")}/`;
 
 fs.mkdirSync(uploadsDir, { recursive: true });
 
-const LOG_PRIORITIES = { debug: 10, info: 20, warn: 30, error: 40 };
+const pinoStreams = [{ level: LOG_LEVEL, stream: process.stdout }];
+let fileLogEnabled = false;
 
-function shouldLog(level) {
-    const current = LOG_PRIORITIES[LOG_LEVEL] || LOG_PRIORITIES.info;
-    const target = LOG_PRIORITIES[level] || LOG_PRIORITIES.info;
-    return target >= current;
+if (LOG_ROTATION_ENABLED) {
+    try {
+        fs.mkdirSync(LOG_DIR, { recursive: true });
+        const rotatingFileStream = rfs.createStream("backend.log", {
+            interval: LOG_ROTATION_INTERVAL,
+            path: LOG_DIR,
+            compress: "gzip",
+            maxFiles: Number.isFinite(LOG_ROTATION_MAX_FILES) && LOG_ROTATION_MAX_FILES > 0
+                ? LOG_ROTATION_MAX_FILES
+                : 14,
+        });
+        pinoStreams.push({ level: LOG_LEVEL, stream: rotatingFileStream });
+        fileLogEnabled = true;
+    } catch (err) {
+        console.error("Falha ao configurar log rotativo em arquivo. Seguindo apenas com stdout.", err);
+    }
 }
+
+const logger = pino(
+    {
+        level: LOG_LEVEL,
+        base: {
+            service: "album-backend",
+            env: NODE_ENV,
+        },
+        redact: {
+            paths: [
+                "req.headers.authorization",
+                "headers.authorization",
+                "authorization",
+                "password",
+                "accessToken",
+                "refreshToken",
+                "token",
+            ],
+            remove: true,
+        },
+    },
+    pino.multistream(pinoStreams)
+);
 
 function truncateValue(value, max = 1000) {
     const str = String(value == null ? "" : value);
@@ -91,43 +135,20 @@ function sanitizeMeta(meta, depth = 0) {
     return meta;
 }
 
-function writeLog(level, message, meta = {}) {
-    if (!shouldLog(level)) return;
-
-    const timestamp = new Date().toISOString();
-    const entry = {
-        timestamp,
-        level,
-        env: NODE_ENV,
-        message: truncateValue(message, 2000),
-        meta: sanitizeMeta(meta),
-    };
-
-    const serialized = JSON.stringify(entry);
-
-    if (level === "error") {
-        console.error(serialized);
-    } else if (level === "warn") {
-        console.warn(serialized);
-    } else {
-        console.log(serialized);
-    }
-}
-
 function logDebug(message, meta) {
-    writeLog("debug", message, meta);
+    logger.debug({ meta: sanitizeMeta(meta) }, truncateValue(message, 2000));
 }
 
 function logInfo(message, meta) {
-    writeLog("info", message, meta);
+    logger.info({ meta: sanitizeMeta(meta) }, truncateValue(message, 2000));
 }
 
 function logWarn(message, meta) {
-    writeLog("warn", message, meta);
+    logger.warn({ meta: sanitizeMeta(meta) }, truncateValue(message, 2000));
 }
 
 function logError(message, meta) {
-    writeLog("error", message, meta);
+    logger.error({ meta: sanitizeMeta(meta) }, truncateValue(message, 2000));
 }
 
 const BASE_STICKERS = loadStickersFromSharedFrontendData();
@@ -1266,47 +1287,51 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 
 app.use((req, res, next) => {
-    const requestId = crypto.randomBytes(6).toString("hex");
-    const startAt = Date.now();
-    let responseBody = null;
+    req.requestId = req.requestId || crypto.randomBytes(6).toString("hex");
+    res.setHeader("x-request-id", req.requestId);
 
-    req.requestId = requestId;
+    next();
+});
 
+app.use(pinoHttp({
+    logger,
+    genReqId: (req) => req.requestId || crypto.randomBytes(6).toString("hex"),
+    autoLogging: false,
+    customLogLevel: (_req, res, err) => {
+        if (err || res.statusCode >= 500) return "error";
+        if (res.statusCode >= 400) return "warn";
+        return "info";
+    },
+    customProps: (req) => ({ requestId: req.requestId }),
+}));
+
+morgan.token("request-id", (req) => req.requestId || "-");
+app.use(morgan(":date[iso] :request-id :method :url :status :res[content-length] - :response-time ms", {
+    stream: {
+        write: (message) => {
+            logger.info({ type: "http_access" }, message.trim());
+        },
+    },
+    skip: (req) => req.originalUrl === "/api/health",
+}));
+
+app.use((req, res, next) => {
     const originalJson = res.json.bind(res);
     res.json = (body) => {
-        responseBody = body;
+        if (res.statusCode >= 400) {
+            req.log?.warn(
+                {
+                    requestId: req.requestId,
+                    method: req.method,
+                    path: req.originalUrl,
+                    status: res.statusCode,
+                    responseBody: sanitizeMeta(body),
+                },
+                "HTTP response with error payload"
+            );
+        }
         return originalJson(body);
     };
-
-    res.on("finish", () => {
-        const durationMs = Date.now() - startAt;
-        const meta = {
-            requestId,
-            method: req.method,
-            path: req.originalUrl,
-            status: res.statusCode,
-            durationMs,
-            ip: req.ip,
-        };
-
-        if (res.statusCode >= 500) {
-            logError("HTTP request failed", {
-                ...meta,
-                responseBody,
-            });
-            return;
-        }
-
-        if (res.statusCode >= 400) {
-            logWarn("HTTP request returned client error", {
-                ...meta,
-                responseBody,
-            });
-            return;
-        }
-
-        logDebug("HTTP request completed", meta);
-    });
 
     next();
 });
@@ -3320,6 +3345,9 @@ initDb()
             logInfo(`Backend do album rodando em http://localhost:${PORT}`, {
                 env: NODE_ENV,
                 logLevel: LOG_LEVEL,
+                fileLogEnabled,
+                logDir: fileLogEnabled ? LOG_DIR : null,
+                rotationInterval: fileLogEnabled ? LOG_ROTATION_INTERVAL : null,
                 corsOrigin: CORS_ORIGIN,
             });
         });

@@ -61,9 +61,17 @@ GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL_DAYS=30
 
+# Logging
+LOG_LEVEL=info
+LOG_ROTATION_ENABLED=true
+LOG_DIR=/app/logs
+LOG_ROTATION_INTERVAL=1d
+LOG_ROTATION_MAX_FILES=14
+
 <!-- Apenas para modo production -->
 HOST_BACKUP_DIR=/caminho/no/host/para/backups
 HOST_DB_DIR=/caminho/no/host/para/data
+HOST_LOG_DIR=/caminho/no/host/para/logs
 ```
 
 ### 2) Rodar com Docker (recomendado)
