@@ -99,12 +99,15 @@ jobs:
           export HOST_DB_DIR="${HOST_DB_DIR:-/srv/fabrica-copa-data}"
           export HOST_UPLOAD_DIR="${HOST_UPLOAD_DIR:-/srv/fabrica-copa-data/uploads}"
           export HOST_BACKUP_DIR="${HOST_BACKUP_DIR:-/srv/fabrica-copa-backups}"
+          export HOST_LOG_DIR="${HOST_LOG_DIR:-/srv/fabrica-copa-logs}"
           echo "Garantindo diretório persistente do banco no host: $HOST_DB_DIR"
           sudo mkdir -p "$HOST_DB_DIR" && sudo chown "$(id -u):$(id -g)" "$HOST_DB_DIR"
           echo "Garantindo diretório persistente de uploads no host: $HOST_UPLOAD_DIR"
           sudo mkdir -p "$HOST_UPLOAD_DIR" && sudo chown "$(id -u):$(id -g)" "$HOST_UPLOAD_DIR"
           echo "Garantindo diretório persistente de backups no host: $HOST_BACKUP_DIR"
           sudo mkdir -p "$HOST_BACKUP_DIR" && sudo chown "$(id -u):$(id -g)" "$HOST_BACKUP_DIR"
+          echo "Garantindo diretório persistente de logs no host: $HOST_LOG_DIR"
+          sudo mkdir -p "$HOST_LOG_DIR" && sudo chown "$(id -u):$(id -g)" "$HOST_LOG_DIR"
 
           echo "Exportando variáveis de build do frontend/.env para o ambiente..."
           # Exporta apenas as variáveis VITE_ necessárias como build args do Docker Compose
@@ -125,6 +128,15 @@ jobs:
         run: |
           echo "--- Containers Ativos ---"
           docker compose -f docker-compose.yml --profile prod ps
+
+          echo "--- Health fail2ban ---"
+          F2B_HEALTH="$(docker inspect --format='{{.State.Health.Status}}' album-fail2ban 2>/dev/null || echo missing)"
+          echo "fail2ban health: $F2B_HEALTH"
+          if [ "$F2B_HEALTH" != "healthy" ]; then
+            echo "Falha no health do fail2ban. Ultimos logs:"
+            docker logs --tail 200 album-fail2ban || true
+            exit 1
+          fi
 
           echo "--- Consumo de Recursos ---"
           docker stats --no-stream album-backend-prod album-frontend-prod || true
