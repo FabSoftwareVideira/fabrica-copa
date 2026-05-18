@@ -195,7 +195,7 @@ services:
       F2B_LOG_LEVEL: ${F2B_LOG_LEVEL:-INFO}
       F2B_DB_PURGE_AGE: ${F2B_DB_PURGE_AGE:-7d}
     volumes:
-      - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}/fail2ban:/data
+      - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}:/data
       - ./security/fail2ban:/seed/fail2ban:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /etc/localtime:/etc/localtime:ro
@@ -203,9 +203,13 @@ services:
       - sh
       - -ec
       - |
-        mkdir -p /data/filter.d /data/jail.d
-        cp -n /seed/fail2ban/filter.d/*.conf /data/filter.d/ || true
-        cp -n /seed/fail2ban/jail.d/*.conf /data/jail.d/ || true
+        mkdir -p /data /data/filter.d /data/jail.d /data/db
+        if ls /seed/fail2ban/filter.d/*.conf >/dev/null 2>&1; then
+          cp -n /seed/fail2ban/filter.d/*.conf /data/filter.d/
+        fi
+        if ls /seed/fail2ban/jail.d/*.conf >/dev/null 2>&1; then
+          cp -n /seed/fail2ban/jail.d/*.conf /data/jail.d/
+        fi
         exec /entrypoint.sh fail2ban-server
     restart: always
 
