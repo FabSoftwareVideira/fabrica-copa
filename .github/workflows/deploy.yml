@@ -129,15 +129,6 @@ jobs:
           echo "--- Containers Ativos ---"
           docker compose -f docker-compose.yml --profile prod ps
 
-          echo "--- Health fail2ban ---"
-          F2B_HEALTH="$(docker inspect --format='{{.State.Health.Status}}' album-fail2ban 2>/dev/null || echo missing)"
-          echo "fail2ban health: $F2B_HEALTH"
-          if [ "$F2B_HEALTH" != "healthy" ]; then
-            echo "Falha no health do fail2ban. Ultimos logs:"
-            docker logs --tail 200 album-fail2ban || true
-            exit 1
-          fi
-
           echo "--- Consumo de Recursos ---"
           docker stats --no-stream album-backend-prod album-frontend-prod || true
 

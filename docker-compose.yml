@@ -182,45 +182,6 @@ services:
           cpus: "0.10"
           memory: 32M
 
-  fail2ban:
-    image: crazymax/fail2ban:latest
-    container_name: album-fail2ban
-    profiles: [prod]
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    environment:
-      TZ: ${F2B_TZ:-UTC}
-      F2B_LOG_LEVEL: ${F2B_LOG_LEVEL:-INFO}
-      F2B_DB_PURGE_AGE: ${F2B_DB_PURGE_AGE:-7d}
-    volumes:
-      - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}:/data
-      - ./security/fail2ban:/seed/fail2ban:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    command:
-      - sh
-      - -ec
-      - |
-        mkdir -p /data /data/filter.d /data/jail.d /data/db
-        rm -f /var/run/fail2ban/fail2ban.sock /var/run/fail2ban/fail2ban.pid
-        if ls /seed/fail2ban/filter.d/*.conf >/dev/null 2>&1; then
-          cp -n /seed/fail2ban/filter.d/*.conf /data/filter.d/
-        fi
-        if ls /seed/fail2ban/jail.d/*.conf >/dev/null 2>&1; then
-          cp -n /seed/fail2ban/jail.d/*.conf /data/jail.d/
-        fi
-        exec /entrypoint.sh fail2ban-server
-    # healthcheck:
-    #   test:
-    #     - CMD-SHELL
-    #     - pgrep -f 'fail2ban-server' >/dev/null 2>&1
-    #   interval: 30s
-    #   timeout: 10s
-    #   start_period: 90s
-    #   retries: 8
-    restart: always
-
 networks:
   album-network:
     driver: bridge
