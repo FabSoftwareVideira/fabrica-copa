@@ -89,6 +89,42 @@ function truncateValue(value, max = 1000) {
     return `${str.slice(0, max)}... [truncated ${str.length - max} chars]`;
 }
 
+function normalizeIp(value) {
+    const ip = String(value || "").trim();
+    if (!ip) return "";
+    if (ip.startsWith("::ffff:")) return ip.slice(7);
+    return ip;
+}
+
+function extractClientIp(req) {
+    if (!req || typeof req !== "object") return "unknown";
+
+    const headers = req.headers && typeof req.headers === "object" ? req.headers : {};
+    const forwarded = headers["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded.trim()) {
+        const firstIp = forwarded.split(",")[0];
+        const normalized = normalizeIp(firstIp);
+        if (normalized) return normalized;
+    }
+
+    const fallbackCandidates = [
+        headers["x-real-ip"],
+        headers["cf-connecting-ip"],
+        headers["true-client-ip"],
+        req.ip,
+        req.socket?.remoteAddress,
+        req.connection?.remoteAddress,
+    ];
+
+    for (const candidate of fallbackCandidates) {
+        if (!candidate) continue;
+        const normalized = normalizeIp(candidate);
+        if (normalized) return normalized;
+    }
+
+    return "unknown";
+}
+
 function sanitizeMeta(meta, options = {}) {
     const { depth = 0, seen = new WeakSet(), parentKey = "" } = options;
 
@@ -267,6 +303,7 @@ function createAppLogger({
         logWarn,
         logError,
         sanitizeMeta,
+        extractClientIp,
     };
 }
 

@@ -5,7 +5,7 @@ function createAdminRoutes({
     authMiddleware,
     requireRoles,
     ROLE_ADMIN,
-    ROLE_PROFESSOR,
+    ROLE_SERVIDOR,
     ROLE_PLAYER,
     ALLOWED_ROLES,
     STICKERS,
@@ -33,7 +33,7 @@ function createAdminRoutes({
             const todayDate = todayStr();
             const users = await all(
                 `SELECT id, name FROM users WHERE is_blocked = 0 AND role = ? OR role = ? OR role = ?`,
-                [ROLE_ADMIN, ROLE_PROFESSOR, ROLE_PLAYER]
+                [ROLE_ADMIN, ROLE_SERVIDOR, ROLE_PLAYER]
             );
             let granted = 0;
             let skipped = 0;
@@ -146,7 +146,7 @@ function createAdminRoutes({
         }
     });
 
-    router.get("/coupons/targets", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    router.get("/coupons/targets", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_SERVIDOR), async (req, res) => {
         try {
             const users = await all(
                 `SELECT id, name, email, role, is_blocked
@@ -161,7 +161,7 @@ function createAdminRoutes({
         }
     });
 
-    router.post("/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    router.post("/coupons/generate", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_SERVIDOR), async (req, res) => {
         try {
             const targetUserId = Number(req.body?.targetUserId || 0);
             const hasTargetUser = targetUserId > 0;
@@ -262,7 +262,7 @@ function createAdminRoutes({
         }
     });
 
-    router.get("/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    router.get("/admin/coupons", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_SERVIDOR), async (req, res) => {
         try {
             const isAdmin = req.user?.role === ROLE_ADMIN;
             const whereClause = isAdmin ? "" : "WHERE c.created_by_user_id = ?";
@@ -539,7 +539,7 @@ function createAdminRoutes({
         }
     });
 
-    router.get("/admin/stickers/recent", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_PROFESSOR), async (req, res) => {
+    router.get("/admin/stickers/recent", authMiddleware, requireRoles(ROLE_ADMIN, ROLE_SERVIDOR), async (req, res) => {
         try {
             const limit = Math.max(1, Math.min(50, Number(req.query.limit || 20)));
             const rows = await all(

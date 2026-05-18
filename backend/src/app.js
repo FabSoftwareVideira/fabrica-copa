@@ -1,6 +1,110 @@
-const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const express = require("express");
+const cors = require("cors");
+const morgan = require("morgan");
+const pinoHttp = require("pino-http");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
+const sqlite3 = require("sqlite3").verbose();
+const swaggerUi = require("swagger-ui-express");
+const { OAuth2Client } = require("google-auth-library");
+
+const { createSqliteHelpers } = require("./infrastructure/sqlite");
+const { createSwaggerSpec } = require("./infrastructure/swagger");
+const { createAppLogger } = require("./infrastructure/logger");
+const { initDatabase } = require("./infrastructure/databaseInit");
+const { createAuthController } = require("./controllers/authController");
+const { createSystemController } = require("./controllers/systemController");
+const { createTradeAvailabilityService } = require("./services/tradeAvailabilityService");
+const { createAuthMiddleware, requireRoles } = require("./middlewares/auth");
+const { parseJSON } = require("./utils/json");
+const { normalizeCode } = require("./utils/text");
+const { createDateTimeUtils } = require("./utils/dateTime");
+const { createCorsOptions } = require("./utils/cors");
+const { createSystemRoutes } = require("./routes/systemRoutes");
+const { createAuthRoutes } = require("./routes/authRoutes");
+const { createAlbumRoutes } = require("./routes/albumRoutes");
+const { createAdminRoutes } = require("./routes/adminRoutes");
+const { createStickerCatalogService } = require("./services/stickerCatalogService");
+const {
+    NODE_ENV,
+    PORT,
+    APP_TIMEZONE,
+    CORS_ORIGIN,
+    JWT_SECRET,
+    ACCESS_TOKEN_TTL,
+    REFRESH_TOKEN_TTL_DAYS,
+    GOOGLE_CLIENT_ID,
+    LOG_LEVEL,
+    LOG_ROTATION_ENABLED,
+    LOG_DIR,
+    LOG_ROTATION_INTERVAL,
+    LOG_ROTATION_MAX_FILES,
+    API_BASE_URL,
+    DB_PATH,
+    ROLE_ADMIN,
+    ROLE_SERVIDOR,
+    ROLE_PLAYER,
+    ALLOWED_ROLES,
+} = require("./config/env");
+
+const db = new sqlite3.Database(DB_PATH);
+const { run, get, all, ensureColumn } = createSqliteHelpers(db);
+
+const { todayStr, addDaysISO, nowSqlTimestamp } = createDateTimeUtils(APP_TIMEZONE);
+const corsOptions = createCorsOptions(CORS_ORIGIN);
+const app = express();
+app.set("trust proxy", true);
+const googleOAuthClient = new OAuth2Client(GOOGLE_CLIENT_ID || undefined);
+
+const { logger, fileLogEnabled, logInfo, logWarn, logError, sanitizeMeta, extractClientIp } = createAppLogger({
+    logLevel: LOG_LEVEL,
+    nodeEnv: NODE_ENV,
+    logRotationEnabled: LOG_ROTATION_ENABLED,
+    logDir: LOG_DIR,
+    logRotationInterval: LOG_ROTATION_INTERVAL,
+    logRotationMaxFiles: LOG_ROTATION_MAX_FILES,
+});
+
+const uploadsDir = path.resolve(__dirname, "../uploads");
+const PROMO_CODES = parseJSON(process.env.PROMO_CODES_JSON || "{}", {});
+
+const stickerCatalog = createStickerCatalogService({
+    dataScriptPath: path.resolve(__dirname, "../../frontend/js/data.js"),
+    uploadsRootDir: uploadsDir,
+    nowSqlTimestamp,
+    all,
+    logWarn,
+});
+const ALBUM_DATA = stickerCatalog.getAlbumData();
+const STICKERS = stickerCatalog.getStickers();
+const STICKER_BY_ID = stickerCatalog.getStickerByIdMap();
+const getCustomStickers = stickerCatalog.getCustomStickers;
+const setCustomStickers = stickerCatalog.setCustomStickers;
+const normalizeSticker = stickerCatalog.normalizeSticker;
+const rebuildStickerCatalog = stickerCatalog.rebuildStickerCatalog;
+const loadCustomStickersFromDb = stickerCatalog.loadCustomStickersFromDb;
+const findTeamMeta = stickerCatalog.findTeamMeta;
+const saveStickerImageToUploads = stickerCatalog.saveStickerImageToUploads;
+const removeUploadedStickerImage = stickerCatalog.removeUploadedStickerImage;
+
+const swaggerSpec = createSwaggerSpec(API_BASE_URL);
+const systemController = createSystemController({
+    NODE_ENV,
+    STICKERS,
+    logWarn,
+    logInfo,
+    logError,
+});
+
+const authMiddleware = createAuthMiddleware({
+    get,
+    jwt,
+    JWT_SECRET,
+    ROLE_PLAYER,
+});
+
 const authController = createAuthController({
     get,
     run,
@@ -29,7 +133,7 @@ function roleFromGoogleEmail(email, currentRole = ROLE_PLAYER) {
     const cleanEmail = String(email || "").trim().toLowerCase();
     if (cleanEmail.endsWith("@ifc.edu.br")) {
         if (currentRole === ROLE_ADMIN) return ROLE_ADMIN;
-        return ROLE_PROFESSOR;
+        return ROLE_SERVIDOR;
     }
     return currentRole || ROLE_PLAYER;
 }
@@ -52,8 +156,6 @@ async function verifyGoogleIdToken(idToken) {
 function makeRefreshToken() {
     return crypto.randomBytes(48).toString("hex");
 }
-
-const corsOptions = createCorsOptions(CORS_ORIGIN);
 
 async function createRefreshToken(userId) {
     const token = makeRefreshToken();
@@ -204,6 +306,20 @@ async function getValidCollectedMap(userId) {
     return collected;
 }
 
+const tradeAvailabilityService = createTradeAvailabilityService({
+    all,
+    getValidCollectedMap,
+    stickers: STICKERS,
+});
+const {
+    TRADE_AVAILABLE_LIMIT,
+    TRADE_AVAILABLE_REROLL_COST,
+    buildTradeAvailableEntries,
+    pickTradeAvailableSelection,
+    getCachedTradeAvailableSelection,
+    setCachedTradeAvailableSelection,
+} = tradeAvailabilityService;
+
 async function getAllTradeWindows() {
     const rows = await all(
         `SELECT tw.id, tw.starts_at, tw.ends_at, tw.created_by_user_id, tw.created_at, tw.updated_at,
@@ -289,241 +405,7 @@ function pickRandomWeighted(list) {
 }
 
 async function initDb() {
-    await run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'jogador',
-            is_blocked INTEGER NOT NULL DEFAULT 0,
-            blocked_reason TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-    await ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'jogador'");
-    await ensureColumn("users", "is_blocked", "INTEGER NOT NULL DEFAULT 0");
-    await ensureColumn("users", "blocked_reason", "TEXT NOT NULL DEFAULT ''");
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS album_states (
-      user_id INTEGER PRIMARY KEY,
-      collected_json TEXT NOT NULL DEFAULT '{}',
-      packs_used_date TEXT NOT NULL DEFAULT '',
-      packs_used_today INTEGER NOT NULL DEFAULT 0,
-      extra_packs INTEGER NOT NULL DEFAULT 0,
-            trade_coins INTEGER NOT NULL DEFAULT 0,
-      used_codes_json TEXT NOT NULL DEFAULT '[]',
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-    await ensureColumn("album_states", "trade_coins", "INTEGER NOT NULL DEFAULT 0");
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS refresh_tokens (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      token_hash TEXT NOT NULL UNIQUE,
-      expires_at TEXT NOT NULL,
-      revoked INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS redeemed_codes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      code TEXT NOT NULL,
-      packs_added INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(user_id, code),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-    await run(`
-        CREATE TABLE IF NOT EXISTS user_coupons (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT NOT NULL UNIQUE,
-            target_user_id INTEGER NOT NULL,
-            created_by_user_id INTEGER NOT NULL,
-            packs_added INTEGER NOT NULL DEFAULT 1,
-            is_generic INTEGER NOT NULL DEFAULT 0,
-            status TEXT NOT NULL DEFAULT 'active',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            redeemed_at TEXT,
-            redeemed_by_user_id INTEGER,
-            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (redeemed_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-        )
-    `);
-    await ensureColumn("user_coupons", "is_generic", "INTEGER NOT NULL DEFAULT 0");
-    await ensureColumn("user_coupons", "redeemed_by_user_id", "INTEGER");
-
-    await run(`
-        CREATE TABLE IF NOT EXISTS custom_stickers (
-            id TEXT PRIMARY KEY,
-            num INTEGER NOT NULL UNIQUE,
-            name TEXT NOT NULL,
-            icon TEXT NOT NULL DEFAULT '🎟️',
-            team_id TEXT,
-            team_name TEXT,
-            team_image TEXT,
-            section_name TEXT NOT NULL DEFAULT 'Especial',
-            type TEXT NOT NULL DEFAULT 'custom',
-            group_id TEXT,
-            image TEXT,
-            created_by_user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    `);
-
-    await run(`
-        CREATE TABLE IF NOT EXISTS system_events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            message TEXT NOT NULL,
-            payload_json TEXT,
-            created_by_user_id INTEGER,
-            target_user_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
-            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    `);
-    await ensureColumn("system_events", "target_user_id", "INTEGER");
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS pack_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      stickers_json TEXT NOT NULL,
-      new_count INTEGER NOT NULL,
-      repeat_count INTEGER NOT NULL,
-      source TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS trade_offers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_user_id INTEGER NOT NULL,
-      to_user_id INTEGER NOT NULL,
-      offered_sticker_id TEXT NOT NULL,
-      requested_sticker_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-    await run(`
-    CREATE TABLE IF NOT EXISTS trade_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      from_user_id INTEGER NOT NULL,
-      to_user_id INTEGER NOT NULL,
-      offered_sticker_id TEXT NOT NULL,
-      requested_sticker_id TEXT NOT NULL,
-      completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (from_user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
-    await run(`
-        CREATE TABLE IF NOT EXISTS trade_window_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            starts_at TEXT NOT NULL,
-            ends_at TEXT NOT NULL,
-            created_by_user_id INTEGER,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-        )
-    `);
-
-    // Verificar e corrigir a tabela trade_window_config se necessário
-    try {
-        const cols = await all(`PRAGMA table_info(trade_window_config)`);
-        const hasCreatedAt = cols.some((c) => c.name === "created_at");
-        const hasUpdatedAt = cols.some((c) => c.name === "updated_at");
-
-        if (!hasCreatedAt || !hasUpdatedAt) {
-            // Se as colunas faltam, droppe e recria a tabela
-            await run(`DROP TABLE IF EXISTS trade_window_config`);
-            await run(`
-                CREATE TABLE IF NOT EXISTS trade_window_config (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    starts_at TEXT NOT NULL,
-                    ends_at TEXT NOT NULL,
-                    created_by_user_id INTEGER,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-                )
-            `);
-        }
-    } catch (err) {
-        // Se houver qualquer erro ao verificar, droppe e recria
-        try {
-            await run(`DROP TABLE IF EXISTS trade_window_config`);
-            await run(`
-                CREATE TABLE IF NOT EXISTS trade_window_config (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    starts_at TEXT NOT NULL,
-                    ends_at TEXT NOT NULL,
-                    created_by_user_id INTEGER,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
-                )
-            `);
-        } catch (innerErr) {
-            console.error("Erro ao recriar tabela trade_window_config:", innerErr);
-        }
-    }
-
-    await ensureColumn("trade_window_config", "created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
-    await ensureColumn("trade_window_config", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP");
-
-    // One-time migration: fix trade_history rows for acceptors (to_user_id) where
-    // offered_sticker_id and requested_sticker_id were stored from the creator's perspective.
-    // Convention: offered_sticker_id = what the user GAVE, requested_sticker_id = what they RECEIVED.
-    // Rows where user_id = to_user_id need to have the columns swapped.
-    await run(`
-        CREATE TABLE IF NOT EXISTS db_migrations (
-            name TEXT PRIMARY KEY,
-            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-    const migrationApplied = await get(
-        "SELECT name FROM db_migrations WHERE name = 'fix_trade_history_acceptor_perspective'"
-    );
-    if (!migrationApplied) {
-        await run(`
-            UPDATE trade_history
-            SET offered_sticker_id = requested_sticker_id,
-                requested_sticker_id = offered_sticker_id
-            WHERE user_id = to_user_id
-        `);
-        await run(
-            "INSERT INTO db_migrations(name) VALUES(?)",
-            ['fix_trade_history_acceptor_perspective']
-        );
-        console.log("[migration] fix_trade_history_acceptor_perspective applied");
-    }
+    await initDatabase({ run, get, all, ensureColumn, logInfo });
 }
 
 app.use(cors(corsOptions));
@@ -553,7 +435,7 @@ app.use("/api", createAdminRoutes({
     authMiddleware,
     requireRoles,
     ROLE_ADMIN,
-    ROLE_PROFESSOR,
+    ROLE_SERVIDOR,
     ROLE_PLAYER,
     ALLOWED_ROLES,
     STICKERS,
@@ -577,6 +459,7 @@ app.use("/api", createAdminRoutes({
 
 app.use((req, res, next) => {
     req.requestId = req.requestId || crypto.randomBytes(6).toString("hex");
+    req.clientIp = extractClientIp(req);
     res.setHeader("x-request-id", req.requestId);
 
     next();
@@ -591,11 +474,12 @@ app.use(pinoHttp({
         if (res.statusCode >= 400) return "warn";
         return "info";
     },
-    customProps: (req) => ({ requestId: req.requestId }),
+    customProps: (req) => ({ requestId: req.requestId, clientIp: req.clientIp || extractClientIp(req) }),
 }));
 
 morgan.token("request-id", (req) => req.requestId || "-");
-app.use(morgan(":date[iso] :request-id :remote-addr :method :url :status :res[content-length] - :response-time ms", {
+morgan.token("client-ip", (req) => req.clientIp || extractClientIp(req));
+app.use(morgan(":date[iso] :request-id :client-ip :method :url :status :res[content-length] - :response-time ms", {
     stream: {
         write: (message) => {
             logger.info({ type: "http_access" }, message.trim());
@@ -611,6 +495,7 @@ app.use((req, res, next) => {
             req.log?.warn(
                 {
                     requestId: req.requestId,
+                    clientIp: req.clientIp || extractClientIp(req),
                     method: req.method,
                     path: req.originalUrl,
                     remoteAddress: req.ip || req.socket?.remoteAddress || "",
@@ -1284,102 +1169,7 @@ app.post("/api/trade/offers/:id/reject", authMiddleware, requireTradeWindowOpen,
     }
 });
 
-const TRADE_AVAILABLE_LIMIT = 5;
-const TRADE_AVAILABLE_REROLL_COST = 1;
 const TRADE_COINS_PER_TRADE = 3;
-const tradeAvailableCache = new Map();
-
-function pickRandomItems(list, limit) {
-    const items = Array.isArray(list) ? [...list] : [];
-    for (let i = items.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [items[i], items[j]] = [items[j], items[i]];
-    }
-    return items.slice(0, Math.max(0, Number(limit || 0)));
-}
-
-async function buildTradeAvailableEntries(userId) {
-    const myCollected = await getValidCollectedMap(userId);
-
-    const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [userId]);
-
-    const pendingRows = await all(
-        `SELECT from_user_id, offered_sticker_id, COUNT(*) AS pending_count
-         FROM trade_offers
-         WHERE status = 'pending'
-         GROUP BY from_user_id, offered_sticker_id`
-    );
-    const pendingByUserSticker = new Map(
-        pendingRows.map((r) => [
-            `${Number(r.from_user_id)}:${String(r.offered_sticker_id)}`,
-            Number(r.pending_count || 0),
-        ])
-    );
-
-    const stickerOffers = new Map();
-
-    for (const user of users) {
-        const userCollected = await getValidCollectedMap(user.id);
-
-        for (const sticker of STICKERS) {
-            const userCount = Number(userCollected[sticker.id] || 0);
-            const myCount = Number(myCollected[sticker.id] || 0);
-
-            const reservedPending = Number(
-                pendingByUserSticker.get(`${Number(user.id)}:${String(sticker.id)}`) || 0
-            );
-            const tradableCount = Math.max(0, userCount - 1 - reservedPending);
-
-            if (tradableCount > 0 && myCount < 1) {
-                if (!stickerOffers.has(sticker.id)) {
-                    stickerOffers.set(sticker.id, { sticker, offeredBy: [] });
-                }
-                stickerOffers.get(sticker.id).offeredBy.push({
-                    userId: user.id,
-                    userName: user.name,
-                    count: tradableCount,
-                });
-            }
-        }
-    }
-
-    return [...stickerOffers.values()].sort((a, b) => a.sticker.num - b.sticker.num);
-}
-
-function cloneTradeAvailableEntry(entry) {
-    return {
-        sticker: entry.sticker,
-        offeredBy: Array.isArray(entry.offeredBy)
-            ? entry.offeredBy.map((item) => ({ ...item }))
-            : [],
-    };
-}
-
-function pickTradeAvailableSelection(allAvailable, excludeStickerIds = []) {
-    const excludeSet = new Set(
-        (Array.isArray(excludeStickerIds) ? excludeStickerIds : [])
-            .map((id) => String(id || "").trim())
-            .filter(Boolean)
-    );
-
-    const filtered = allAvailable.filter(
-        (entry) => !excludeSet.has(String(entry?.sticker?.id || ""))
-    );
-    const source = filtered.length >= TRADE_AVAILABLE_LIMIT ? filtered : allAvailable;
-    return pickRandomItems(source, TRADE_AVAILABLE_LIMIT);
-}
-
-function getCachedTradeAvailableSelection(userId, allAvailable) {
-    const cacheKey = String(userId);
-    const cached = tradeAvailableCache.get(cacheKey);
-    if (Array.isArray(cached) && cached.length > 0) {
-        return cached.map(cloneTradeAvailableEntry);
-    }
-
-    const selection = pickTradeAvailableSelection(allAvailable);
-    tradeAvailableCache.set(cacheKey, selection.map(cloneTradeAvailableEntry));
-    return selection.map(cloneTradeAvailableEntry);
-}
 
 app.get("/api/trade/available", authMiddleware, async (req, res) => {
     try {
@@ -1423,10 +1213,7 @@ app.post("/api/trade/available/reroll", authMiddleware, async (req, res) => {
             Array.isArray(req.body?.excludeStickerIds) ? req.body.excludeStickerIds : []
         );
 
-        tradeAvailableCache.set(
-            String(req.user.sub),
-            available.map(cloneTradeAvailableEntry)
-        );
+        setCachedTradeAvailableSelection(req.user.sub, available);
 
         const nowTimestamp = nowSqlTimestamp();
         const nextCoins = Math.max(0, currentCoins - TRADE_AVAILABLE_REROLL_COST);
@@ -1610,24 +1397,34 @@ async function checkTradeWindowTransitions() {
     }
 }
 
-initDb()
-    .then(async () => {
-        await loadCustomStickersFromDb();
-        // Seed initial window states before starting the watcher
-        await checkTradeWindowTransitions();
-        setInterval(checkTradeWindowTransitions, 30_000);
-        app.listen(PORT, () => {
-            logInfo(`Backend do album rodando em http://localhost:${PORT}`, {
-                env: NODE_ENV,
-                logLevel: LOG_LEVEL,
-                fileLogEnabled,
-                logDir: fileLogEnabled ? LOG_DIR : null,
-                rotationInterval: fileLogEnabled ? LOG_ROTATION_INTERVAL : null,
-                corsOrigin: CORS_ORIGIN,
-            });
-        });
-    })
-    .catch((err) => {
-        logError("Falha ao inicializar banco", { err });
-        process.exit(1);
-    });
+let tradeWindowWatcherTimer = null;
+
+async function initializeApplication() {
+    await initDb();
+    await loadCustomStickersFromDb();
+    await checkTradeWindowTransitions();
+
+    if (!tradeWindowWatcherTimer) {
+        tradeWindowWatcherTimer = setInterval(checkTradeWindowTransitions, 30_000);
+    }
+}
+
+function getServerConfig() {
+    return {
+        PORT,
+        NODE_ENV,
+        LOG_LEVEL,
+        fileLogEnabled,
+        LOG_DIR,
+        LOG_ROTATION_INTERVAL,
+        CORS_ORIGIN,
+    };
+}
+
+module.exports = {
+    app,
+    initializeApplication,
+    getServerConfig,
+    logInfo,
+    logError,
+};
