@@ -109,6 +109,45 @@ npm --prefix frontend run dev
 - Caminho padrão no container: /app/data/album.db
 - Mapeamento para host: ./data
 
+## Seguranca em Producao (Fail2ban)
+
+O projeto inclui um servico `fail2ban` no perfil `prod` para mitigar:
+
+- muitas respostas 401
+- brute force em `/api/auth/*`
+- scanners/requests maliciosos comuns (ex.: `/wp-admin`, `/.env`, `/phpmyadmin`)
+
+Arquivos de configuracao:
+
+- `security/fail2ban/jail.d/album.conf`
+- `security/fail2ban/filter.d/album-backend-401.conf`
+- `security/fail2ban/filter.d/album-backend-auth-bruteforce.conf`
+- `security/fail2ban/filter.d/album-backend-scanners.conf`
+
+Subir producao com fail2ban:
+
+```bash
+docker compose --profile prod up -d --build
+```
+
+Importante:
+
+- O fail2ban depende do driver de log `json-file` do Docker (ja configurado no compose).
+- A acao de ban usa cadeia `DOCKER-USER` via iptables.
+- Recomendado para host Linux em producao.
+
+Smoke test (ban/unban automatizado):
+
+```bash
+bash scripts/fail2ban-smoke-test.sh
+```
+
+Exemplo com parametros:
+
+```bash
+JAIL=album-auth-bf ATTEMPTS=15 TARGET_URL=http://127.0.0.1:3001/api/auth/me bash scripts/fail2ban-smoke-test.sh
+```
+
 ## Backup e Restore
 
 Scripts disponíveis no projeto:

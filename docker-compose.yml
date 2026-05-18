@@ -182,6 +182,24 @@ services:
           cpus: "0.10"
           memory: 32M
 
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: album-fail2ban
+    profiles: [prod]
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      TZ: ${F2B_TZ:-UTC}
+      F2B_LOG_LEVEL: ${F2B_LOG_LEVEL:-INFO}
+      F2B_DB_PURGE_AGE: ${F2B_DB_PURGE_AGE:-7d}
+    volumes:
+      - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}/fail2ban:/data
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /etc/localtime:/etc/localtime:ro
+    restart: always
+
 networks:
   album-network:
     driver: bridge

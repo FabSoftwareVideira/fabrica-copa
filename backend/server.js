@@ -1306,7 +1306,7 @@ app.use(pinoHttp({
 }));
 
 morgan.token("request-id", (req) => req.requestId || "-");
-app.use(morgan(":date[iso] :request-id :method :url :status :res[content-length] - :response-time ms", {
+app.use(morgan(":date[iso] :request-id :remote-addr :method :url :status :res[content-length] - :response-time ms", {
     stream: {
         write: (message) => {
             logger.info({ type: "http_access" }, message.trim());
@@ -1324,6 +1324,7 @@ app.use((req, res, next) => {
                     requestId: req.requestId,
                     method: req.method,
                     path: req.originalUrl,
+                    remoteAddress: req.ip || req.socket?.remoteAddress || "",
                     status: res.statusCode,
                     responseBody: sanitizeMeta(body),
                 },
