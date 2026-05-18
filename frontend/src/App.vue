@@ -94,37 +94,6 @@ const TEAM_IMAGE_CODES = {
   nzl: "nz",
 };
 
-const LINEUP_POSITIONS = [
-  { id: "gk", label: "GOL", row: 1 },
-  { id: "lb", label: "LE", row: 2 },
-  { id: "cb1", label: "ZAG", row: 2 },
-  { id: "cb2", label: "ZAG", row: 2 },
-  { id: "rb", label: "LD", row: 2 },
-  { id: "cm1", label: "MEI", row: 3 },
-  { id: "cm2", label: "VOL", row: 3 },
-  { id: "cm3", label: "MEI", row: 3 },
-  { id: "lw", label: "PE", row: 4 },
-  { id: "st", label: "ATA", row: 4 },
-  { id: "rw", label: "PD", row: 4 },
-];
-const LINEUP_POSITION_IDS = LINEUP_POSITIONS.map((p) => p.id);
-
-function createEmptyLineupSlots() {
-  return LINEUP_POSITION_IDS.reduce((acc, id) => {
-    acc[id] = "";
-    return acc;
-  }, {});
-}
-
-function normalizeLineupSlots(rawSlots) {
-  const base = createEmptyLineupSlots();
-  if (!rawSlots || typeof rawSlots !== "object") return base;
-  for (const id of LINEUP_POSITION_IDS) {
-    base[id] = String(rawSlots?.[id] || "").trim();
-  }
-  return base;
-}
-
 const ADMIN_ICON_OPTIONS = [
   { value: "🎟️", label: "🎟️ Figurinha" },
   { value: "⭐", label: "⭐ Estrela" },
@@ -234,8 +203,6 @@ const state = reactive({
   notificationsUnread: 0,
   publicRanking: [],
   myRankingPosition: 0,
-  lineupSlots: createEmptyLineupSlots(),
-  lineupUpdatedAt: "",
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
   ),
@@ -272,8 +239,6 @@ const ui = reactive({
   tradeAvailableRerollLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
-  lineupSaving: false,
-  lineupDraggingStickerId: "",
   tradeWindowClockNow: Date.now(),
   adminWindowForm: { startsAt: "", endsAt: "" },
   adminWindowMsg: "",
@@ -1109,14 +1074,6 @@ watch(
   { immediate: true },
 );
 
-watch(
-  () => state.collected,
-  () => {
-    pruneLineupByCollection();
-  },
-  { deep: true },
-);
-
 function toErrorPayload(error) {
   if (!error) return { message: "Erro desconhecido" };
   if (error instanceof Error) {
@@ -1390,112 +1347,6 @@ function getStickerById(stickerId) {
   if (!id) return null;
   return stickers.find((item) => String(item.id) === id) || null;
 }
-function pruneLineupByCollection() {
-  const nextSlots = { ...normalizeLineupSlots(state.lineupSlots) };
-  let changed = false;
-  const seen = new Set();
-
-  for (const positionId of LINEUP_POSITION_IDS) {
-    const stickerId = String(nextSlots[positionId] || "").trim();
-    if (!stickerId) continue;
-    const sticker = getStickerById(stickerId);
-    const isPlayer = sticker?.type === "player";
-    const isOwned = getCount(stickerId) >= 1;
-    const isUnique = !seen.has(stickerId);
-
-    if (!isPlayer || !isOwned || !isUnique) {
-      nextSlots[positionId] = "";
-      changed = true;
-      continue;
-    }
-    seen.add(stickerId);
-  }
-
-  if (changed) {
-    state.lineupSlots = nextSlots;
-  }
-}
-function clearLineupPosition(positionId) {
-  if (!LINEUP_POSITION_IDS.includes(String(positionId))) return;
-  state.lineupSlots = {
-    ...normalizeLineupSlots(state.lineupSlots),
-    [positionId]: "",
-  };
-}
-function setLineupPosition(positionId, stickerId) {
-  if (!LINEUP_POSITION_IDS.includes(String(positionId))) return;
-  const candidateId = String(stickerId || "").trim();
-  const sticker = getStickerById(candidateId);
-  if (!candidateId || !sticker || sticker.type !== "player") return;
-  if (getCount(candidateId) < 1) return;
-
-  const nextSlots = { ...normalizeLineupSlots(state.lineupSlots) };
-  for (const id of LINEUP_POSITION_IDS) {
-    if (nextSlots[id] === candidateId) nextSlots[id] = "";
-  }
-  nextSlots[positionId] = candidateId;
-  state.lineupSlots = nextSlots;
-}
-function onLineupBenchDragStart(event, stickerId) {
-  if (!event?.dataTransfer) return;
-  const payload = { source: "bench", stickerId: String(stickerId || "") };
-  event.dataTransfer.setData("application/json", JSON.stringify(payload));
-  event.dataTransfer.effectAllowed = "move";
-  ui.lineupDraggingStickerId = String(stickerId || "");
-}
-function onLineupSlotDragStart(event, positionId) {
-  if (!event?.dataTransfer) return;
-  const slots = normalizeLineupSlots(state.lineupSlots);
-  const stickerId = String(slots[positionId] || "");
-  if (!stickerId) return;
-  const payload = {
-    source: "slot",
-    fromPositionId: String(positionId || ""),
-    stickerId,
-  };
-  event.dataTransfer.setData("application/json", JSON.stringify(payload));
-  event.dataTransfer.effectAllowed = "move";
-  ui.lineupDraggingStickerId = stickerId;
-}
-function onLineupDrop(event, targetPositionId) {
-  event?.preventDefault?.();
-  if (!LINEUP_POSITION_IDS.includes(String(targetPositionId))) return;
-
-  let payload = null;
-  try {
-    payload = JSON.parse(
-      event?.dataTransfer?.getData("application/json") || "{}",
-    );
-  } catch {
-    payload = null;
-  }
-  const stickerId = String(payload?.stickerId || "").trim();
-  if (!stickerId) return;
-
-  const nextSlots = { ...normalizeLineupSlots(state.lineupSlots) };
-  const previousAtTarget = String(nextSlots[targetPositionId] || "").trim();
-  for (const id of LINEUP_POSITION_IDS) {
-    if (nextSlots[id] === stickerId) nextSlots[id] = "";
-  }
-
-  if (
-    payload?.source === "slot" &&
-    LINEUP_POSITION_IDS.includes(String(payload?.fromPositionId || ""))
-  ) {
-    const fromPositionId = String(payload.fromPositionId);
-    if (fromPositionId !== targetPositionId && previousAtTarget) {
-      nextSlots[fromPositionId] = previousAtTarget;
-    }
-  }
-
-  const sticker = getStickerById(stickerId);
-  if (!sticker || sticker.type !== "player" || getCount(stickerId) < 1) return;
-  nextSlots[targetPositionId] = stickerId;
-  state.lineupSlots = nextSlots;
-}
-function onLineupDragEnd() {
-  ui.lineupDraggingStickerId = "";
-}
 
 function groupLabel(item) {
   if (item.section === "especial") return "Especial";
@@ -1649,8 +1500,6 @@ function clearAuth() {
   state.tradeOutgoing = [];
   state.tradeHistory = [];
   state.myRankingPosition = 0;
-  state.lineupSlots = createEmptyLineupSlots();
-  state.lineupUpdatedAt = "";
   state.tradeWindowStartsAt = "";
   state.tradeWindowEndsAt = "";
   state.tradeSearchIncoming = "";
@@ -1696,8 +1545,6 @@ function clearAuth() {
   ui.tradeAvailableRerollLoading = false;
   ui.tradeOfferChoices = [];
   ui.tradeLoading = false;
-  ui.lineupSaving = false;
-  ui.lineupDraggingStickerId = "";
   ui.tradeWindowSaving = false;
   ui.tradeWindowMsg = "";
   ui.adminTradeWindowStartInput = "";
@@ -2015,7 +1862,6 @@ async function bootstrapAuth() {
       loadAlbumState(),
       loadPackHistory(),
       loadTradeHistory(),
-      loadLineup(),
       loadMyRankingPosition(),
     ]);
     await loadManagedUsers();
@@ -2348,11 +2194,6 @@ function openCollectionView(view) {
   state.newStickersUnread = 0;
 }
 
-function openLineupView() {
-  state.view = "lineup";
-  ui.mobileMenuOpen = false;
-}
-
 function openDashboardView() {
   state.view = "dashboard";
   ui.mobileMenuOpen = false;
@@ -2480,41 +2321,6 @@ async function loadAlbumState() {
   state.tradeCoins = Number(data.tradeCoins || 0);
   state.usedCodes = Array.isArray(data.usedCodes) ? data.usedCodes : [];
   setTradeWindowStateFromPayload(data.tradeWindows || []);
-}
-
-async function loadLineup() {
-  if (!isAuthenticated.value) {
-    state.lineupSlots = createEmptyLineupSlots();
-    state.lineupUpdatedAt = "";
-    return;
-  }
-
-  const data = await apiFetch("/lineup");
-  state.lineupSlots = normalizeLineupSlots(data?.lineup?.slots || {});
-  state.lineupUpdatedAt = String(data?.lineup?.updatedAt || "");
-  pruneLineupByCollection();
-}
-
-async function saveLineup() {
-  if (!isAuthenticated.value) return;
-  ui.lineupSaving = true;
-  try {
-    pruneLineupByCollection();
-    const payload = { slots: normalizeLineupSlots(state.lineupSlots) };
-    const data = await apiFetch("/lineup", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
-    state.lineupSlots = normalizeLineupSlots(
-      data?.lineup?.slots || payload.slots,
-    );
-    state.lineupUpdatedAt = String(data?.lineup?.updatedAt || "");
-    setToast("Seleção salva com sucesso!");
-  } catch (err) {
-    setToast(err.message || "Erro ao salvar seleção");
-  } finally {
-    ui.lineupSaving = false;
-  }
 }
 
 async function loadTradeWindowConfig() {
@@ -3429,45 +3235,6 @@ async function openTradeView() {
 const myDuplicatesForOffer = computed(() =>
   stickers.filter((item) => getCount(item.id) > 1),
 );
-const lineupOwnedPlayers = computed(() =>
-  stickers
-    .filter((item) => item.type === "player" && getCount(item.id) >= 1)
-    .sort((a, b) => Number(a.num || 0) - Number(b.num || 0)),
-);
-const lineupFilledCount = computed(() =>
-  LINEUP_POSITION_IDS.reduce((acc, id) => {
-    return acc + (String(state.lineupSlots?.[id] || "").trim() ? 1 : 0);
-  }, 0),
-);
-const lineupSlotsByRow = computed(() => {
-  const slots = normalizeLineupSlots(state.lineupSlots);
-  const rows = new Map();
-  for (const position of LINEUP_POSITIONS) {
-    if (!rows.has(position.row)) rows.set(position.row, []);
-    const stickerId = String(slots[position.id] || "").trim();
-    rows.get(position.row).push({
-      ...position,
-      stickerId,
-      sticker: stickerId ? getStickerById(stickerId) : null,
-    });
-  }
-  return [...rows.entries()]
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([, value]) => value);
-});
-const lineupBenchPlayers = computed(() => {
-  const used = new Set(
-    LINEUP_POSITION_IDS.map((id) =>
-      String(state.lineupSlots?.[id] || "").trim(),
-    ).filter(Boolean),
-  );
-  const result = lineupOwnedPlayers.value.filter(
-    (item) => !used.has(String(item.id)),
-  );
-  console.log(result);
-  return result;
-});
-
 const myTradableDuplicatesForOffer = computed(() => {
   const reservedBySticker = new Map();
   for (const offer of state.tradeOutgoing) {

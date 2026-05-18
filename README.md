@@ -25,6 +25,16 @@ O projeto oferece autenticação com Google, gerenciamento de coleção, abertur
 - Persistência local com SQLite
 - Backup e restore do banco via scripts
 
+## Estrutura Backend (Modular)
+
+O backend foi organizado em estrutura por camadas para facilitar manutenção:
+
+- `backend/server.js`: entrypoint enxuto (bootstrap)
+- `backend/src/app.js`: composição da aplicação e bootstrap dos módulos
+- `backend/src/routes/`: definição das rotas
+- `backend/src/controllers/`: handlers/controladores HTTP
+- `backend/src/middlewares/`: middlewares reutilizáveis
+
 ## Como Rodar em Modo Dev
 
 ### Pré-requisitos
@@ -123,6 +133,10 @@ Arquivos de configuracao:
 - `security/fail2ban/filter.d/album-backend-401.conf`
 - `security/fail2ban/filter.d/album-backend-auth-bruteforce.conf`
 - `security/fail2ban/filter.d/album-backend-scanners.conf`
+
+No profile `prod`, o servico `fail2ban` faz seed automatico desses `.conf`
+para o volume persistente `${HOST_LOG_DIR}/fail2ban` no primeiro start.
+Se os arquivos ja existirem no volume, eles nao sao sobrescritos.
 
 Subir producao com fail2ban:
 
