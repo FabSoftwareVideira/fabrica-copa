@@ -198,12 +198,12 @@ services:
       - ${HOST_LOG_DIR:-/srv/fabrica-copa-logs}:/data
       - ./security/fail2ban:/seed/fail2ban:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /etc/localtime:/etc/localtime:ro
     command:
       - sh
       - -ec
       - |
         mkdir -p /data /data/filter.d /data/jail.d /data/db
+        rm -f /var/run/fail2ban/fail2ban.sock /var/run/fail2ban/fail2ban.pid
         if ls /seed/fail2ban/filter.d/*.conf >/dev/null 2>&1; then
           cp -n /seed/fail2ban/filter.d/*.conf /data/filter.d/
         fi
@@ -211,6 +211,14 @@ services:
           cp -n /seed/fail2ban/jail.d/*.conf /data/jail.d/
         fi
         exec /entrypoint.sh fail2ban-server
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'fail2ban-client ping | grep -q "Server replied: pong"'
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 5
     restart: always
 
 networks:
