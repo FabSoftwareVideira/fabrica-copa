@@ -211,14 +211,14 @@ services:
           cp -n /seed/fail2ban/jail.d/*.conf /data/jail.d/
         fi
         exec /entrypoint.sh fail2ban-server
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - pgrep -f 'fail2ban-server' >/dev/null 2>&1
-      interval: 30s
-      timeout: 10s
-      start_period: 90s
-      retries: 8
+    # healthcheck:
+    #   test:
+    #     - CMD-SHELL
+    #     - pgrep -f 'fail2ban-server' >/dev/null 2>&1
+    #   interval: 30s
+    #   timeout: 10s
+    #   start_period: 90s
+    #   retries: 8
     restart: always
 
 networks:
