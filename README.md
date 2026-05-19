@@ -151,4 +151,3 @@ Este projeto contou com apoio do GitHub Copilot durante a implementação de có
 Este sistema é uma ferramenta exclusivamente educacional.
 
 Não possui fins comerciais e não deve ser utilizado como produto comercial.
-teste

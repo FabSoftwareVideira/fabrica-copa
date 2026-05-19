@@ -25,6 +25,13 @@ const API_BASE_URL =
   (IS_DEV
     ? `http://${window.location.hostname || "localhost"}:3001/api`
     : `${window.location.origin}${BASE_URL_PREFIX}/api`);
+const API_BASE_ORIGIN = (() => {
+  try {
+    return new URL(API_BASE_URL, window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
+})();
 const GOOGLE_CLIENT_ID = String(
   import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
 ).trim();
@@ -290,13 +297,31 @@ const adminTools = reactive({
 });
 
 const adminStickerForm = reactive({
+  editingId: "",
   name: "",
   icon: "🎟️",
   image: "",
+  originalImage: "",
   imageFileName: "",
   teamId: "",
   type: "custom",
 });
+
+function startEditCustomSticker(item) {
+  if (!item) return;
+  adminStickerForm.editingId = item.id || "";
+  adminStickerForm.name = item.name || "";
+  adminStickerForm.icon = item.icon || "🎟️";
+  adminStickerForm.image = item.image || "";
+  adminStickerForm.originalImage = item.image || "";
+  adminStickerForm.imageFileName = String(item.image || "")
+    .split("/")
+    .pop();
+  adminStickerForm.teamId = item.teamId || "";
+  adminStickerForm.type = item.type || "custom";
+  // Foca no formulário de edição, se necessário
+  ui.adminTab = "stickers";
+}
 
 const isAuthenticated = computed(() =>
   Boolean(state.user?.id && state.accessToken),
@@ -1892,14 +1917,36 @@ async function createCustomSticker() {
     const payload = {
       name,
       icon: String(adminStickerForm.icon || "🎟️").trim() || "🎟️",
-      image: String(adminStickerForm.image || "").trim(),
       teamId: String(adminStickerForm.teamId || "").trim() || undefined,
       type: String(adminStickerForm.type || "custom"),
     };
-    const data = await apiFetch("/admin/stickers", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+
+    const currentImage = String(adminStickerForm.image || "").trim();
+    const originalImage = String(adminStickerForm.originalImage || "").trim();
+
+    let data;
+    if (adminStickerForm.editingId) {
+      // Em edição: só envia image quando mudou ou quando admin removeu imagem.
+      if (currentImage !== originalImage) {
+        payload.image = currentImage;
+      }
+      // Atualização (PUT)
+      data = await apiFetch(
+        `/admin/stickers/${encodeURIComponent(adminStickerForm.editingId)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+    } else {
+      // Em criação: envia image sempre (data URL ou vazio).
+      payload.image = currentImage;
+      // Criação (POST)
+      data = await apiFetch("/admin/stickers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
 
     if (data.sticker) {
       upsertStickerIntoCatalog(data.sticker);
@@ -1912,31 +1959,42 @@ async function createCustomSticker() {
       saveSystemEventsCursor();
     }
 
-    // notify the admin immediately (poll skips own actions)
     if (data.sticker) {
       pushNotification({
         id: data.event?.id ? `se-${data.event.id}` : `sticker-${Date.now()}`,
-        type: "sticker_created",
-        icon: "⭐",
-        title: "Nova figurinha publicada!",
-        message: `#${data.sticker.num} ${data.sticker.name} foi adicionada ao álbum para todos.`,
+        type: adminStickerForm.editingId
+          ? "sticker_updated"
+          : "sticker_created",
+        icon: adminStickerForm.editingId ? "✏️" : "⭐",
+        title: adminStickerForm.editingId
+          ? "Figurinha atualizada!"
+          : "Nova figurinha publicada!",
+        message: `#${data.sticker.num} ${data.sticker.name} ${adminStickerForm.editingId ? "foi atualizada" : "foi adicionada ao álbum para todos"}.`,
         createdAt: new Date().toISOString(),
       });
     }
 
-    ui.stickerCreateMsg = `Figurinha #${data.sticker?.num || "?"} criada com sucesso.`;
-    setToast("Nova figurinha criada e publicada");
+    ui.stickerCreateMsg = adminStickerForm.editingId
+      ? `Figurinha #${data.sticker?.num || "?"} atualizada com sucesso.`
+      : `Figurinha #${data.sticker?.num || "?"} criada com sucesso.`;
+    setToast(
+      adminStickerForm.editingId
+        ? "Figurinha atualizada"
+        : "Nova figurinha criada e publicada",
+    );
     resetAdminStickerForm();
     await loadRecentCreatedStickers();
   } catch (err) {
-    ui.stickerCreateMsg = err.message || "Erro ao criar figurinha";
+    ui.stickerCreateMsg = err.message || "Erro ao salvar figurinha";
   }
 }
 
 function resetAdminStickerForm() {
+  adminStickerForm.editingId = "";
   adminStickerForm.name = "";
   adminStickerForm.icon = "🎟️";
   adminStickerForm.image = "";
+  adminStickerForm.originalImage = "";
   adminStickerForm.imageFileName = "";
   adminStickerForm.teamId = "";
 }
@@ -2778,6 +2836,10 @@ function buildImageVariants(basePath) {
 function normalizePublicAssetPath(path) {
   const value = String(path || "").trim();
   if (!value) return "";
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
+  if (value.startsWith("/uploads/") || value.startsWith("/api/uploads/")) {
+    return `${API_BASE_ORIGIN}${value}`;
+  }
   if (value.startsWith("public/")) return withBasePath(`/${value.slice(7)}`);
   if (value.startsWith("/public/")) return withBasePath(value.slice(7));
   return withBasePath(value);
@@ -2810,7 +2872,24 @@ function getTeamImageCandidates(item) {
 function stickerPhotoCandidates(item) {
   if (!item) return [];
 
-  if (item.section === "especial" || item.type === "custom") {
+  // Figurinhas customizadas: garantir caminho correto
+  if (item.type === "custom") {
+    let imagePath = String(item.image || "").trim();
+    if (
+      imagePath &&
+      !imagePath.startsWith("/") &&
+      !imagePath.startsWith("data:")
+    ) {
+      imagePath = `/uploads/${imagePath}`;
+    }
+    const specialImage = normalizePublicAssetPath(imagePath);
+    return specialImage
+      ? [specialImage, DEFAULT_SPECIAL_IMAGE]
+      : [DEFAULT_SPECIAL_IMAGE];
+  }
+
+  // Especiais
+  if (item.section === "especial") {
     const specialImage = normalizePublicAssetPath(item.image);
     return specialImage
       ? [specialImage, DEFAULT_SPECIAL_IMAGE]
