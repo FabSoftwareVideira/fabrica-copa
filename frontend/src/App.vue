@@ -3135,9 +3135,32 @@ async function selectTradeTargetUser(user) {
   await loadTradeOfferChoices(user?.userId);
 }
 
+function hasPendingRequestForAvailableSticker(entry) {
+  const requestedStickerId = String(entry?.sticker?.id || "");
+  if (!requestedStickerId) return false;
+
+  const offeredByIds = new Set(
+    (Array.isArray(entry?.offeredBy) ? entry.offeredBy : [])
+      .map((u) => Number(u?.userId || 0))
+      .filter((id) => id > 0),
+  );
+
+  return state.tradeOutgoing.some((offer) => {
+    if (String(offer?.status || "") !== "pending") return false;
+    if (String(offer?.requestedSticker?.id || "") !== requestedStickerId)
+      return false;
+    const toUserId = Number(offer?.toUserId || 0);
+    return toUserId > 0 && offeredByIds.has(toUserId);
+  });
+}
+
 function openTradeOffer(entry) {
   if (!tradeWindowIsOpenNow.value) {
     setToast("A janela de trocas está fechada no momento");
+    return;
+  }
+  if (hasPendingRequestForAvailableSticker(entry)) {
+    setToast("Você já fez esse pedido de troca");
     return;
   }
   ui.tradeTargetEntry = entry;
@@ -3198,7 +3221,6 @@ async function confirmTradeOffer() {
     closeTradeOffer();
     setToast("Proposta de troca enviada!");
     await Promise.all([loadTradeOffers(), loadTradeAvailable()]);
-    state.tradeSubView = "outgoing";
   } catch (err) {
     setToast(err.message || "Erro ao enviar proposta");
   } finally {
@@ -5234,6 +5256,7 @@ const filteredTradeHistoryPaged = computed(() => {
                     class="trade-request-btn"
                     :disabled="
                       myTradableDuplicatesForOffer.length === 0 ||
+                      hasPendingRequestForAvailableSticker(entry) ||
                       !tradeWindowIsOpenNow
                     "
                     @click="openTradeOffer(entry)"
@@ -5243,7 +5266,9 @@ const filteredTradeHistoryPaged = computed(() => {
                         ? "Janela fechada"
                         : myTradableDuplicatesForOffer.length === 0
                           ? "Sem repetidas"
-                          : "Pedir troca"
+                          : hasPendingRequestForAvailableSticker(entry)
+                            ? "Pedido feito"
+                            : "Pedir troca"
                     }}
                   </button>
                 </article>
