@@ -65,6 +65,7 @@ NODE_ENV=development
 PORT=3001
 JWT_SECRET=troque-este-segredo
 CORS_ORIGIN=http://localhost:5173
+API_BASE_URL=http://localhost:3001/api
 GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
 
 # Auth

@@ -17,7 +17,12 @@ const LOG_ROTATION_ENABLED = String(process.env.LOG_ROTATION_ENABLED || "true") 
 const LOG_DIR = process.env.LOG_DIR || path.resolve(__dirname, "../../logs");
 const LOG_ROTATION_INTERVAL = process.env.LOG_ROTATION_INTERVAL || "1d";
 const LOG_ROTATION_MAX_FILES = Number(process.env.LOG_ROTATION_MAX_FILES || 14);
-const API_BASE_URL = process.env.API_BASE_URL || `http://localhost:${PORT}/api`;
+const apiBaseUrlFromEnv = String(process.env.API_BASE_URL || "").trim();
+const API_BASE_URL = apiBaseUrlFromEnv || `http://localhost:${PORT}/api`;
+
+if (NODE_ENV === "production" && !apiBaseUrlFromEnv) {
+    throw new Error("API_BASE_URL é obrigatório em produção. Defina no backend/.env");
+}
 const DB_PATH = process.env.DB_PATH
     ? path.resolve(process.env.DB_PATH)
     : path.resolve(__dirname, "../../album.db");
