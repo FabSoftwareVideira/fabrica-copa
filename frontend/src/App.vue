@@ -2847,7 +2847,22 @@ function buildImageVariants(basePath) {
 function normalizePublicAssetPath(path) {
   const value = String(path || "").trim();
   if (!value) return "";
-  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value, window.location.origin);
+      // For uploaded stickers, always use the configured API origin in the client.
+      if (
+        parsed.pathname.startsWith("/uploads/") ||
+        parsed.pathname.startsWith("/api/uploads/")
+      ) {
+        return `${API_BASE_ORIGIN}${parsed.pathname}${parsed.search || ""}`;
+      }
+      return parsed.toString();
+    } catch {
+      return value;
+    }
+  }
+  if (value.startsWith("data:")) return value;
   if (value.startsWith("/uploads/") || value.startsWith("/api/uploads/")) {
     return `${API_BASE_ORIGIN}${value}`;
   }
