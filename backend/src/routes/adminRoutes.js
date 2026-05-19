@@ -25,7 +25,10 @@ function createAdminRoutes({
     rebuildStickerCatalog,
     getCustomStickers,
     setCustomStickers,
+    API_BASE_URL,
 }) {
+    // Base URL for building full image URLs stored in DB (e.g. http://host/api)
+    const apiBaseUrl = String(API_BASE_URL || "").replace(/\/+$/, "");
     const router = express.Router();
 
     router.post("/admin/coupons/grant-daily-pack", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
@@ -446,7 +449,9 @@ function createAdminRoutes({
             const createdAt = nowSqlTimestamp();
             let image = "";
             try {
-                image = saveStickerImageToUploads(rawImage, stickerId);
+                const relativePath = saveStickerImageToUploads(rawImage, stickerId);
+                // Store full URL in DB so it works across environments
+                image = relativePath && apiBaseUrl ? `${apiBaseUrl}${relativePath}` : relativePath;
             } catch {
                 return res.status(400).json({ error: "Falha ao processar a imagem enviada" });
             }
@@ -615,7 +620,9 @@ function createAdminRoutes({
                     image = "";
                 } else {
                     try {
-                        image = saveStickerImageToUploads(rawImage, stickerId);
+                        const relativePath = saveStickerImageToUploads(rawImage, stickerId);
+                        // Store full URL in DB so it works across environments
+                        image = relativePath && apiBaseUrl ? `${apiBaseUrl}${relativePath}` : relativePath;
                     } catch {
                         return res.status(400).json({ error: "Falha ao processar a imagem enviada" });
                     }

@@ -17,15 +17,12 @@ function createStickerCatalogService({
         const value = String(rawValue || "").trim();
         if (!value) return "";
 
-        let normalized = value;
-        if (/^https?:\/\//i.test(normalized)) {
-            try {
-                normalized = new URL(normalized).pathname || normalized;
-            } catch {
-                return value;
-            }
+        // Full HTTP URLs are stored as-is (they already include the API host)
+        if (/^https?:\/\//i.test(value)) {
+            return value;
         }
 
+        let normalized = value;
         if (!normalized.startsWith("/")) {
             normalized = `/${normalized}`;
         }

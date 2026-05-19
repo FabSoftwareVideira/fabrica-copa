@@ -189,7 +189,7 @@ app.use("/api", createAdminRoutes({
     STICKERS, PROMO_CODES, run, get, all, nowSqlTimestamp, todayStr, normalizeCode,
     getAlbumState, sanitizeUser, findTeamMeta, saveStickerImageToUploads,
     removeUploadedStickerImage, normalizeSticker, rebuildStickerCatalog,
-    getCustomStickers, setCustomStickers,
+    getCustomStickers, setCustomStickers, API_BASE_URL,
 }));
 app.use("/api", createAlbumStateRoutes({
     authMiddleware, STICKERS, STICKER_BY_ID, getAlbumState, getValidCollectedMap,
