@@ -4088,7 +4088,13 @@ const filteredTradeHistoryPaged = computed(() => {
             v-if="ui.adminTab === 'stickers' && isAdmin"
             class="manage-create-sticker-box"
           >
-            <h4>Criar nova figurinha</h4>
+            <h4>
+              {{
+                adminStickerForm.editingId
+                  ? "Editar figurinha"
+                  : "Criar nova figurinha"
+              }}
+            </h4>
             <div class="manage-create-sticker-form">
               <input
                 v-model.trim="adminStickerForm.name"
@@ -4120,7 +4126,18 @@ const filteredTradeHistoryPaged = computed(() => {
                 @change="handleAdminStickerImageUpload"
               />
               <button type="button" @click="createCustomSticker">
-                Criar Figurinha
+                {{
+                  adminStickerForm.editingId
+                    ? "Salvar alterações"
+                    : "Criar Figurinha"
+                }}
+              </button>
+              <button
+                v-if="adminStickerForm.editingId"
+                type="button"
+                @click="resetAdminStickerForm"
+              >
+                Cancelar edição
               </button>
             </div>
             <div
@@ -4128,7 +4145,7 @@ const filteredTradeHistoryPaged = computed(() => {
               class="manage-sticker-upload-preview"
             >
               <img
-                :src="adminStickerForm.image"
+                :src="normalizePublicAssetPath(adminStickerForm.image)"
                 alt="Preview da figurinha"
                 class="manage-sticker-upload-thumb"
               />
@@ -4172,14 +4189,24 @@ const filteredTradeHistoryPaged = computed(() => {
                   {{ item.createdByUserName || "Admin" }} •
                   {{ formatDateTime(item.createdAt) }}
                 </small>
-                <button
-                  type="button"
-                  class="recent-sticker-delete-btn"
-                  title="Excluir figurinha"
-                  @click="deleteCustomSticker(item.id, item.name)"
-                >
-                  🗑️
-                </button>
+                <div class="recent-sticker-actions">
+                  <button
+                    type="button"
+                    class="recent-sticker-delete-btn"
+                    title="Editar figurinha"
+                    @click="startEditCustomSticker(item)"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    class="recent-sticker-delete-btn"
+                    title="Excluir figurinha"
+                    @click="deleteCustomSticker(item.id, item.name)"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </li>
             </ul>
             <p v-else class="read-only-hint">Nenhuma figurinha criada ainda.</p>

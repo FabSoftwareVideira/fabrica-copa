@@ -1,7 +1,7 @@
 "use strict";
 
-// Special stickers are 10× less likely than regular ones
-const ESPECIAL_WEIGHT = 0.1;
+// Special stickers are 20× less likely than regular ones
+const ESPECIAL_WEIGHT = 1;
 
 function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];

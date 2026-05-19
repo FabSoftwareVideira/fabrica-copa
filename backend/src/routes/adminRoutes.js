@@ -576,6 +576,141 @@ function createAdminRoutes({
         }
     });
 
+    router.put("/admin/stickers/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+        try {
+            const stickerId = String(req.params.id || "").trim();
+            if (!stickerId) return res.status(400).json({ error: "ID invalido" });
+
+            const existing = await get(
+                `SELECT id, num, name, icon, team_id, team_name, team_image, section_name, type, group_id, image, created_at, created_by_user_id
+                 FROM custom_stickers
+                 WHERE id = ?`,
+                [stickerId]
+            );
+            if (!existing) return res.status(404).json({ error: "Figurinha nao encontrada" });
+
+            const name = String(req.body?.name || existing.name || "").trim();
+            const icon = String(req.body?.icon || existing.icon || "🎟️").trim() || "🎟️";
+            const type = String(req.body?.type || existing.type || "custom").trim() || "custom";
+            const teamIdRaw = String(req.body?.teamId || "").trim();
+            const hasImageField = typeof req.body?.image === "string";
+            const rawImage = hasImageField ? String(req.body?.image || "").trim() : null;
+
+            if (name.length < 2) {
+                return res.status(400).json({ error: "Nome da figurinha invalido" });
+            }
+
+            if (rawImage && rawImage.startsWith("data:image/") && rawImage.length > 7_000_000) {
+                return res.status(400).json({ error: "Imagem muito grande. Use uma imagem menor que 5MB." });
+            }
+
+            const teamMeta = teamIdRaw ? findTeamMeta(teamIdRaw) : null;
+            if (teamIdRaw && !teamMeta) {
+                return res.status(400).json({ error: "Time invalido para esta figurinha" });
+            }
+
+            let image = existing.image || "";
+            if (hasImageField) {
+                if (!rawImage) {
+                    image = "";
+                } else {
+                    try {
+                        image = saveStickerImageToUploads(rawImage, stickerId);
+                    } catch {
+                        return res.status(400).json({ error: "Falha ao processar a imagem enviada" });
+                    }
+                }
+            }
+
+            const sectionName = teamMeta ? teamMeta.sectionName : "Especial";
+            const groupId = teamMeta ? teamMeta.groupId : null;
+            const teamId = teamMeta ? teamMeta.teamId : null;
+            const teamName = teamMeta ? teamMeta.teamName : null;
+            const teamImage = teamMeta ? teamMeta.teamImage : null;
+
+            await run(
+                `UPDATE custom_stickers
+                 SET name = ?, icon = ?, team_id = ?, team_name = ?, team_image = ?, section_name = ?, type = ?, group_id = ?, image = ?
+                 WHERE id = ?`,
+                [
+                    name,
+                    icon,
+                    teamId,
+                    teamName,
+                    teamImage,
+                    sectionName,
+                    type,
+                    groupId,
+                    image,
+                    stickerId,
+                ]
+            );
+
+            if (hasImageField && existing.image && image !== existing.image) {
+                removeUploadedStickerImage(existing.image);
+            }
+
+            const sticker = normalizeSticker({
+                id: stickerId,
+                num: existing.num,
+                name,
+                icon,
+                teamId,
+                teamName,
+                teamImage,
+                sectionName,
+                type,
+                groupId,
+                image,
+                section: groupId ? `grupo-${groupId}` : "especial",
+                createdAt: existing.created_at,
+                createdByUserId: existing.created_by_user_id,
+            });
+
+            const updatedCustomStickers = getCustomStickers().map((item) =>
+                item.id === stickerId ? sticker : item
+            );
+            setCustomStickers(updatedCustomStickers);
+            rebuildStickerCatalog();
+
+            const updatedAt = nowSqlTimestamp();
+            const message = `${req.user.name} editou a figurinha #${existing.num} (${name})`;
+            const eventPayload = {
+                stickerId,
+                num: existing.num,
+                stickerName: name,
+                icon,
+                image,
+                type,
+                teamId,
+                teamName,
+                sectionName,
+                groupId,
+                editedByName: req.user.name,
+            };
+            const eventInsert = await run(
+                `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, created_at)
+                 VALUES('sticker_updated', ?, ?, ?, ?)`,
+                [message, JSON.stringify(eventPayload), req.user.sub, updatedAt]
+            );
+
+            return res.json({
+                ok: true,
+                sticker,
+                event: {
+                    id: eventInsert.lastID,
+                    type: "sticker_updated",
+                    message,
+                    payload: eventPayload,
+                    createdAt: updatedAt,
+                    createdByUserId: req.user.sub,
+                },
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao atualizar figurinha", detail: err.message });
+        }
+    });
+
     router.delete("/admin/stickers/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
         try {
             const stickerId = String(req.params.id || "").trim();

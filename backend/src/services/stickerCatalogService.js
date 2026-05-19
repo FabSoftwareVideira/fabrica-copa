@@ -9,8 +9,33 @@ function createStickerCatalogService({
     all,
     logWarn,
 }) {
-    const uploadsCustomDir = path.join(uploadsRootDir, "custom-stickers");
-    fs.mkdirSync(uploadsCustomDir, { recursive: true });
+    const uploadsLegacyCustomDir = path.join(uploadsRootDir, "custom-stickers");
+    fs.mkdirSync(uploadsRootDir, { recursive: true });
+    fs.mkdirSync(uploadsLegacyCustomDir, { recursive: true });
+
+    function normalizeUploadedImagePath(rawValue) {
+        const value = String(rawValue || "").trim();
+        if (!value) return "";
+
+        let normalized = value;
+        if (/^https?:\/\//i.test(normalized)) {
+            try {
+                normalized = new URL(normalized).pathname || normalized;
+            } catch {
+                return value;
+            }
+        }
+
+        if (!normalized.startsWith("/")) {
+            normalized = `/${normalized}`;
+        }
+
+        if (normalized.startsWith("/api/uploads/")) {
+            normalized = `/uploads/${normalized.slice("/api/uploads/".length)}`;
+        }
+
+        return normalized;
+    }
 
     function loadFrontendCatalog() {
         try {
@@ -69,7 +94,7 @@ function createStickerCatalogService({
             teamName: sticker.teamName ? String(sticker.teamName) : null,
             teamImage: sticker.teamImage ? String(sticker.teamImage) : null,
             groupId: sticker.groupId ? String(sticker.groupId) : null,
-            image: sticker.image ? String(sticker.image) : "",
+            image: normalizeUploadedImagePath(sticker.image),
             createdAt: sticker.createdAt || nowSqlTimestamp(),
             createdByUserId: sticker.createdByUserId ? Number(sticker.createdByUserId) : null,
         };
@@ -142,8 +167,10 @@ function createStickerCatalogService({
     function saveStickerImageToUploads(rawImage, stickerId) {
         const imageValue = String(rawImage || "").trim();
         if (!imageValue) return "";
-        if (imageValue.startsWith("/uploads/")) return imageValue;
-        if (!imageValue.startsWith("data:image/")) return imageValue;
+        if (imageValue.startsWith("/uploads/") || imageValue.startsWith("/api/uploads/") || /^https?:\/\//i.test(imageValue)) {
+            return normalizeUploadedImagePath(imageValue);
+        }
+        if (!imageValue.startsWith("data:image/")) return normalizeUploadedImagePath(imageValue);
 
         const match = imageValue.match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,(.+)$/i);
         if (!match) throw new Error("Formato de imagem invalido");
@@ -153,19 +180,24 @@ function createStickerCatalogService({
             : String(match[1] || "png").toLowerCase();
         const base64Content = match[2] || "";
         const fileName = `${stickerId}.${ext}`;
-        const absPath = path.join(uploadsCustomDir, fileName);
+        const absPath = path.join(uploadsRootDir, fileName);
         fs.writeFileSync(absPath, Buffer.from(base64Content, "base64"));
-        return `/uploads/custom-stickers/${fileName}`;
+        return `/uploads/${fileName}`;
     }
 
     function removeUploadedStickerImage(imagePath) {
-        const clean = String(imagePath || "").trim();
-        if (!clean.startsWith("/uploads/custom-stickers/")) return;
+        const clean = normalizeUploadedImagePath(imagePath);
+        if (!clean.startsWith("/uploads/")) return;
 
         const fileName = path.basename(clean);
-        const absPath = path.join(uploadsCustomDir, fileName);
+        const candidates = [
+            path.join(uploadsRootDir, fileName),
+            path.join(uploadsLegacyCustomDir, fileName),
+        ];
         try {
-            fs.unlinkSync(absPath);
+            for (const absPath of candidates) {
+                if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+            }
         } catch (_err) {
             // No-op: image may already be absent.
         }

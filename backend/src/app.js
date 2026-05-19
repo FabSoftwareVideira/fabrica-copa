@@ -169,6 +169,7 @@ app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
 app.use(express.json({ limit: "8mb" }));
 app.use("/uploads", express.static(uploadsDir));
+app.use("/api/uploads", express.static(uploadsDir)); // Alias for uploads, for easier client access
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     explorer: true,
