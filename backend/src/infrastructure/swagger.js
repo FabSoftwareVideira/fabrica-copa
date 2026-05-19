@@ -35,6 +35,47 @@ function createSwaggerSpec(apiBaseServerUrl) {
                             detail: { type: "string" },
                         },
                     },
+                    AuthUser: {
+                        type: "object",
+                        properties: {
+                            id: { type: "integer" },
+                            name: { type: "string" },
+                            email: { type: "string", format: "email" },
+                            role: { type: "string", enum: ["admin", "servidor", "jogador"] },
+                            isBlocked: { type: "boolean" },
+                        },
+                        required: ["id", "name", "email", "role"],
+                    },
+                    DailyBonus: {
+                        type: "object",
+                        properties: {
+                            granted: { type: "boolean" },
+                            coins: { type: "integer", minimum: 0 },
+                            packs: { type: "integer", minimum: 0 },
+                            date: { type: "string", example: "2026-05-19" },
+                        },
+                        required: ["granted", "coins", "packs", "date"],
+                    },
+                    AuthTokenResponse: {
+                        type: "object",
+                        properties: {
+                            accessToken: { type: "string" },
+                            refreshToken: { type: "string" },
+                            tokenType: { type: "string", example: "Bearer" },
+                            expiresIn: { type: "string", example: "15m" },
+                            user: { $ref: "#/components/schemas/AuthUser" },
+                            dailyBonus: { $ref: "#/components/schemas/DailyBonus" },
+                        },
+                        required: ["accessToken", "refreshToken", "tokenType", "expiresIn", "user", "dailyBonus"],
+                    },
+                    AuthMeResponse: {
+                        type: "object",
+                        properties: {
+                            user: { $ref: "#/components/schemas/AuthUser" },
+                            dailyBonus: { $ref: "#/components/schemas/DailyBonus" },
+                        },
+                        required: ["user", "dailyBonus"],
+                    },
                 },
             },
             paths: {
@@ -68,8 +109,22 @@ function createSwaggerSpec(apiBaseServerUrl) {
                             },
                         },
                         responses: {
-                            200: { description: "Autenticado com sucesso" },
-                            401: { description: "Falha na autenticacao" },
+                            200: {
+                                description: "Autenticado com sucesso",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/AuthTokenResponse" },
+                                    },
+                                },
+                            },
+                            401: {
+                                description: "Falha na autenticacao",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/ApiError" },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -92,8 +147,22 @@ function createSwaggerSpec(apiBaseServerUrl) {
                             },
                         },
                         responses: {
-                            200: { description: "Token renovado" },
-                            401: { description: "Refresh token invalido" },
+                            200: {
+                                description: "Token renovado",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/AuthTokenResponse" },
+                                    },
+                                },
+                            },
+                            401: {
+                                description: "Refresh token invalido",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/ApiError" },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -125,8 +194,22 @@ function createSwaggerSpec(apiBaseServerUrl) {
                         summary: "Retorna usuario autenticado",
                         security: [{ bearerAuth: [] }],
                         responses: {
-                            200: { description: "Usuario atual" },
-                            401: { description: "Nao autenticado" },
+                            200: {
+                                description: "Usuario atual",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/AuthMeResponse" },
+                                    },
+                                },
+                            },
+                            401: {
+                                description: "Nao autenticado",
+                                content: {
+                                    "application/json": {
+                                        schema: { $ref: "#/components/schemas/ApiError" },
+                                    },
+                                },
+                            },
                         },
                     },
                 },
