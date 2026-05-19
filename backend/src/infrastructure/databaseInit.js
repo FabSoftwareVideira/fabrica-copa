@@ -24,12 +24,14 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
       packs_used_today INTEGER NOT NULL DEFAULT 0,
       extra_packs INTEGER NOT NULL DEFAULT 0,
       trade_coins INTEGER NOT NULL DEFAULT 0,
+      last_login_bonus_date TEXT NOT NULL DEFAULT '',
       used_codes_json TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
     await ensureColumn("album_states", "trade_coins", "INTEGER NOT NULL DEFAULT 0");
+    await ensureColumn("album_states", "last_login_bonus_date", "TEXT NOT NULL DEFAULT ''");
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (

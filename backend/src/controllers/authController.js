@@ -14,7 +14,41 @@ function createAuthController({
     ACCESS_TOKEN_TTL,
     bcrypt,
     crypto,
+    todayStr,
+    DAILY_LOGIN_BONUS_COINS,
+    DAILY_LOGIN_BONUS_PACKS,
 }) {
+    async function grantDailyLoginBonus(userId) {
+        const today = todayStr();
+        const updatedAt = nowSqlTimestamp();
+        await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [userId]);
+        const result = await run(
+            `UPDATE album_states
+             SET trade_coins = trade_coins + ?,
+                 extra_packs = extra_packs + ?,
+                 last_login_bonus_date = ?,
+                 updated_at = ?
+             WHERE user_id = ?
+               AND (last_login_bonus_date IS NULL OR last_login_bonus_date <> ?)`,
+            [
+                Number(DAILY_LOGIN_BONUS_COINS || 0),
+                Number(DAILY_LOGIN_BONUS_PACKS || 0),
+                today,
+                updatedAt,
+                userId,
+                today,
+            ]
+        );
+
+        const granted = Number(result?.changes || 0) > 0;
+        return {
+            granted,
+            coins: granted ? Number(DAILY_LOGIN_BONUS_COINS || 0) : 0,
+            packs: granted ? Number(DAILY_LOGIN_BONUS_PACKS || 0) : 0,
+            date: today,
+        };
+    }
+
     async function registerDisabled(_req, res) {
         return res.status(410).json({ error: "Cadastro por email/senha desativado. Use login com Google." });
     }
@@ -49,7 +83,6 @@ function createAuthController({
                     "INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)",
                     [cleanName, cleanEmail, pseudoPasswordHash, initialRole],
                 );
-                await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [created.lastID]);
 
                 userRow = {
                     id: created.lastID,
@@ -73,9 +106,9 @@ function createAuthController({
                     await run("UPDATE users SET name = ? WHERE id = ?", [cleanName, userRow.id]);
                     userRow.name = cleanName;
                 }
-
-                await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [userRow.id]);
             }
+
+            const dailyBonus = await grantDailyLoginBonus(userRow.id);
 
             const user = {
                 id: userRow.id,
@@ -92,6 +125,7 @@ function createAuthController({
                 tokenType: "Bearer",
                 expiresIn: ACCESS_TOKEN_TTL,
                 user,
+                dailyBonus,
             });
         } catch (err) {
             if (err?.code === "GOOGLE_CONFIG_MISSING") {
@@ -127,6 +161,8 @@ function createAuthController({
                 return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador.", code: "USER_BLOCKED" });
             }
 
+            const dailyBonus = await grantDailyLoginBonus(row.user_id);
+
             await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
             const user = { id: row.user_id, name: row.name, email: row.email, role: row.role || ROLE_PLAYER };
             const accessToken = signAccessToken(user);
@@ -138,6 +174,7 @@ function createAuthController({
                 tokenType: "Bearer",
                 expiresIn: ACCESS_TOKEN_TTL,
                 user,
+                dailyBonus,
             });
         } catch (err) {
             return res.status(500).json({ error: "Erro no refresh", detail: err.message });
@@ -160,7 +197,13 @@ function createAuthController({
         try {
             const row = await get("SELECT id, name, email, role, is_blocked FROM users WHERE id = ?", [req.user.sub]);
             if (!row) return res.status(404).json({ error: "Usuario nao encontrado" });
-            return res.json({ user: sanitizeUser(row) });
+            if (Number(row.is_blocked || 0) === 1) {
+                return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
+            }
+
+            const dailyBonus = await grantDailyLoginBonus(row.id);
+
+            return res.json({ user: sanitizeUser(row), dailyBonus });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao buscar usuario", detail: err.message });
         }

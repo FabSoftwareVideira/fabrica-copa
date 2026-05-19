@@ -23,7 +23,8 @@ const {
     NODE_ENV, PORT, APP_TIMEZONE, CORS_ORIGIN, JWT_SECRET,
     ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL_DAYS, GOOGLE_CLIENT_ID,
     LOG_LEVEL, LOG_ROTATION_ENABLED, LOG_DIR, LOG_ROTATION_INTERVAL,
-    LOG_ROTATION_MAX_FILES, API_BASE_URL, DB_PATH,
+    LOG_ROTATION_MAX_FILES, DAILY_LOGIN_BONUS_COINS, DAILY_LOGIN_BONUS_PACKS,
+    API_BASE_URL, DB_PATH,
     ROLE_ADMIN, ROLE_SERVIDOR, ROLE_PLAYER, ALLOWED_ROLES,
 } = require("./config/env");
 
@@ -158,6 +159,7 @@ const authController = createAuthController({
     get, run, nowSqlTimestamp, sanitizeUser, verifyGoogleIdToken, roleFromGoogleEmail,
     ROLE_PLAYER, signAccessToken, createRefreshToken, revokeRefreshToken,
     jwt, JWT_SECRET, ACCESS_TOKEN_TTL, bcrypt, crypto,
+    todayStr, DAILY_LOGIN_BONUS_COINS, DAILY_LOGIN_BONUS_PACKS,
 });
 
 // ─── Express app ─────────────────────────────────────────────────────────────

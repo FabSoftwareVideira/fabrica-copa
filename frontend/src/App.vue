@@ -1391,6 +1391,14 @@ function setToast(message) {
   }, 2200);
 }
 
+function maybeShowDailyBonusToast(dailyBonus) {
+  const granted = Boolean(dailyBonus?.granted);
+  if (!granted) return;
+  const coins = Math.max(0, Number(dailyBonus?.coins || 0));
+  const packs = Math.max(0, Number(dailyBonus?.packs || 0));
+  setToast(`Bonus diario recebido: +${coins} moedas e +${packs} pacote(s)`);
+}
+
 function isInvalidCouponAttempt(err) {
   const status = Number(err?.status || 0);
   const message = String(err?.message || "")
@@ -1861,6 +1869,7 @@ async function tryRefreshToken() {
     state.refreshToken = data.refreshToken;
     state.user = data.user;
     saveAuth();
+    maybeShowDailyBonusToast(data.dailyBonus);
     await loadManagedUsers();
     return true;
   } catch (err) {
@@ -1881,6 +1890,7 @@ async function bootstrapAuth() {
     const me = await apiFetch("/auth/me");
     state.user = me.user;
     saveAuth();
+    maybeShowDailyBonusToast(me.dailyBonus);
     restoreNotificationsFromStorage();
     await Promise.all([
       loadStickerCatalog(),
@@ -2749,6 +2759,7 @@ async function submitGoogleAuth(idToken) {
     state.refreshToken = data.refreshToken;
     state.user = data.user;
     saveAuth();
+    maybeShowDailyBonusToast(data.dailyBonus);
     restoreNotificationsFromStorage();
 
     ui.authOpen = false;
