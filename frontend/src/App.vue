@@ -278,6 +278,7 @@ restoreNotificationsFromStorage();
 
 const adminTools = reactive({
   targetUserId: "",
+  targetUserInput: "",
   packs: 1,
   search: "",
   roleFilter: "all",
@@ -380,6 +381,30 @@ const hasNewStickerAlerts = computed(
 const managedBlockedUsers = computed(
   () => state.managedUsers.filter((u) => u.isBlocked).length,
 );
+function couponTargetLabel(user) {
+  return `${user.name} <${user.email}>`;
+}
+
+const couponTargetUsers = computed(() =>
+  state.managedUsers.filter((u) => !u.isBlocked),
+);
+
+function syncCouponTargetIdFromInput() {
+  const raw = String(adminTools.targetUserInput || "").trim();
+  if (!raw) {
+    adminTools.targetUserId = "";
+    return;
+  }
+
+  const normalized = raw.toLowerCase();
+  const matched = couponTargetUsers.value.find((u) => {
+    const label = couponTargetLabel(u).toLowerCase();
+    const email = String(u.email || "").toLowerCase();
+    return label === normalized || email === normalized;
+  });
+
+  adminTools.targetUserId = matched ? String(matched.id) : "";
+}
 const managedActiveUsers = computed(
   () => state.managedUsers.filter((u) => !u.isBlocked).length,
 );
@@ -1549,6 +1574,7 @@ function clearAuth() {
   state.tradeCoins = 0;
   state.tradeSubView = "available";
   adminTools.targetUserId = "";
+  adminTools.targetUserInput = "";
   adminTools.packs = 1;
   adminTools.search = "";
   adminTools.roleFilter = "all";
@@ -2135,9 +2161,9 @@ async function loadManagedUsers() {
 
     if (!adminTools.targetUserId && state.managedUsers.length > 0) {
       const firstAvailable = state.managedUsers.find((u) => !u.isBlocked);
-      adminTools.targetUserId = String(
-        (firstAvailable || state.managedUsers[0]).id,
-      );
+      const target = firstAvailable || state.managedUsers[0];
+      adminTools.targetUserId = String(target.id);
+      adminTools.targetUserInput = couponTargetLabel(target);
     }
 
     if (
@@ -2207,6 +2233,8 @@ function openManagedUserEditor(user) {
 async function openCouponsForUser(user) {
   const userId = Number(user?.id || 0);
   if (!userId) return;
+  adminTools.targetUserId = String(userId);
+  adminTools.targetUserInput = couponTargetLabel(user);
   adminTools.couponUserFilter = String(userId);
   adminTools.couponPage = 1;
   selectAdminTab("coupons");
@@ -2275,6 +2303,7 @@ async function generateManagedCoupon() {
   ui.couponPanelKind = "";
   ui.couponPanelCode = "";
 
+  syncCouponTargetIdFromInput();
   const targetUserId = Number(adminTools.targetUserId || 0);
   if (!isAdmin.value && targetUserId <= 0) {
     ui.couponPanelMsg = "Selecione um usuário para gerar o cupom.";
@@ -2313,6 +2342,11 @@ async function generateManagedCoupon() {
 
 async function grantDailyPackToAll() {
   if (!isAdmin.value) return;
+  const confirmBulkGrant = window.confirm(
+    "Confirma liberar 1 pacote para todos os usuários elegíveis? Esta ação em massa não pode ser desfeita.",
+  );
+  if (!confirmBulkGrant) return;
+
   ui.grantDailyPackLoading = true;
   ui.grantDailyPackMsg = "";
 
@@ -4349,44 +4383,69 @@ const filteredTradeHistoryPaged = computed(() => {
               Como servidor, o limite é 1 cupom por dia para o mesmo usuário,
               com 1 a 3 pacotes por cupom.
             </p>
-            <div class="manage-coupon-form">
-              <select v-model="adminTools.targetUserId">
-                <option v-if="isAdmin" value="">
-                  Cupom livre (qualquer usuário)
-                </option>
-                <option
-                  v-for="u in state.managedUsers.filter((x) => !x.isBlocked)"
-                  :key="u.id"
-                  :value="String(u.id)"
+            <div class="manage-coupon-layout">
+              <div class="manage-coupon-form">
+                <input
+                  v-model.trim="adminTools.targetUserInput"
+                  :list="
+                    isAdmin
+                      ? 'coupon-target-users-with-free'
+                      : 'coupon-target-users'
+                  "
+                  :placeholder="
+                    isAdmin
+                      ? 'Digite nome/email ou deixe vazio para cupom livre'
+                      : 'Digite e selecione nome/email do usuário'
+                  "
+                  @input="syncCouponTargetIdFromInput"
+                />
+                <datalist v-if="isAdmin" id="coupon-target-users-with-free">
+                  <option value=""></option>
+                  <option
+                    v-for="u in couponTargetUsers"
+                    :key="`coupon-target-free-${u.id}`"
+                    :value="couponTargetLabel(u)"
+                  />
+                </datalist>
+                <datalist v-else id="coupon-target-users">
+                  <option
+                    v-for="u in couponTargetUsers"
+                    :key="`coupon-target-${u.id}`"
+                    :value="couponTargetLabel(u)"
+                  />
+                </datalist>
+                <input
+                  v-if="canManageCoupons"
+                  v-model.number="adminTools.packs"
+                  type="number"
+                  min="1"
+                  :max="isAdmin ? 100 : 3"
+                  placeholder="Pacotes"
+                />
+                <button
+                  type="button"
+                  class="coupon-generate-btn"
+                  @click="generateManagedCoupon"
                 >
-                  {{ u.name }} ({{ u.role }})
-                </option>
-              </select>
-              <input
-                v-if="canManageCoupons"
-                v-model.number="adminTools.packs"
-                type="number"
-                min="1"
-                :max="isAdmin ? 100 : 3"
-                placeholder="Pacotes"
-              />
-              <button type="button" @click="generateManagedCoupon">
-                Gerar Cupom
-              </button>
-              <button
-                v-if="isAdmin"
-                type="button"
-                class="grant-daily-pack-btn"
-                :disabled="ui.grantDailyPackLoading"
-                @click="grantDailyPackToAll"
-                style="margin-left: 1rem"
-              >
-                {{
-                  ui.grantDailyPackLoading
-                    ? "Liberando..."
-                    : "Liberar 1 pacote para todos"
-                }}
-              </button>
+                  Gerar Cupom
+                </button>
+              </div>
+
+              <div v-if="isAdmin" class="manage-coupon-bulk-box">
+                <small>Ação em massa</small>
+                <button
+                  type="button"
+                  class="grant-daily-pack-btn"
+                  :disabled="ui.grantDailyPackLoading"
+                  @click="grantDailyPackToAll"
+                >
+                  {{
+                    ui.grantDailyPackLoading
+                      ? "Liberando..."
+                      : "Liberar 1 pacote para todos"
+                  }}
+                </button>
+              </div>
             </div>
             <div v-if="ui.couponPanelKind" class="coupon-feedback-row">
               <span class="coupon-kind-badge" :class="ui.couponPanelKind">

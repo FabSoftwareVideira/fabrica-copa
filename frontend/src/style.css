@@ -4297,18 +4297,61 @@ button:disabled {
 }
 
 .manage-coupon-form {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(260px, 1.8fr) minmax(92px, 120px) auto;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  align-items: center;
 }
 
-.manage-coupon-form select {
-  flex: 2;
-  min-width: 220px;
+.manage-coupon-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
 }
 
 .manage-coupon-form input {
-  width: 120px;
+  width: 100%;
+}
+
+.manage-coupon-form button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.manage-coupon-bulk-box {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(190, 24, 93, 0.26);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 241, 242, 0.95),
+    rgba(255, 228, 230, 0.78)
+  );
+}
+
+.manage-coupon-bulk-box small {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9f1239;
+}
+
+.grant-daily-pack-btn {
+  border: 1px solid #be123c;
+  background: linear-gradient(135deg, #e11d48, #be123c);
+  color: #fff;
+  font-weight: 800;
+  width: auto;
+  justify-self: start;
+  padding: 0.44rem 0.72rem;
+  font-size: 0.82rem;
+}
+
+.grant-daily-pack-btn:hover:not(:disabled) {
+  box-shadow: 0 10px 22px rgba(190, 24, 93, 0.3);
 }
 
 .coupon-feedback-row {
@@ -4874,6 +4917,20 @@ button:disabled {
     flex-direction: column;
     display: flex;
     align-items: stretch;
+  }
+
+  .manage-coupon-layout {
+    gap: 0.6rem;
+  }
+
+  .manage-coupon-bulk-box {
+    padding: 0.65rem;
+  }
+
+  .grant-daily-pack-btn {
+    width: 100%;
+    justify-self: stretch;
+    font-size: 0.86rem;
   }
 
   .manage-coupon-form select,
