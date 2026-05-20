@@ -2904,7 +2904,8 @@ function stickerPhotoCandidates(item) {
     if (
       imagePath &&
       !imagePath.startsWith("/") &&
-      !imagePath.startsWith("data:")
+      !imagePath.startsWith("data:") &&
+      !/^https?:\/\//i.test(imagePath)
     ) {
       imagePath = `/uploads/${imagePath}`;
     }

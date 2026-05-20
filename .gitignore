@@ -8,3 +8,4 @@ logs/
 *.log.*
 *.sqlite3
 uploads/
+comandos.md

@@ -65,14 +65,11 @@ NODE_ENV=development
 PORT=3001
 JWT_SECRET=troque-este-segredo
 CORS_ORIGIN=http://localhost:5173
-API_BASE_URL=http://localhost:3001/api
 GOOGLE_CLIENT_ID=seu-client-id.apps.googleusercontent.com
 
 # Auth
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL_DAYS=30
-DAILY_LOGIN_BONUS_COINS=3
-DAILY_LOGIN_BONUS_PACKS=1
 
 # Logging
 LOG_LEVEL=info
