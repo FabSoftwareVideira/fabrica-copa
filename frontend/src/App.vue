@@ -1,134 +1,53 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import playerImagesData from "../js/player-images.json";
-
-const FRONTEND_ENV = import.meta.env.MODE || "development";
-const IS_DEV = Boolean(import.meta.env.DEV);
-const BASE_URL = import.meta.env.BASE_URL || "/";
-const BASE_URL_PREFIX = BASE_URL.endsWith("/")
-  ? BASE_URL.slice(0, -1)
-  : BASE_URL;
-
-function withBasePath(assetPath) {
-  const value = String(assetPath || "").trim();
-  if (!value) return "";
-  if (/^(?:[a-z]+:)?\/\//i.test(value) || value.startsWith("data:")) {
-    return value;
-  }
-  if (!value.startsWith("/")) return value;
-  if (!BASE_URL_PREFIX) return value;
-  return `${BASE_URL_PREFIX}${value}`;
-}
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (IS_DEV
-    ? `http://${window.location.hostname || "localhost"}:3001/api`
-    : `${window.location.origin}${BASE_URL_PREFIX}/api`);
-const API_BASE_ORIGIN = (() => {
-  try {
-    return new URL(API_BASE_URL, window.location.origin).origin;
-  } catch {
-    return window.location.origin;
-  }
-})();
-const GOOGLE_CLIENT_ID = String(
-  import.meta.env.VITE_GOOGLE_CLIENT_ID || "",
-).trim();
+import {
+  API_BASE_ORIGIN,
+  API_BASE_URL,
+  FRONTEND_ENV,
+  FRONTEND_LOG_ENDPOINT,
+  GOOGLE_CLIENT_ID,
+  IS_DEV,
+  withBasePath,
+} from "./modules/app/env";
+import {
+  ADMIN_ICON_OPTIONS,
+  DEFAULT_PLAYER_IMAGE,
+  DEFAULT_SPECIAL_IMAGE,
+  DEFAULT_TEAM_IMAGE,
+  GROUP_COLORS,
+  NOTIFICATIONS_KEY_PREFIX,
+  NOTIFICATIONS_LIMIT,
+  NOTIFICATIONS_UNREAD_KEY_PREFIX,
+  PACK_DRAG_OPEN_DISTANCE,
+  PACKS_PER_DAY,
+  SYSTEM_EVENTS_CURSOR_KEY,
+  TEAM_IMAGE_CODES,
+  TEAM_IMAGE_EXTENSIONS,
+  TOASTY_IMAGE,
+  TOASTY_SOUND,
+} from "./modules/app/constants";
+import {
+  formatCountdown,
+  formatCountdownLongFormat,
+  formatDateTime,
+  normalizeTradeQuery,
+  playerImageKey,
+  todayStr,
+} from "./modules/app/formatters";
+import {
+  parseStoredUser,
+  persistAuthState,
+} from "./composables/auth/useAuthStorage";
+import {
+  notificationsStorageKey as buildNotificationsStorageKey,
+  notificationsUnreadStorageKey as buildNotificationsUnreadStorageKey,
+  restoreNotificationsState,
+  saveNotificationsState,
+} from "./composables/notifications/useNotificationStorage";
+import { createTradeHandlers } from "./composables/trade/useTrade";
+import { createTradeViewModel } from "./composables/trade/useTradeViewModel";
 let googleIdentityInitialized = false;
-const FRONTEND_LOG_ENDPOINT = `${API_BASE_URL}/logs/frontend-error`;
-const APP_TIMEZONE = "America/Sao_Paulo";
-const PACKS_PER_DAY = 1;
-const PACK_DRAG_OPEN_DISTANCE = 180;
-const SYSTEM_EVENTS_CURSOR_KEY = "album-system-events-cursor";
-const NOTIFICATIONS_LIMIT = 50;
-const NOTIFICATIONS_KEY_PREFIX = "album-notifications";
-const NOTIFICATIONS_UNREAD_KEY_PREFIX = "album-notifications-unread";
-const DEFAULT_PLAYER_IMAGE = withBasePath("/player-default.webp");
-const DEFAULT_TEAM_IMAGE = withBasePath("/teams/default.webp");
-const DEFAULT_SPECIAL_IMAGE = withBasePath("/specials/especial_default.webp");
-const TOASTY_IMAGE = withBasePath("/ee.gif");
-const TOASTY_SOUND = withBasePath("/toasty.mp3");
-const TEAM_IMAGE_EXTENSIONS = ["webp", "jpg", "jpeg", "png", "svg"];
-const TEAM_IMAGE_CODES = {
-  usa: "us",
-  mar: "ma",
-  sui: "ch",
-  jor: "jo",
-  mex: "mx",
-  ksa: "sa",
-  den: "dk",
-  sen: "sn",
-  can: "ca",
-  aus: "au",
-  cro: "hr",
-  per: "pe",
-  bra: "br",
-  kor: "kr",
-  sco: "sc",
-  civ: "ci",
-  arg: "ar",
-  jpn: "jp",
-  tur: "tr",
-  nga: "ng",
-  fra: "fr",
-  col: "co",
-  aut: "at",
-  irq: "iq",
-  ger: "de",
-  ecu: "ec",
-  egy: "eg",
-  rou: "ro",
-  esp: "es",
-  ven: "ve",
-  srb: "rs",
-  dza: "dz",
-  eng: "gb-eng",
-  irn: "ir",
-  pol: "pl",
-  gha: "gh",
-  por: "pt",
-  uru: "uy",
-  ned: "nl",
-  rsa: "za",
-  ita: "it",
-  bel: "be",
-  pan: "pa",
-  uzb: "uz",
-  hon: "hn",
-  jam: "jm",
-  cmr: "cm",
-  nzl: "nz",
-};
-
-const ADMIN_ICON_OPTIONS = [
-  { value: "🎟️", label: "🎟️ Figurinha" },
-  { value: "⭐", label: "⭐ Estrela" },
-  { value: "🏆", label: "🏆 Troféu" },
-  { value: "⚽", label: "⚽ Bola" },
-  { value: "🔥", label: "🔥 Destaque" },
-  { value: "🧤", label: "🧤 Goleiro" },
-  { value: "🛡️", label: "🛡️ Defesa" },
-  { value: "🎯", label: "🎯 Ataque" },
-  { value: "👑", label: "👑 Lendário" },
-  { value: "💎", label: "💎 Raro" },
-];
-
-const GROUP_COLORS = {
-  especial: "#f59e0b",
-  A: "#ef4444",
-  B: "#f97316",
-  C: "#facc15",
-  D: "#22c55e",
-  E: "#14b8a6",
-  F: "#3b82f6",
-  G: "#8b5cf6",
-  H: "#ec4899",
-  I: "#06b6d4",
-  J: "#f43f5e",
-  K: "#64748b",
-  L: "#78716c",
-};
 
 const stickers = reactive(
   Array.isArray(window.ALL_STICKERS) ? [...window.ALL_STICKERS] : [],
@@ -136,29 +55,6 @@ const stickers = reactive(
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
-
-function formatDateTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR", { timeZone: APP_TIMEZONE });
-}
-
-function normalizeNameKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\./g, "")
-    .replace(/\bjr\b/g, "junior")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function playerImageKey(name, teamId) {
-  return `${normalizeNameKey(name)}::${String(teamId || "").toLowerCase()}`;
-}
 
 const playerImageMap = new Map(
   playerImageItems
@@ -180,7 +76,7 @@ const state = reactive({
   recentPacks: [],
   accessToken: localStorage.getItem("album-access-token") || "",
   refreshToken: localStorage.getItem("album-refresh-token") || "",
-  user: parseUser(),
+  user: parseStoredUser(),
   tradeSubView: "available",
   tradeUsers: [],
   tradeAvailable: [],
@@ -917,40 +813,6 @@ let toastyTimer = null;
 let toastyAudio = null;
 const stickerPhotoCache = new Map();
 
-function formatCountdown(ms) {
-  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const hh = String(hours).padStart(2, "0");
-  const mm = String(minutes).padStart(2, "0");
-  const ss = String(seconds).padStart(2, "0");
-  return days > 0 ? `${days}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
-}
-
-function formatCountdownLongFormat(ms) {
-  const totalSeconds = Math.max(0, Math.floor(Number(ms || 0) / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  if (days > 0) {
-    return `${days}d ${hours}h ${minutes}min`;
-  }
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}min`;
-  }
-
-  if (minutes > 0) {
-    return `${minutes}min ${seconds}s`;
-  }
-
-  return `${seconds}s`;
-}
-
 function setTradeWindowStateFromPayload(payload) {
   if (Array.isArray(payload)) {
     state.tradeWindows = payload;
@@ -1263,56 +1125,38 @@ function saveSystemEventsCursor() {
 }
 
 function notificationsStorageKey(userId = state.user?.id) {
-  return `${NOTIFICATIONS_KEY_PREFIX}-${userId || "anon"}`;
+  return buildNotificationsStorageKey(userId, NOTIFICATIONS_KEY_PREFIX);
 }
 
 function notificationsUnreadStorageKey(userId = state.user?.id) {
-  return `${NOTIFICATIONS_UNREAD_KEY_PREFIX}-${userId || "anon"}`;
+  return buildNotificationsUnreadStorageKey(
+    userId,
+    NOTIFICATIONS_UNREAD_KEY_PREFIX,
+  );
 }
 
 function saveNotificationsToStorage() {
   const userId = state.user?.id;
-  if (!userId) return;
-
-  const safeList = Array.isArray(state.notifications)
-    ? state.notifications.slice(0, NOTIFICATIONS_LIMIT)
-    : [];
-
-  localStorage.setItem(
-    notificationsStorageKey(userId),
-    JSON.stringify(safeList),
-  );
-  localStorage.setItem(
-    notificationsUnreadStorageKey(userId),
-    String(Number(state.notificationsUnread || 0)),
-  );
+  saveNotificationsState({
+    state,
+    userId,
+    notificationsKeyPrefix: NOTIFICATIONS_KEY_PREFIX,
+    notificationsUnreadKeyPrefix: NOTIFICATIONS_UNREAD_KEY_PREFIX,
+    limit: NOTIFICATIONS_LIMIT,
+  });
 }
 
 function restoreNotificationsFromStorage() {
   const userId = state.user?.id;
-  if (!userId) {
-    state.notifications = [];
-    state.notificationsUnread = 0;
-    return;
-  }
+  const restored = restoreNotificationsState({
+    userId,
+    notificationsKeyPrefix: NOTIFICATIONS_KEY_PREFIX,
+    notificationsUnreadKeyPrefix: NOTIFICATIONS_UNREAD_KEY_PREFIX,
+    limit: NOTIFICATIONS_LIMIT,
+  });
 
-  try {
-    const rawNotifications = localStorage.getItem(
-      notificationsStorageKey(userId),
-    );
-    const parsed = JSON.parse(rawNotifications || "[]");
-    state.notifications = Array.isArray(parsed)
-      ? parsed
-          .filter((n) => n && typeof n === "object" && n.id)
-          .slice(0, NOTIFICATIONS_LIMIT)
-      : [];
-  } catch {
-    state.notifications = [];
-  }
-
-  state.notificationsUnread = Number(
-    localStorage.getItem(notificationsUnreadStorageKey(userId)) || 0,
-  );
+  state.notifications = restored.notifications;
+  state.notificationsUnread = restored.notificationsUnread;
 }
 
 function stopSystemEventsPolling() {
@@ -1373,20 +1217,6 @@ function upsertStickerIntoCatalog(rawSticker) {
 function removeStickerFromCatalog(stickerId) {
   const idx = stickers.findIndex((s) => s.id === String(stickerId));
   if (idx >= 0) stickers.splice(idx, 1);
-}
-
-function parseUser() {
-  const raw = localStorage.getItem("album-user");
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function getCount(id) {
@@ -1521,17 +1351,7 @@ async function copyCouponCodeFromNotification(notif) {
 }
 
 function saveAuth() {
-  if (state.accessToken)
-    localStorage.setItem("album-access-token", state.accessToken);
-  else localStorage.removeItem("album-access-token");
-
-  if (state.refreshToken)
-    localStorage.setItem("album-refresh-token", state.refreshToken);
-  else localStorage.removeItem("album-refresh-token");
-
-  if (state.user)
-    localStorage.setItem("album-user", JSON.stringify(state.user));
-  else localStorage.removeItem("album-user");
+  persistAuthState(state);
 }
 
 function clearAuth() {
@@ -3062,128 +2882,52 @@ function openAdminPanelView() {
 }
 
 // ─── Trade functions ─────────────────────────────────────────────────────────
+const {
+  TRADE_AVAILABLE_LIMIT,
+  TRADE_AVAILABLE_REROLL_COST,
+  TRADE_COINS_PER_COUPON,
+  canRedeemTradeCoinsCoupon,
+  canRerollTradeAvailable,
+  filteredTradeAvailable,
+  filteredTradeHistory,
+  filteredTradeHistoryPaged,
+  filteredTradeIncoming,
+  filteredTradeIncomingPaged,
+  filteredTradeOutgoing,
+  filteredTradeOutgoingPaged,
+  setTradePage,
+  tradeCoinsNeeded,
+  tradeHistoryPageCount,
+  tradeHistorySafePage,
+  tradeHistoryUsers,
+  tradeIncomingCount,
+  tradeIncomingPageCount,
+  tradeIncomingSafePage,
+  tradeIncomingUsers,
+  tradeOutgoingPageCount,
+  tradeOutgoingSafePage,
+  tradeOutgoingUsers,
+} = createTradeViewModel({
+  state,
+  normalizeTradeQuery,
+});
 
-async function loadTradeUsers() {
-  ui.tradeUsersLoading = true;
-  try {
-    const data = await apiFetch("/trade/users");
-    state.tradeUsers = Array.isArray(data.users) ? data.users : [];
-  } catch (err) {
-    setToast(err.message || "Erro ao carregar usuários");
-  } finally {
-    ui.tradeUsersLoading = false;
-  }
-}
-
-async function loadTradeOffers() {
-  ui.tradeLoading = true;
-  try {
-    const data = await apiFetch("/trade/offers");
-    state.tradeIncoming = Array.isArray(data.incoming) ? data.incoming : [];
-    state.tradeOutgoing = Array.isArray(data.outgoing) ? data.outgoing : [];
-  } catch (err) {
-    setToast(err.message || "Erro ao carregar ofertas");
-  } finally {
-    ui.tradeLoading = false;
-  }
-}
-
-async function loadTradeAvailable() {
-  ui.tradeAvailableLoading = true;
-  try {
-    const data = await apiFetch("/trade/available");
-    state.tradeAvailable = Array.isArray(data.available) ? data.available : [];
-    state.tradeAvailableTotal = Number(
-      data.totalAvailable ?? state.tradeAvailable.length,
-    );
-    state.tradeAvailableHasMore = Boolean(
-      data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
-    );
-    if (data.tradeCoins != null) {
-      state.tradeCoins = Number(data.tradeCoins);
-    }
-    setTradePage("available", 1);
-  } catch (err) {
-    setToast(err.message || "Erro ao carregar figurinhas disponíveis");
-  } finally {
-    ui.tradeAvailableLoading = false;
-  }
-}
-
-async function rerollTradeAvailable() {
-  if (ui.tradeAvailableRerollLoading || ui.tradeAvailableLoading) return;
-  if (Number(state.tradeCoins || 0) < TRADE_AVAILABLE_REROLL_COST) {
-    setToast("Você precisa de 1 coin para ver outras figurinhas");
-    return;
-  }
-  if (!state.tradeAvailableHasMore) {
-    setToast("Não há outras figurinhas disponíveis para sortear agora");
-    return;
-  }
-
-  ui.tradeAvailableRerollLoading = true;
-  try {
-    const data = await apiFetch("/trade/available/reroll", {
-      method: "POST",
-      body: JSON.stringify({
-        excludeStickerIds: state.tradeAvailable
-          .map((entry) => String(entry?.sticker?.id || ""))
-          .filter(Boolean),
-      }),
-    });
-
-    state.tradeAvailable = Array.isArray(data.available) ? data.available : [];
-    state.tradeAvailableTotal = Number(
-      data.totalAvailable ?? state.tradeAvailable.length,
-    );
-    state.tradeAvailableHasMore = Boolean(
-      data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
-    );
-    state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
-    setTradePage("available", 1);
-    setToast("Você gastou 1 coin para ver outras figurinhas");
-  } catch (err) {
-    setToast(err.message || "Erro ao sortear novas figurinhas");
-  } finally {
-    ui.tradeAvailableRerollLoading = false;
-  }
-}
-
-async function loadTradeHistory() {
-  ui.tradeLoading = true;
-  try {
-    const data = await apiFetch("/trade/history");
-    state.tradeHistory = Array.isArray(data.history) ? data.history : [];
-  } catch (err) {
-    setToast(err.message || "Erro ao carregar histórico");
-  } finally {
-    ui.tradeLoading = false;
-  }
-}
-
-async function loadTradeOfferChoices(userId) {
-  if (!userId) {
-    ui.tradeOfferChoices = [];
-    return;
-  }
-
-  ui.tradeOfferChoicesLoading = true;
-  try {
-    const data = await apiFetch(`/trade/users/${userId}/wanted-from-me`);
-    ui.tradeOfferChoices = Array.isArray(data.stickers) ? data.stickers : [];
-  } catch (err) {
-    ui.tradeOfferChoices = [];
-    setToast(err.message || "Erro ao carregar opções para oferta");
-  } finally {
-    ui.tradeOfferChoicesLoading = false;
-  }
-}
-
-async function selectTradeTargetUser(user) {
-  ui.tradeTargetUser = user;
-  ui.tradeOfferSticker = null;
-  await loadTradeOfferChoices(user?.userId);
-}
+const {
+  loadTradeAvailable,
+  loadTradeHistory,
+  loadTradeOfferChoices,
+  loadTradeOffers,
+  loadTradeUsers,
+  rerollTradeAvailable,
+  selectTradeTargetUser,
+} = createTradeHandlers({
+  state,
+  ui,
+  apiFetch,
+  setToast,
+  setTradePage,
+  rerollCost: TRADE_AVAILABLE_REROLL_COST,
+});
 
 function hasPendingRequestForAvailableSticker(entry) {
   const requestedStickerId = String(entry?.sticker?.id || "");
@@ -3414,216 +3158,6 @@ const myTradableDuplicatesForOffer = computed(() => {
     const tradableCount = Math.max(0, ownedCount - 1 - reservedCount);
     return tradableCount > 0;
   });
-});
-
-const tradeIncomingCount = computed(() => state.tradeIncoming.length);
-const TRADE_AVAILABLE_LIMIT = 5;
-const TRADE_AVAILABLE_REROLL_COST = 1;
-const TRADE_COINS_PER_COUPON = 10;
-const tradeCoinsNeeded = computed(() =>
-  Math.max(0, TRADE_COINS_PER_COUPON - Number(state.tradeCoins || 0)),
-);
-const canRerollTradeAvailable = computed(
-  () =>
-    Number(state.tradeCoins || 0) >= TRADE_AVAILABLE_REROLL_COST &&
-    state.tradeAvailableHasMore,
-);
-const canRedeemTradeCoinsCoupon = computed(
-  () => Number(state.tradeCoins || 0) >= TRADE_COINS_PER_COUPON,
-);
-
-function normalizeTradeQuery(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function setTradePage(view, value) {
-  const next = Math.max(1, Number(value || 1));
-  if (view === "incoming") state.tradeIncomingPage = next;
-  if (view === "outgoing") state.tradeOutgoingPage = next;
-  if (view === "history") state.tradeHistoryPage = next;
-}
-
-const filteredTradeAvailable = computed(() => {
-  return Array.isArray(state.tradeAvailable) ? state.tradeAvailable : [];
-});
-
-const tradeIncomingUsers = computed(() => {
-  const map = new Map();
-  for (const item of state.tradeIncoming) {
-    const id = Number(item?.fromUserId || 0);
-    const name = String(item?.fromUserName || "").trim();
-    if (!id || !name || map.has(id)) continue;
-    map.set(id, { id, name });
-  }
-  return [...map.values()].sort((a, b) =>
-    a.name.localeCompare(b.name, "pt-BR"),
-  );
-});
-
-const tradeOutgoingUsers = computed(() => {
-  const map = new Map();
-  for (const item of state.tradeOutgoing) {
-    const id = Number(item?.toUserId || 0);
-    const name = String(item?.toUserName || "").trim();
-    if (!id || !name || map.has(id)) continue;
-    map.set(id, { id, name });
-  }
-  return [...map.values()].sort((a, b) =>
-    a.name.localeCompare(b.name, "pt-BR"),
-  );
-});
-
-const tradeHistoryUsers = computed(() => {
-  const map = new Map();
-  for (const item of state.tradeHistory) {
-    const id = Number(item?.partnerUserId || 0);
-    const name = String(item?.partnerName || "").trim();
-    if (!id || !name || map.has(id)) continue;
-    map.set(id, { id, name });
-  }
-  return [...map.values()].sort((a, b) =>
-    a.name.localeCompare(b.name, "pt-BR"),
-  );
-});
-
-const filteredTradeIncoming = computed(() => {
-  let list = state.tradeIncoming;
-  if (state.tradeIncomingUserFilter !== "all") {
-    const id = Number(state.tradeIncomingUserFilter);
-    list = list.filter((item) => Number(item?.fromUserId || 0) === id);
-  }
-  const query = normalizeTradeQuery(state.tradeSearchIncoming);
-  if (query) {
-    list = list.filter((item) => {
-      const fromUser = String(item?.fromUserName || "").toLowerCase();
-      const offeredName = String(
-        item?.offeredSticker?.name || "",
-      ).toLowerCase();
-      const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(
-        item?.requestedSticker?.name || "",
-      ).toLowerCase();
-      const requestedNum = String(item?.requestedSticker?.num || "");
-      return (
-        fromUser.includes(query) ||
-        offeredName.includes(query) ||
-        offeredNum.includes(query) ||
-        requestedName.includes(query) ||
-        requestedNum.includes(query)
-      );
-    });
-  }
-  return list;
-});
-
-const filteredTradeOutgoing = computed(() => {
-  let list = state.tradeOutgoing;
-  if (state.tradeOutgoingUserFilter !== "all") {
-    const id = Number(state.tradeOutgoingUserFilter);
-    list = list.filter((item) => Number(item?.toUserId || 0) === id);
-  }
-  const query = normalizeTradeQuery(state.tradeSearchOutgoing);
-  if (query) {
-    list = list.filter((item) => {
-      const toUser = String(item?.toUserName || "").toLowerCase();
-      const offeredName = String(
-        item?.offeredSticker?.name || "",
-      ).toLowerCase();
-      const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(
-        item?.requestedSticker?.name || "",
-      ).toLowerCase();
-      const requestedNum = String(item?.requestedSticker?.num || "");
-      return (
-        toUser.includes(query) ||
-        offeredName.includes(query) ||
-        offeredNum.includes(query) ||
-        requestedName.includes(query) ||
-        requestedNum.includes(query)
-      );
-    });
-  }
-  return list;
-});
-
-const filteredTradeHistory = computed(() => {
-  let list = state.tradeHistory;
-  if (state.tradeHistoryUserFilter !== "all") {
-    const id = Number(state.tradeHistoryUserFilter);
-    list = list.filter((item) => Number(item?.partnerUserId || 0) === id);
-  }
-  if (state.tradeHistoryDirection === "sent") {
-    list = list.filter((item) => Boolean(item?.iSent));
-  }
-  if (state.tradeHistoryDirection === "received") {
-    list = list.filter((item) => !item?.iSent);
-  }
-  const query = normalizeTradeQuery(state.tradeSearchHistory);
-  if (query) {
-    list = list.filter((item) => {
-      const partner = String(item?.partnerName || "").toLowerCase();
-      const offeredName = String(
-        item?.offeredSticker?.name || "",
-      ).toLowerCase();
-      const offeredNum = String(item?.offeredSticker?.num || "");
-      const requestedName = String(
-        item?.requestedSticker?.name || "",
-      ).toLowerCase();
-      const requestedNum = String(item?.requestedSticker?.num || "");
-      return (
-        partner.includes(query) ||
-        offeredName.includes(query) ||
-        offeredNum.includes(query) ||
-        requestedName.includes(query) ||
-        requestedNum.includes(query)
-      );
-    });
-  }
-  return list;
-});
-
-const tradeIncomingPageCount = computed(() =>
-  Math.max(
-    1,
-    Math.ceil(filteredTradeIncoming.value.length / state.tradePageSize),
-  ),
-);
-const tradeOutgoingPageCount = computed(() =>
-  Math.max(
-    1,
-    Math.ceil(filteredTradeOutgoing.value.length / state.tradePageSize),
-  ),
-);
-const tradeHistoryPageCount = computed(() =>
-  Math.max(
-    1,
-    Math.ceil(filteredTradeHistory.value.length / state.tradePageSize),
-  ),
-);
-
-const tradeIncomingSafePage = computed(() =>
-  Math.min(state.tradeIncomingPage, tradeIncomingPageCount.value),
-);
-const tradeOutgoingSafePage = computed(() =>
-  Math.min(state.tradeOutgoingPage, tradeOutgoingPageCount.value),
-);
-const tradeHistorySafePage = computed(() =>
-  Math.min(state.tradeHistoryPage, tradeHistoryPageCount.value),
-);
-
-const filteredTradeIncomingPaged = computed(() => {
-  const start = (tradeIncomingSafePage.value - 1) * state.tradePageSize;
-  return filteredTradeIncoming.value.slice(start, start + state.tradePageSize);
-});
-const filteredTradeOutgoingPaged = computed(() => {
-  const start = (tradeOutgoingSafePage.value - 1) * state.tradePageSize;
-  return filteredTradeOutgoing.value.slice(start, start + state.tradePageSize);
-});
-const filteredTradeHistoryPaged = computed(() => {
-  const start = (tradeHistorySafePage.value - 1) * state.tradePageSize;
-  return filteredTradeHistory.value.slice(start, start + state.tradePageSize);
 });
 </script>
 

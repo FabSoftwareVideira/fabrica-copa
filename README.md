@@ -35,6 +35,16 @@ O backend foi organizado em estrutura por camadas para facilitar manutenção:
 - `backend/src/controllers/`: handlers/controladores HTTP
 - `backend/src/middlewares/`: middlewares reutilizáveis
 
+## Estrutura Frontend (Modular)
+
+- `frontend/src/App.vue`: composição da interface e integração dos módulos
+- `frontend/src/modules/app/`: ambiente, constantes e utilitários puros
+- `frontend/src/composables/auth/`: persistência de autenticação
+- `frontend/src/composables/notifications/`: persistência de notificações
+- `frontend/src/composables/trade/`: lógica de trocas e view model da tela
+
+Documentação detalhada: `frontend/README.md`
+
 ## Como Rodar em Modo Dev
 
 ### Pré-requisitos
