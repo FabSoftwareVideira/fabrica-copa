@@ -110,13 +110,23 @@ function createAlbumStateRoutes({
     });
 
     router.post("/packs/open", authMiddleware, async (req, res) => {
+        let transactionStarted = false;
         try {
-            const { state } = await getAlbumState(req.user.sub);
-            const available = Math.max(0, Number(state.extraPacks || 0));
+            const nowTimestamp = nowSqlTimestamp();
+            await run("BEGIN IMMEDIATE TRANSACTION");
+            transactionStarted = true;
 
-            if (available <= 0) {
+            const consumePackResult = await run(
+                "UPDATE album_states SET extra_packs = extra_packs - 1, updated_at = ? WHERE user_id = ? AND extra_packs > 0",
+                [nowTimestamp, req.user.sub]
+            );
+            if (!consumePackResult || Number(consumePackResult.changes || 0) !== 1) {
+                await run("ROLLBACK");
+                transactionStarted = false;
                 return res.status(400).json({ error: "Sem pacotes disponíveis" });
             }
+
+            const { state } = await getAlbumState(req.user.sub);
 
             const collectedMap = state.collected || {};
             const missing = STICKERS.filter((s) => (collectedMap[s.id] || 0) < 1);
@@ -134,13 +144,11 @@ function createAlbumStateRoutes({
                 collectedMap[sticker.id] = (collectedMap[sticker.id] || 0) + 1;
             }
 
-            let nextExtraPacks = state.extraPacks || 0;
+            const nextExtraPacks = Math.max(0, Number(state.extraPacks || 0));
             let source = "bonus";
-            nextExtraPacks = Math.max(0, nextExtraPacks - 1);
 
             const newCount = wasOwned.filter((x) => !x).length;
             const repeatCount = 5 - newCount;
-            const nowTimestamp = nowSqlTimestamp();
 
             await run(
                 `
@@ -148,7 +156,6 @@ function createAlbumStateRoutes({
       SET collected_json = ?,
           packs_used_date = ?,
           packs_used_today = ?,
-          extra_packs = ?,
           updated_at = ?
       WHERE user_id = ?
       `,
@@ -156,7 +163,6 @@ function createAlbumStateRoutes({
                     JSON.stringify(collectedMap),
                     state.packsUsedDate || "",
                     state.packsUsedToday || 0,
-                    nextExtraPacks,
                     nowTimestamp,
                     req.user.sub,
                 ]
@@ -166,6 +172,9 @@ function createAlbumStateRoutes({
                 "INSERT INTO pack_history(user_id, opened_at, stickers_json, new_count, repeat_count, source) VALUES(?, ?, ?, ?, ?, ?)",
                 [req.user.sub, nowTimestamp, JSON.stringify(pack), newCount, repeatCount, source]
             );
+
+            await run("COMMIT");
+            transactionStarted = false;
 
             return res.json({
                 ok: true,
@@ -181,6 +190,13 @@ function createAlbumStateRoutes({
                 summary: { newCount, repeatCount, source },
             });
         } catch (err) {
+            if (transactionStarted) {
+                try {
+                    await run("ROLLBACK");
+                } catch (_rollbackErr) {
+                    // noop
+                }
+            }
             return res.status(500).json({ error: "Erro ao abrir pacote", detail: err.message });
         }
     });

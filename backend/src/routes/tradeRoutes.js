@@ -245,8 +245,14 @@ function createTradeRoutes({
     });
 
     router.post("/trade/offers/:id/accept", authMiddleware, requireTradeWindowOpen, async (req, res) => {
+        let transactionStarted = false;
         try {
             const offerId = Number(req.params.id);
+            const nowTimestamp = nowSqlTimestamp();
+
+            await run("BEGIN IMMEDIATE TRANSACTION");
+            transactionStarted = true;
+
             const offer = await get(
                 `SELECT o.*
                  FROM trade_offers o
@@ -256,19 +262,36 @@ function createTradeRoutes({
                    AND uf.is_blocked = 0 AND ut.is_blocked = 0`,
                 [offerId, req.user.sub]
             );
-            if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
+            if (!offer) {
+                await run("ROLLBACK");
+                transactionStarted = false;
+                return res.status(404).json({ error: "Oferta nao encontrada" });
+            }
 
             const fromState = await getValidCollectedMap(offer.from_user_id);
             const toState = await getValidCollectedMap(offer.to_user_id);
 
-            const nowTimestamp = nowSqlTimestamp();
             if ((fromState[offer.offered_sticker_id] || 0) <= 1) {
-                await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
+                await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'pending'", [nowTimestamp, offerId]);
+                await run("COMMIT");
+                transactionStarted = false;
                 return res.status(409).json({ error: "O outro usuario nao tem mais essa figurinha repetida" });
             }
             if ((toState[offer.requested_sticker_id] || 0) <= 1) {
-                await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
+                await run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'pending'", [nowTimestamp, offerId]);
+                await run("COMMIT");
+                transactionStarted = false;
                 return res.status(409).json({ error: "Voce nao tem mais essa figurinha repetida" });
+            }
+
+            const acceptedResult = await run(
+                "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ? AND status = 'pending'",
+                [nowTimestamp, offerId]
+            );
+            if (!acceptedResult || Number(acceptedResult.changes || 0) !== 1) {
+                await run("ROLLBACK");
+                transactionStarted = false;
+                return res.status(409).json({ error: "Oferta ja processada" });
             }
 
             const fromCollected = { ...fromState };
@@ -290,10 +313,6 @@ function createTradeRoutes({
             await run(
                 "UPDATE album_states SET trade_coins = trade_coins + ?, updated_at = ? WHERE user_id = ?",
                 [TRADE_COINS_PER_TRADE, nowTimestamp, offer.from_user_id]
-            );
-            await run(
-                "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ?",
-                [nowTimestamp, offerId]
             );
 
             await run(
@@ -357,10 +376,20 @@ function createTradeRoutes({
                 ]
             );
 
+            await run("COMMIT");
+            transactionStarted = false;
+
             const { state: newState } = await getAlbumState(req.user.sub);
             const validCollected = await getValidCollectedMap(req.user.sub);
             return res.json({ ok: true, state: { ...newState, collected: validCollected } });
         } catch (err) {
+            if (transactionStarted) {
+                try {
+                    await run("ROLLBACK");
+                } catch (_rollbackErr) {
+                    // noop
+                }
+            }
             return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
         }
     });
@@ -368,10 +397,15 @@ function createTradeRoutes({
     router.post("/trade/coins/redeem", authMiddleware, async (req, res) => {
         try {
             const COINS_PER_COUPON = 10;
-            const { state } = await getAlbumState(req.user.sub);
-            const currentCoins = Number(state.tradeCoins || 0);
+            const nowTimestamp = nowSqlTimestamp();
+            const redeemResult = await run(
+                "UPDATE album_states SET trade_coins = trade_coins - ?, extra_packs = extra_packs + 1, updated_at = ? WHERE user_id = ? AND trade_coins >= ?",
+                [COINS_PER_COUPON, nowTimestamp, req.user.sub, COINS_PER_COUPON]
+            );
 
-            if (currentCoins < COINS_PER_COUPON) {
+            if (!redeemResult || Number(redeemResult.changes || 0) !== 1) {
+                const { state } = await getAlbumState(req.user.sub);
+                const currentCoins = Number(state.tradeCoins || 0);
                 return res.status(400).json({
                     error: "Moedas insuficientes para resgate",
                     tradeCoins: currentCoins,
@@ -379,15 +413,8 @@ function createTradeRoutes({
                 });
             }
 
-            const nowTimestamp = nowSqlTimestamp();
-            const nextCoins = currentCoins - COINS_PER_COUPON;
-
-            await run(
-                "UPDATE album_states SET trade_coins = ?, extra_packs = extra_packs + 1, updated_at = ? WHERE user_id = ?",
-                [nextCoins, nowTimestamp, req.user.sub]
-            );
-
             const { state: newState } = await getAlbumState(req.user.sub);
+            const nextCoins = Number(newState.tradeCoins || 0);
 
             const eventPayload = { packs: 1, spentCoins: COINS_PER_COUPON, remainingCoins: nextCoins };
             await run(
