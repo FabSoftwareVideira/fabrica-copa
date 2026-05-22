@@ -8,12 +8,11 @@ const morgan = require("morgan");
 const pinoHttp = require("pino-http");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const sqlite3 = require("sqlite3").verbose();
+const { createSqliteHelpers, Database } = require("./infrastructure/sqlite");
 const swaggerUi = require("swagger-ui-express");
 const { OAuth2Client } = require("google-auth-library");
 
 // Infrastructure
-const { createSqliteHelpers } = require("./infrastructure/sqlite");
 const { createSwaggerSpec } = require("./infrastructure/swagger");
 const { createAppLogger } = require("./infrastructure/logger");
 const { initDatabase } = require("./infrastructure/databaseInit");
@@ -62,8 +61,8 @@ const { createTradeRoutes } = require("./routes/tradeRoutes");
 
 // ─── Database ────────────────────────────────────────────────────────────────
 
-const db = new sqlite3.Database(DB_PATH);
-const { run, get, all, ensureColumn } = createSqliteHelpers(db);
+const db = new Database(DB_PATH);
+const { run, get, all, ensureColumn, transaction } = createSqliteHelpers(db);
 
 // ─── Shared utilities ────────────────────────────────────────────────────────
 

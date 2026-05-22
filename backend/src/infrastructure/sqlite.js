@@ -1,36 +1,31 @@
+
+const Database = require('better-sqlite3');
+
 function createSqliteHelpers(db) {
     function run(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.run(sql, params, function onRun(err) {
-                if (err) return reject(err);
-                resolve(this);
-            });
-        });
+        const stmt = db.prepare(sql);
+        return stmt.run(...params);
     }
 
     function get(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.get(sql, params, (err, row) => {
-                if (err) return reject(err);
-                resolve(row);
-            });
-        });
+        const stmt = db.prepare(sql);
+        return stmt.get(...params);
     }
 
     function all(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.all(sql, params, (err, rows) => {
-                if (err) return reject(err);
-                resolve(rows);
-            });
-        });
+        const stmt = db.prepare(sql);
+        return stmt.all(...params);
     }
 
-    async function ensureColumn(table, column, sqlDefinition) {
-        const cols = await all(`PRAGMA table_info(${table})`);
+    function transaction(fn) {
+        return db.transaction(fn);
+    }
+
+    function ensureColumn(table, column, sqlDefinition) {
+        const cols = all(`PRAGMA table_info(${table})`);
         const exists = cols.some((c) => c.name === column);
         if (!exists) {
-            await run(`ALTER TABLE ${table} ADD COLUMN ${column} ${sqlDefinition}`);
+            run(`ALTER TABLE ${table} ADD COLUMN ${column} ${sqlDefinition}`);
         }
     }
 
@@ -38,8 +33,13 @@ function createSqliteHelpers(db) {
         run,
         get,
         all,
+        transaction,
         ensureColumn,
+        db, // expõe o db para casos avançados
     };
 }
 
-module.exports = { createSqliteHelpers };
+module.exports = {
+    createSqliteHelpers,
+    Database
+};
