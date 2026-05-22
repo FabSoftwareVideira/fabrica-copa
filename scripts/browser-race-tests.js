@@ -8,6 +8,7 @@ How to use:
 4) Run one of these:
    - await runRerollRaceTest();
   - await runRedeemPacksRaceTest();
+  - await runOpenPacksRaceTest();
   - await runAcceptOfferCoinsRaceTest({ offerId: 123 });
    - await runTradeOfferRaceTest();
    - await runAllRaceTests();
@@ -168,6 +169,77 @@ Notes:
 
     console.table(summary);
     console.log("[redeem-packs] results", results);
+
+    return { summary: summary, results: results };
+  }
+
+  async function runOpenPacksRaceTest(config) {
+    const opts = config || {};
+    const concurrency = Number(opts.concurrency || 8);
+    const requiredExtraPacks = Number(opts.requiredExtraPacks || 1);
+
+    const before = await api("/album/state");
+    const historyBeforeRes = await api("/packs/history?limit=50");
+    const packsBefore = Number(before.body.extraPacks || 0);
+    const historyBefore = (historyBeforeRes.body && historyBeforeRes.body.history) || [];
+
+    if (packsBefore < requiredExtraPacks) {
+      throw new Error(
+        "Você precisa de pelo menos " +
+          requiredExtraPacks +
+          " pacote(s) extra antes do teste. Saldo atual: " +
+          packsBefore
+      );
+    }
+
+    const calls = Array.from({ length: concurrency }, function buildCall() {
+      return api("/packs/open", {
+        method: "POST",
+      });
+    });
+
+    const results = await Promise.all(calls);
+    const success200 = results.filter(function countSuccess(r) {
+      return r.status === 200;
+    }).length;
+    const noPacks400 = results.filter(function countNoPack(r) {
+      return r.status === 400;
+    }).length;
+    const serverErrors = results.filter(function countServerErrors(r) {
+      return r.status >= 500;
+    }).length;
+
+    const after = await api("/album/state");
+    const historyAfterRes = await api("/packs/history?limit=50");
+    const packsAfter = Number(after.body.extraPacks || 0);
+    const historyAfter = (historyAfterRes.body && historyAfterRes.body.history) || [];
+
+    const consumedPacks = packsBefore - packsAfter;
+    const historyDelta = Math.max(0, historyAfter.length - historyBefore.length);
+
+    const raceDetected =
+      success200 > packsBefore ||
+      success200 > consumedPacks ||
+      historyDelta > packsBefore ||
+      packsAfter < 0;
+
+    const summary = {
+      test: "open-packs",
+      concurrency: concurrency,
+      packsBefore: packsBefore,
+      packsAfter: packsAfter,
+      consumedPacks: consumedPacks,
+      success200: success200,
+      noPacks400: noPacks400,
+      serverErrors: serverErrors,
+      historyBefore: historyBefore.length,
+      historyAfter: historyAfter.length,
+      historyDelta: historyDelta,
+      raceDetected: raceDetected,
+    };
+
+    console.table(summary);
+    console.log("[open-packs] results", results);
 
     return { summary: summary, results: results };
   }
@@ -361,17 +433,20 @@ Notes:
     const opts = config || {};
     const rerollConfig = opts.reroll || {};
     const redeemConfig = opts.redeem || {};
+    const openPacksConfig = opts.openPacks || {};
     const acceptConfig = opts.accept || {};
     const tradeConfig = opts.trade || {};
 
     const reroll = await runRerollRaceTest(rerollConfig);
     const redeem = await runRedeemPacksRaceTest(redeemConfig);
+    const openPacks = await runOpenPacksRaceTest(openPacksConfig);
     const accept = await runAcceptOfferCoinsRaceTest(acceptConfig);
     const trade = await runTradeOfferRaceTest(tradeConfig);
 
     return {
       reroll: reroll.summary,
       redeem: redeem.summary,
+      openPacks: openPacks.summary,
       accept: accept.summary,
       trade: trade.summary,
     };
@@ -379,9 +454,10 @@ Notes:
 
   globalObj.runRerollRaceTest = runRerollRaceTest;
   globalObj.runRedeemPacksRaceTest = runRedeemPacksRaceTest;
+  globalObj.runOpenPacksRaceTest = runOpenPacksRaceTest;
   globalObj.runAcceptOfferCoinsRaceTest = runAcceptOfferCoinsRaceTest;
   globalObj.runTradeOfferRaceTest = runTradeOfferRaceTest;
   globalObj.runAllRaceTests = runAllRaceTests;
 
-  console.info("Race test helpers loaded: runRerollRaceTest, runRedeemPacksRaceTest, runAcceptOfferCoinsRaceTest, runTradeOfferRaceTest, runAllRaceTests");
+  console.info("Race test helpers loaded: runRerollRaceTest, runRedeemPacksRaceTest, runOpenPacksRaceTest, runAcceptOfferCoinsRaceTest, runTradeOfferRaceTest, runAllRaceTests");
 })(window);
