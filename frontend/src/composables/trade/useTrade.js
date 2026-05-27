@@ -1,3 +1,6 @@
+// Constante a adicionar no escopo do módulo (ou passar como parâmetro junto com rerollCost)
+const FREE_REROLL_MAX = 5;
+
 function createTradeHandlers({
   state,
   ui,
@@ -6,6 +9,33 @@ function createTradeHandlers({
   setTradePage,
   rerollCost,
 }) {
+
+  /** Devolve quantos rerolls gratuitos ainda restam hoje */
+  function freeRerollsLeft() {
+    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const sameDay = state.tradeRerollDate === today;
+    const used = sameDay ? (state.tradeRerollCount ?? 0) : 0;
+    console.log(today, state.tradeRerollDate, sameDay, used);
+
+    return Math.max(0, FREE_REROLL_MAX - used);
+  }
+
+  // ── sincroniza campos de reroll do response ────────────────────────────────
+  function syncRerollState(data) {
+    console.log(data);
+
+    if (data.tradeRerollCount != null) {
+      state.tradeRerollCount = Number(data.tradeRerollCount);
+    }
+    if (data.tradeRerollDate != null) {
+      state.tradeRerollDate = data.tradeRerollDate; // ex: "2025-05-27"
+    }
+    if (data.tradeCoins != null) {
+      state.tradeCoins = Number(data.tradeCoins);
+    }
+  }
+
+
   async function loadTradeUsers() {
     ui.tradeUsersLoading = true;
     try {
@@ -31,6 +61,8 @@ function createTradeHandlers({
     }
   }
 
+  // ── funções existentes (trecho relevante: loadTradeAvailable) ─────────────
+
   async function loadTradeAvailable() {
     ui.tradeAvailableLoading = true;
     try {
@@ -42,9 +74,7 @@ function createTradeHandlers({
       state.tradeAvailableHasMore = Boolean(
         data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
       );
-      if (data.tradeCoins != null) {
-        state.tradeCoins = Number(data.tradeCoins);
-      }
+      syncRerollState(data); // ← novo
       setTradePage("available", 1);
     } catch (err) {
       setToast(err.message || "Erro ao carregar figurinhas disponíveis");
@@ -53,14 +83,22 @@ function createTradeHandlers({
     }
   }
 
+  // ── rerollTradeAvailable com 5 rerolls gratuitos ──────────────────────────
+
   async function rerollTradeAvailable() {
     if (ui.tradeAvailableRerollLoading || ui.tradeAvailableLoading) return;
-    if (Number(state.tradeCoins || 0) < rerollCost) {
-      setToast("Você precisa de 1 coin para ver outras figurinhas");
-      return;
-    }
+
     if (!state.tradeAvailableHasMore) {
       setToast("Não há outras figurinhas disponíveis para sortear agora");
+      return;
+    }
+
+    const free = freeRerollsLeft();
+    const usesFreeReroll = free > 0;
+
+    // Só verifica coins se não há reroll gratuito disponível
+    if (!usesFreeReroll && Number(state.tradeCoins || 0) < rerollCost) {
+      setToast("Você precisa de 1 coin para ver outras figurinhas");
       return;
     }
 
@@ -82,9 +120,20 @@ function createTradeHandlers({
       state.tradeAvailableHasMore = Boolean(
         data.hasMore ?? state.tradeAvailableTotal > state.tradeAvailable.length,
       );
-      state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
+      syncRerollState(data); // atualiza count, date e coins de uma vez
+
       setTradePage("available", 1);
-      setToast("Você gastou 1 coin para ver outras figurinhas");
+
+      if (usesFreeReroll) {
+        const remaining = freeRerollsLeft(); // recalcula após sincronizar
+        setToast(
+          remaining > 0
+            ? `Reroll gratuito usado! Ainda restam ${remaining} grátis hoje.`
+            : "Último reroll gratuito do dia usado!",
+        );
+      } else {
+        setToast("Você gastou 1 coin para ver outras figurinhas");
+      }
     } catch (err) {
       setToast(err.message || "Erro ao sortear novas figurinhas");
     } finally {
@@ -129,6 +178,7 @@ function createTradeHandlers({
   }
 
   return {
+    freeRerollsLeft,
     loadTradeAvailable,
     loadTradeHistory,
     loadTradeOfferChoices,

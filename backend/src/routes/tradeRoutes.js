@@ -482,27 +482,123 @@ function createTradeRoutes({
         try {
             const allAvailable = await buildTradeAvailableEntries(req.user.sub);
             const available = getCachedTradeAvailableSelection(req.user.sub, allAvailable);
+            // Buscar tradeRerollCount, tradeRerollDate, tradeCoins
+            const { state } = await getAlbumState(req.user.sub);
+
             return res.json({
                 available,
                 totalAvailable: allAvailable.length,
                 hasMore: allAvailable.length > available.length,
                 limit: TRADE_AVAILABLE_LIMIT,
+                tradeRerollCount: state.tradeRerollCount,
+                tradeRerollDate: state.tradeRerollDate,
+                tradeCoins: state.tradeCoins,
             });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao buscar figurinhas disponíveis", detail: err.message });
         }
     });
 
+    // Permitir 5 rerolls grátis por dia, depois cobrar 1 coin por reroll
     router.post("/trade/available/reroll", authMiddleware, async (req, res) => {
         try {
             const { state } = await getAlbumState(req.user.sub);
             const currentCoins = Number(state.tradeCoins || 0);
-            if (currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+            const today = new Date().toISOString().slice(0, 10);
+            let rerollCount = Number(state.tradeRerollCount || 0);
+            let rerollDate = state.tradeRerollDate || "";
+            const FREE_REROLLS_PER_DAY = 5;
+
+            // Resetar contador se mudou o dia
+            if (rerollDate !== today) {
+                rerollCount = 0;
+                rerollDate = today;
+            }
+
+            // Limitar a 5 rerolls grátis, depois só se tiver moedas
+            let isFree = rerollCount < FREE_REROLLS_PER_DAY;
+            let isPaid = !isFree;
+
+            // Se já fez 5 rerolls e não tem moedas, não pode mais
+            if (isPaid && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
                 return res.status(400).json({
                     error: "Moedas insuficientes para ver novas figurinhas",
                     tradeCoins: currentCoins,
                     requiredCoins: TRADE_AVAILABLE_REROLL_COST,
                 });
+            }
+
+            // Se já fez 5 rerolls e não quer pagar, bloquear
+            if (!isFree && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Limite de rerolls grátis atingido e moedas insuficientes.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls e não tem moedas, bloquear
+            if (!isFree && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Limite de rerolls atingido.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls pagos, impedir continuar se não tem moedas
+            if (!isFree && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Moedas insuficientes para reroll pago.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls grátis e não tem moedas, impedir
+            if (rerollCount >= FREE_REROLLS_PER_DAY && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Você já usou todos os rerolls grátis e não tem moedas suficientes.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls grátis e tem moedas, permite reroll pago
+            if (rerollCount >= FREE_REROLLS_PER_DAY && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Você já usou todos os rerolls grátis e não tem moedas suficientes.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls grátis e tem moedas, permite reroll pago
+            if (rerollCount >= FREE_REROLLS_PER_DAY && currentCoins >= TRADE_AVAILABLE_REROLL_COST) {
+                isFree = false;
+                isPaid = true;
+            }
+
+            // Se já fez 5 rerolls grátis e não tem moedas, impedir
+            if (rerollCount >= FREE_REROLLS_PER_DAY && currentCoins < TRADE_AVAILABLE_REROLL_COST) {
+                return res.status(400).json({
+                    error: "Você já usou todos os rerolls grátis e não tem moedas suficientes.",
+                    tradeCoins: currentCoins,
+                    requiredCoins: TRADE_AVAILABLE_REROLL_COST,
+                });
+            }
+
+            // Se já fez 5 rerolls grátis e tem moedas, permite reroll pago
+            let nextCoins = currentCoins;
+            let nextRerollCount = rerollCount;
+            let spentCoins = 0;
+            if (isFree) {
+                nextRerollCount++;
+                spentCoins = 0;
+            } else if (isPaid) {
+                nextCoins = Math.max(0, currentCoins - TRADE_AVAILABLE_REROLL_COST);
+                nextRerollCount++;
+                spentCoins = TRADE_AVAILABLE_REROLL_COST;
             }
 
             const allAvailable = await buildTradeAvailableEntries(req.user.sub);
@@ -523,20 +619,23 @@ function createTradeRoutes({
             setCachedTradeAvailableSelection(req.user.sub, available);
 
             const nowTimestamp = nowSqlTimestamp();
-            const nextCoins = Math.max(0, currentCoins - TRADE_AVAILABLE_REROLL_COST);
             await run(
-                "UPDATE album_states SET trade_coins = ?, updated_at = ? WHERE user_id = ?",
-                [nextCoins, nowTimestamp, req.user.sub]
+                "UPDATE album_states SET trade_coins = ?, trade_reroll_count = ?, trade_reroll_date = ?, updated_at = ? WHERE user_id = ?",
+                [nextCoins, nextRerollCount, rerollDate, nowTimestamp, req.user.sub]
             );
 
             return res.status(201).json({
                 ok: true,
                 available,
                 tradeCoins: nextCoins,
-                spentCoins: TRADE_AVAILABLE_REROLL_COST,
+                spentCoins,
+                tradeAvailableRerollCount: nextRerollCount,
                 totalAvailable: allAvailable.length,
                 hasMore: allAvailable.length > available.length,
                 limit: TRADE_AVAILABLE_LIMIT,
+                freeRerollsPerDay: FREE_REROLLS_PER_DAY,
+                tradeRerollCount: nextRerollCount,
+                tradeRerollDate: rerollDate,
             });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao sortear novas figurinhas", detail: err.message });

@@ -16,6 +16,7 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
     await ensureColumn("users", "is_blocked", "INTEGER NOT NULL DEFAULT 0");
     await ensureColumn("users", "blocked_reason", "TEXT NOT NULL DEFAULT ''");
 
+
     await run(`
     CREATE TABLE IF NOT EXISTS album_states (
       user_id INTEGER PRIMARY KEY,
@@ -26,12 +27,16 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
       trade_coins INTEGER NOT NULL DEFAULT 0,
       last_login_bonus_date TEXT NOT NULL DEFAULT '',
       used_codes_json TEXT NOT NULL DEFAULT '[]',
+      trade_reroll_count INTEGER NOT NULL DEFAULT 0,
+      trade_reroll_date TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
     await ensureColumn("album_states", "trade_coins", "INTEGER NOT NULL DEFAULT 0");
     await ensureColumn("album_states", "last_login_bonus_date", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("album_states", "trade_reroll_count", "INTEGER NOT NULL DEFAULT 0");
+    await ensureColumn("album_states", "trade_reroll_date", "TEXT NOT NULL DEFAULT ''");
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (

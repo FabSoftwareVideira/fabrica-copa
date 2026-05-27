@@ -2920,6 +2920,7 @@ const {
   loadTradeUsers,
   rerollTradeAvailable,
   selectTradeTargetUser,
+  freeRerollsLeft,
 } = createTradeHandlers({
   state,
   ui,
@@ -3162,6 +3163,7 @@ const myTradableDuplicatesForOffer = computed(() => {
 </script>
 
 <template>
+  <div>
   <!-- ── Unauthenticated: Landing / Auth page ── -->
   <div v-if="!isAuthenticated" class="auth-root">
     <!-- Landing page -->
@@ -4807,24 +4809,41 @@ const myTradableDuplicatesForOffer = computed(() => {
                     coin para trocar o conjunto.
                   </span>
                 </div>
-                <button
-                  type="button"
-                  class="trade-coins-btn-compact"
-                  :disabled="
-                    !canRerollTradeAvailable ||
-                    ui.tradeAvailableRerollLoading ||
-                    ui.tradeAvailableLoading
-                  "
-                  @click="rerollTradeAvailable"
-                >
-                  {{
-                    ui.tradeAvailableRerollLoading
-                      ? "Sorteando..."
-                      : state.tradeAvailableHasMore
-                        ? `Ver outras ${TRADE_AVAILABLE_LIMIT} (-${TRADE_AVAILABLE_REROLL_COST} coin)`
-                        : "Sem mais opções"
-                  }}
-                </button>
+
+                <div class="trade-reroll-actions">
+                  <!-- Badge de rerolls gratuitos -->
+                  <span
+                    v-if="freeRerollsLeft() > 0"
+                    class="trade-free-reroll-badge"
+                    :title="`${freeRerollsLeft()} rerolls gratuitos restantes hoje`"
+                  >
+                    {{ freeRerollsLeft() }}x grátis
+                  </span>
+
+                  <button
+                    type="button"
+                    class="trade-coins-btn-compact"
+                    :disabled="
+                      !canRerollTradeAvailable ||
+                      ui.tradeAvailableRerollLoading ||
+                      ui.tradeAvailableLoading
+                    "
+                    @click="rerollTradeAvailable"
+                  >
+                    <template v-if="ui.tradeAvailableRerollLoading">
+                      Sorteando...
+                    </template>
+                    <template v-else-if="!state.tradeAvailableHasMore">
+                      Sem mais opções
+                    </template>
+                    <template v-else-if="freeRerollsLeft() > 0">
+                      Ver outras {{ TRADE_AVAILABLE_LIMIT }} (grátis)
+                    </template>
+                    <template v-else>
+                      Ver outras {{ TRADE_AVAILABLE_LIMIT }} (-{{ TRADE_AVAILABLE_REROLL_COST }} coin)
+                    </template>
+                  </button>
+                </div>
               </div>
               <p v-if="ui.tradeAvailableLoading" class="trade-hint">
                 Carregando...
@@ -5687,4 +5706,5 @@ const myTradableDuplicatesForOffer = computed(() => {
       <img :src="TOASTY_IMAGE" alt="Toasty" class="toasty-image" />
     </div>
   </Teleport>
+</div>
 </template>

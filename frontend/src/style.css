@@ -5240,3 +5240,20 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+.trade-reroll-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trade-free-reroll-badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #e1f5ee;       /* teal-50 */
+  color: #0f6e56;            /* teal-600 */
+  border: 1px solid #9fe1cb; /* teal-100 */
+  white-space: nowrap;
+}

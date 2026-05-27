@@ -26,6 +26,9 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON }) {
                 extraPacks: row.extra_packs || 0,
                 tradeCoins: Number(row.trade_coins || 0),
                 usedCodes: parseJSON(row.used_codes_json || "[]", []),
+                lastLoginBonusDate: row.last_login_bonus_date || "",
+                tradeRerollCount: Number(row.trade_reroll_count || 0),
+                tradeRerollDate: row.trade_reroll_date || "",
             },
         };
     }
