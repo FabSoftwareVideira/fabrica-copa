@@ -373,6 +373,8 @@ function createTradeRoutes({
             validCollected = await getValidCollectedMap(req.user.sub);
             return res.json({ ok: true, state: { ...newState, collected: validCollected } });
         } catch (err) {
+            console.log(err);
+
             return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
         }
     });

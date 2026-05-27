@@ -15,15 +15,12 @@ function createTradeHandlers({
     const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
     const sameDay = state.tradeRerollDate === today;
     const used = sameDay ? (state.tradeRerollCount ?? 0) : 0;
-    console.log(today, state.tradeRerollDate, sameDay, used);
 
     return Math.max(0, FREE_REROLL_MAX - used);
   }
 
   // ── sincroniza campos de reroll do response ────────────────────────────────
   function syncRerollState(data) {
-    console.log(data);
-
     if (data.tradeRerollCount != null) {
       state.tradeRerollCount = Number(data.tradeRerollCount);
     }
