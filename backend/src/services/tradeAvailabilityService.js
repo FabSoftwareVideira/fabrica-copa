@@ -21,9 +21,8 @@ function createTradeAvailabilityService({
         const myCollected = await getValidCollectedMap(userId);
         // Filtra usuários que acessaram nos últimos 5 dias (last_login_bonus_date)
         const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
-            .toISOString().slice(0, 19).replace('T', ' ');
-        // Print log
-        console.log(`Building trade available entries for user ${userId}. Filtering users with last_login_bonus_date >= ${fiveDaysAgo}`);
+            .toISOString()
+            .split('T')[0];
         const users = await all(
             `SELECT u.id, u.name FROM users u
              JOIN album_states a ON a.user_id = u.id

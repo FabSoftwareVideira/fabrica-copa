@@ -1,5 +1,13 @@
 import { APP_TIMEZONE } from "./constants";
 
+// Formatar datas para o formato "dd/mm/yyyy", sem horário.
+function formatDate(value, timezone = APP_TIMEZONE) {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleDateString("pt-BR", { timeZone: timezone });
+}
+
 function formatDateTime(value, timeZone = APP_TIMEZONE) {
     if (!value) return "-";
     const date = new Date(value);
@@ -70,6 +78,7 @@ function todayStr() {
 export {
     formatCountdown,
     formatCountdownLongFormat,
+    formatDate,
     formatDateTime,
     normalizeNameKey,
     normalizeTradeQuery,

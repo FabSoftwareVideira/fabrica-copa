@@ -30,6 +30,7 @@ import {
 import {
   formatCountdown,
   formatCountdownLongFormat,
+  formatDate,
   formatDateTime,
   normalizeTradeQuery,
   playerImageKey,
@@ -4143,7 +4144,7 @@ const myTradableDuplicatesForOffer = computed(() => {
                         <small>
                           {{
                             u.lastLoginBonusDate
-                              ? formatDateTime(u.lastLoginBonusDate)
+                              ? formatDate(u.lastLoginBonusDate)
                               : "—"
                           }}
                         </small>
