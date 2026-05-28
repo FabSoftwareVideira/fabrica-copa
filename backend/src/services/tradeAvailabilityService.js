@@ -19,7 +19,19 @@ function createTradeAvailabilityService({
 
     async function buildTradeAvailableEntries(userId) {
         const myCollected = await getValidCollectedMap(userId);
-        const users = await all("SELECT id, name FROM users WHERE id != ? AND is_blocked = 0", [userId]);
+        // Filtra usuários que acessaram nos últimos 5 dias (last_login_bonus_date)
+        const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+            .toISOString().slice(0, 19).replace('T', ' ');
+        // Print log
+        console.log(`Building trade available entries for user ${userId}. Filtering users with last_login_bonus_date >= ${fiveDaysAgo}`);
+        const users = await all(
+            `SELECT u.id, u.name FROM users u
+             JOIN album_states a ON a.user_id = u.id
+             WHERE u.id != ? AND u.is_blocked = 0
+               AND (a.last_login_bonus_date IS NOT NULL AND a.last_login_bonus_date != '' AND a.last_login_bonus_date >= ?)
+            `,
+            [userId, fiveDaysAgo]
+        );
 
         const pendingRows = await all(
             `SELECT from_user_id, offered_sticker_id, COUNT(*) AS pending_count
