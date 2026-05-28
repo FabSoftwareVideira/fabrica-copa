@@ -5761,15 +5761,20 @@ const myTradableDuplicatesForOffer = computed(() => {
               </svg>
               <span>Código-fonte no GitHub</span>
             </a>
-            <button class="profile-link-btn" @click="ui.profileOpen = true">
-              Meu Perfil
-            </button>
+            <!-- Botão de perfil movido para a sessão do usuário -->
           </div>
           <div class="app-footer-right">
             <div class="app-footer-session">
-              <span class="user-pill"
-                >Conectado como {{ state.user?.name }} · {{ userRole }}</span
+              <!-- O span e o botão foram unidos em um único botão clicável -->
+              <button
+                class="profile-link-btn user-pill"
+                type="button"
+                @click="ui.profileOpen = true"
+                title="Clique para ver Meu Perfil"
               >
+                Conectado como {{ state.user?.name }} · {{ userRole }} (Ver Perfil)
+              </button>
+
               <button
                 type="button"
                 class="logout-btn app-footer-logout"
