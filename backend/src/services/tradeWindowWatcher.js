@@ -18,6 +18,9 @@
 const { sendMail } = require("../utils/email");
 const { getAllUserEmails } = require("../utils/user");
 
+// Importa FRONTEND_URL da config
+const { FRONTEND_URL } = require("../config/env");
+
 function createTradeWindowWatcher({
     run,
     all,
@@ -92,13 +95,15 @@ function createTradeWindowWatcher({
             const emails = await getAllUserEmails(all);
             if (emails && emails.length > 0) {
                 const subject = "Janela de trocas aberta!";
-                const text = `A janela de trocas do álbum está aberta até ${endsAtFormatted}! Aproveite para negociar suas figurinhas.`;
+                const text = `A janela de trocas do álbum está aberta até ${endsAtFormatted}!\n\nAcesse agora: ${FRONTEND_URL}\n\nAproveite para negociar suas figurinhas com outros colecionadores!`;
+                const html = `<p style='font-size:1.1em'>A janela de trocas do álbum está <b>aberta até ${endsAtFormatted}</b>!</p>
+<p><a href='${FRONTEND_URL}' style='background:#10a3ae;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;'>Acessar plataforma</a></p>
+<p style='color:#444'>Aproveite para negociar suas figurinhas com outros colecionadores.<br>Se não deseja mais receber estes avisos, acesse seu perfil e desative a opção de e-mail.</p>`;
 
-                // AGUARDE e veja os resultados individuais
+                // Envia e-mail com texto e HTML
                 const results = await Promise.allSettled(
-                    emails.map(email => sendMail({ to: email, subject, text }))
+                    emails.map(email => sendMail({ to: email, subject, text, html }))
                 );
-
 
                 results.forEach((result, i) => {
                     if (result.status === 'rejected') {

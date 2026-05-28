@@ -19,8 +19,11 @@ const LOG_ROTATION_INTERVAL = process.env.LOG_ROTATION_INTERVAL || "1d";
 const LOG_ROTATION_MAX_FILES = Number(process.env.LOG_ROTATION_MAX_FILES || 14);
 const DAILY_LOGIN_BONUS_COINS = Math.max(0, Number(process.env.DAILY_LOGIN_BONUS_COINS || 3));
 const DAILY_LOGIN_BONUS_PACKS = Math.max(0, Number(process.env.DAILY_LOGIN_BONUS_PACKS || 1));
+
 const apiBaseUrlFromEnv = String(process.env.API_BASE_URL || "").trim();
 const API_BASE_URL = apiBaseUrlFromEnv || `http://localhost:${PORT}/api`;
+
+const FRONTEND_URL = String(process.env.FRONTEND_URL || "http://localhost:5173").trim();
 
 if (NODE_ENV === "production" && !apiBaseUrlFromEnv) {
     throw new Error("API_BASE_URL é obrigatório em produção. Defina no backend/.env");
@@ -51,6 +54,7 @@ module.exports = {
     DAILY_LOGIN_BONUS_COINS,
     DAILY_LOGIN_BONUS_PACKS,
     API_BASE_URL,
+    FRONTEND_URL,
     DB_PATH,
     ROLE_ADMIN,
     ROLE_SERVIDOR,
