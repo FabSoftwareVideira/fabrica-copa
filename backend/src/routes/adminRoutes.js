@@ -338,15 +338,17 @@ function createAdminRoutes({
     router.get("/admin/users", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
         try {
             const users = await all(
-                `SELECT id, name, email, role, is_blocked, blocked_reason, created_at
-                 FROM users
-                 ORDER BY id ASC`
+                `SELECT u.id, u.name, u.email, u.role, u.is_blocked, u.blocked_reason, u.created_at, a.last_login_bonus_date
+                 FROM users u
+                 LEFT JOIN album_states a ON a.user_id = u.id
+                 ORDER BY u.id ASC`
             );
             return res.json({
                 users: users.map((u) => ({
                     ...sanitizeUser(u),
                     blockedReason: u.blocked_reason || "",
                     createdAt: u.created_at,
+                    lastLoginBonusDate: u.last_login_bonus_date || null,
                 })),
             });
         } catch (err) {
