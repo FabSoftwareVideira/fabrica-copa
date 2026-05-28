@@ -49,12 +49,69 @@ function createAuthController({
         };
     }
 
+
     async function registerDisabled(_req, res) {
         return res.status(410).json({ error: "Cadastro por email/senha desativado. Use login com Google." });
     }
 
     async function loginDisabled(_req, res) {
         return res.status(410).json({ error: "Login por email/senha desativado. Use login com Google." });
+    }
+
+    // Endpoint de login de teste (apenas para desenvolvimento)
+    async function testLogin(req, res) {
+        if (process.env.NODE_ENV !== "development") {
+            return res.status(403).json({ error: "Endpoint restrito ao ambiente de desenvolvimento" });
+        }
+        const email = String(req.body?.email || "").trim().toLowerCase();
+        if (!email) return res.status(400).json({ error: "Email obrigatorio" });
+
+        let userRow = await get(
+            "SELECT id, name, email, role, is_blocked FROM users WHERE email = ?",
+            [email],
+        );
+
+        if (!userRow) {
+            // Cria usuário fake se não existir
+            const name = email.split("@")[0] || "Teste";
+            const pseudoPasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+            const created = await run(
+                "INSERT INTO users(name, email, password_hash, role) VALUES(?, ?, ?, ?)",
+                [name, email, pseudoPasswordHash, ROLE_PLAYER],
+            );
+            userRow = {
+                id: created.lastID,
+                name,
+                email,
+                role: ROLE_PLAYER,
+                is_blocked: 0,
+            };
+        } else {
+            if (Number(userRow.is_blocked || 0) === 1) {
+                return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
+            }
+        }
+
+        const dailyBonus = await grantDailyLoginBonus(userRow.id);
+
+        const user = {
+            id: userRow.id,
+            name: userRow.name,
+            email: userRow.email,
+            role: userRow.role || ROLE_PLAYER,
+        };
+        const accessToken = signAccessToken(user);
+        const refreshToken = await createRefreshToken(user.id);
+
+        return res.json({
+            accessToken,
+            refreshToken,
+            tokenType: "Bearer",
+            expiresIn: ACCESS_TOKEN_TTL,
+            user,
+            dailyBonus,
+            testLogin: true,
+        });
     }
 
     async function authGoogle(req, res) {
@@ -216,6 +273,7 @@ function createAuthController({
         authRefresh,
         authLogout,
         authMe,
+        testLogin,
     };
 }
 

@@ -203,6 +203,7 @@ app.use("/api", createTradeRoutes({
     TRADE_AVAILABLE_LIMIT, TRADE_AVAILABLE_REROLL_COST,
     buildTradeAvailableEntries, getCachedTradeAvailableSelection,
     pickTradeAvailableSelection, setCachedTradeAvailableSelection,
+    transaction
 }));
 
 // ─── HTTP logging middlewares (after routes so requestId is set) ──────────────

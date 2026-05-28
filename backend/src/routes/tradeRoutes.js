@@ -18,6 +18,7 @@ function createTradeRoutes({
     getCachedTradeAvailableSelection,
     pickTradeAvailableSelection,
     setCachedTradeAvailableSelection,
+    transaction,
 }) {
     const router = express.Router();
 
@@ -277,7 +278,9 @@ function createTradeRoutes({
             let sharedPayload;
             let newState, validCollected;
             try {
+
                 transaction(() => {
+
                     const fromCollected = { ...fromState };
                     fromCollected[offer.offered_sticker_id] = Number(fromCollected[offer.offered_sticker_id]) - 1;
                     fromCollected[offer.requested_sticker_id] = (Number(fromCollected[offer.requested_sticker_id]) || 0) + 1;
@@ -363,7 +366,7 @@ function createTradeRoutes({
                             nowTimestamp,
                         ]
                     );
-                });
+                })();
             } catch (err) {
                 return res.status(500).json({ error: "Erro ao aceitar oferta (transação)", detail: err.message });
             }
@@ -373,7 +376,7 @@ function createTradeRoutes({
             validCollected = await getValidCollectedMap(req.user.sub);
             return res.json({ ok: true, state: { ...newState, collected: validCollected } });
         } catch (err) {
-            console.log(err);
+            console.error(err);
 
             return res.status(500).json({ error: "Erro ao aceitar oferta", detail: err.message });
         }
