@@ -1,4 +1,5 @@
 <script setup>
+import ProfileScreen from './components/ProfileScreen.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import playerImagesData from "../js/player-images.json";
 import {
@@ -5760,6 +5761,9 @@ const myTradableDuplicatesForOffer = computed(() => {
               </svg>
               <span>Código-fonte no GitHub</span>
             </a>
+            <button class="profile-link-btn" @click="ui.profileOpen = true">
+              Meu Perfil
+            </button>
           </div>
           <div class="app-footer-right">
             <div class="app-footer-session">
@@ -5777,6 +5781,15 @@ const myTradableDuplicatesForOffer = computed(() => {
           </div>
         </div>
       </footer>
+
+      <Teleport to="body">
+        <div v-if="ui.profileOpen" class="modal" @click.self="ui.profileOpen = false">
+          <div class="modal-box profile-modal-box">
+            <button class="profile-close-btn" @click="ui.profileOpen = false" style="float:right">✕</button>
+            <ProfileScreen :api-fetch="apiFetch" />
+          </div>
+        </div>
+      </Teleport>
     </div>
 
     <!-- Toast global (visível em qualquer estado) -->

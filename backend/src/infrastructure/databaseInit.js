@@ -15,6 +15,7 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
     await ensureColumn("users", "role", "TEXT NOT NULL DEFAULT 'jogador'");
     await ensureColumn("users", "is_blocked", "INTEGER NOT NULL DEFAULT 0");
     await ensureColumn("users", "blocked_reason", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("users", "wants_emails", "INTEGER NOT NULL DEFAULT 0");
 
 
     await run(`

@@ -15,6 +15,9 @@
  * @param {Function} deps.nowSqlTimestamp
  * @param {Function} deps.logError
  */
+const { sendMail } = require("../utils/email");
+const { getAllUserEmails } = require("../utils/user");
+
 function createTradeWindowWatcher({
     run,
     all,
@@ -84,6 +87,30 @@ function createTradeWindowWatcher({
                 now,
             ]
         );
+
+        try {
+            const emails = await getAllUserEmails(all);
+            if (emails && emails.length > 0) {
+                const subject = "Janela de trocas aberta!";
+                const text = `A janela de trocas do álbum está aberta até ${endsAtFormatted}! Aproveite para negociar suas figurinhas.`;
+
+                // AGUARDE e veja os resultados individuais
+                const results = await Promise.allSettled(
+                    emails.map(email => sendMail({ to: email, subject, text }))
+                );
+
+
+                results.forEach((result, i) => {
+                    if (result.status === 'rejected') {
+                        logError(`Falha ao enviar email para ${emails[i]}`, { err: result.reason });
+                    } else {
+                        console.log(`Email enviado para ${emails[i]}:`, result.value.messageId);
+                    }
+                });
+            }
+        } catch (err) {
+            logError("Falha ao enviar e-mails de notificação de janela de trocas", { err });
+        }
     }
 
     async function handleWindowClosed(window, now) {

@@ -21,7 +21,8 @@
         "pino-http": "^11.0.0",
         "rotating-file-stream": "^3.2.9",
         "swagger-jsdoc": "^6.2.8",
-        "swagger-ui-express": "^5.0.1"
+        "swagger-ui-express": "^5.0.1",
+        "nodemailer": "^8.0.9"
     },
     "devDependencies": {
         "nodemon": "^3.1.14"

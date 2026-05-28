@@ -63,6 +63,12 @@ export default defineConfig(({ mode }) => {
             watch: {
                 ignored: ["**/*.json"],
             },
+            proxy: {
+                '/api': {
+                    target: 'http://localhost:3000', // ajuste se o backend rodar em outra porta
+                    changeOrigin: true,
+                },
+            },
         },
     };
 });

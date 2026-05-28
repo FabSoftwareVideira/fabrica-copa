@@ -74,6 +74,7 @@ function createAlbumRoutes({
         }
     });
 
+    // Rota para criar uma nova janela de trocas
     router.post("/admin/trade/windows", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
         try {
             const startsAtRaw = String(req.body?.startsAt || "").trim();

@@ -20,7 +20,7 @@ function createCorsOptions(rawOrigins) {
             if (isOriginAllowed(origin)) return callback(null, true);
             return callback(new Error("Origin nao permitida por CORS"));
         },
-        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
         allowedHeaders: ["Content-Type", "Authorization"],
     };
 }

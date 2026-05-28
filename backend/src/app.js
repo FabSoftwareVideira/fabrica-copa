@@ -17,6 +17,8 @@ const { createSwaggerSpec } = require("./infrastructure/swagger");
 const { createAppLogger } = require("./infrastructure/logger");
 const { initDatabase } = require("./infrastructure/databaseInit");
 
+const { sendMail } = require("./utils/email");
+
 // Config
 const {
     NODE_ENV, PORT, APP_TIMEZONE, CORS_ORIGIN, JWT_SECRET,
@@ -58,6 +60,7 @@ const { createAlbumRoutes } = require("./routes/albumRoutes");
 const { createAdminRoutes } = require("./routes/adminRoutes");
 const { createAlbumStateRoutes } = require("./routes/albumStateRoutes");
 const { createTradeRoutes } = require("./routes/tradeRoutes");
+
 
 // ─── Database ────────────────────────────────────────────────────────────────
 
@@ -161,6 +164,7 @@ const authController = createAuthController({
     todayStr, DAILY_LOGIN_BONUS_COINS, DAILY_LOGIN_BONUS_PACKS,
 });
 
+
 // ─── Express app ─────────────────────────────────────────────────────────────
 
 const app = express();
@@ -179,11 +183,12 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
+const { createProfileRoutes } = require("./routes/profileRoutes");
 app.use("/api", createSystemRoutes({ systemController, swaggerSpec }));
 app.use("/api", createAuthRoutes({ authController, authMiddleware }));
 app.use("/api", createAlbumRoutes({
     authMiddleware, requireRoles, ROLE_ADMIN, APP_TIMEZONE, STICKERS,
-    getGlobalRanking, getAllTradeWindows, toTradeWindowsPayload, run, get, nowSqlTimestamp,
+    getGlobalRanking, getAllTradeWindows, toTradeWindowsPayload, run, get, nowSqlTimestamp
 }));
 app.use("/api", createAdminRoutes({
     authMiddleware, requireRoles, ROLE_ADMIN, ROLE_SERVIDOR, ROLE_PLAYER, ALLOWED_ROLES,
@@ -205,6 +210,7 @@ app.use("/api", createTradeRoutes({
     pickTradeAvailableSelection, setCachedTradeAvailableSelection,
     transaction
 }));
+app.use("/api", createProfileRoutes({ get, run, authMiddleware }));
 
 // ─── HTTP logging middlewares (after routes so requestId is set) ──────────────
 
@@ -284,5 +290,11 @@ async function initializeApplication() {
 function getServerConfig() {
     return { PORT, NODE_ENV, LOG_LEVEL, fileLogEnabled, LOG_DIR, LOG_ROTATION_INTERVAL, CORS_ORIGIN };
 }
+
+// sendMail({
+//     to: "fabricio.bizotto@ifc.edu.br",
+//     subject: "Teste de envio de e-mail",
+//     text: "Este é um e-mail de teste enviado pelo backend do álbum da Copa 2026.",
+// })
 
 module.exports = { app, initializeApplication, getServerConfig, logInfo, logError };
