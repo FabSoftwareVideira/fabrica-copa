@@ -177,10 +177,14 @@ function createAdminRoutes({
 
             let targetUser = null;
             if (hasTargetUser) {
-                targetUser = await get("SELECT id, name, is_blocked FROM users WHERE id = ?", [targetUserId]);
+                targetUser = await get("SELECT id, name, is_blocked, role FROM users WHERE id = ?", [targetUserId]);
                 if (!targetUser) return res.status(404).json({ error: "Usuario alvo nao encontrado" });
                 if (Number(targetUser.is_blocked || 0) === 1) {
                     return res.status(400).json({ error: "Nao e possivel gerar cupom para usuario bloqueado" });
+                }
+                // Impede servidor de gerar cupom para outro servidor
+                if (req.user.role === ROLE_SERVIDOR && targetUser.role === ROLE_SERVIDOR) {
+                    return res.status(403).json({ error: "Usuários do tipo servidor não podem gerar cupons para outros usuários do tipo servidor." });
                 }
             }
 

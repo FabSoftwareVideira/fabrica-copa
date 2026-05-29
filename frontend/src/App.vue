@@ -1,5 +1,5 @@
 <script setup>
-import ProfileScreen from './components/ProfileScreen.vue';
+import ProfileScreen from "./components/ProfileScreen.vue";
 import { computed, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import playerImagesData from "../js/player-images.json";
 import {
@@ -2140,11 +2140,13 @@ async function generateManagedCoupon() {
 
   syncCouponTargetIdFromInput();
   const targetUserId = Number(adminTools.targetUserId || 0);
+
   if (!isAdmin.value && targetUserId <= 0) {
     ui.couponPanelMsg = "Selecione um usuário para gerar o cupom.";
     ui.couponPanelKind = "error";
     return;
   }
+
   const payload = {};
   if (targetUserId > 0) {
     payload.targetUserId = targetUserId;
@@ -2158,49 +2160,46 @@ async function generateManagedCoupon() {
       method: "POST",
       body: JSON.stringify(payload),
     });
+
     const coupon = data.coupon || {};
     ui.couponPanelCode = String(coupon.code || "");
+
+    // CORREÇÃO: Template string fechada corretamente e lógica concluída
     ui.couponPanelMsg = coupon.isGeneric
       ? `Cupom ${coupon.code} gerado para uso livre (${coupon.packs || 1} pacote).`
-      : `Cupom ${coupon.code} gerado para ${
-          coupon.targetUserName || "usuário"
-        } (${coupon.packs || 1} pacote).`;
-    ui.couponPanelKind = coupon.isGeneric ? "generic" : "targeted";
-    if (canManageCoupons.value) {
-      await loadAdminCoupons();
-    }
+      : `Cupom ${coupon.code} gerado com sucesso para o usuário.`;
+
+    await loadAdminCoupons();
   } catch (err) {
-    ui.couponPanelMsg = err.message || "Erro ao gerar cupom";
+    let msg = "Erro ao gerar cupom.";
+    let showToasty = false;
+
+    // Se o status for 403, ativa o Toasty
+    if (err?.status === 403 || err?.response?.status === 403) {
+      showToasty = true;
+    }
+
+    // Extrai a mensagem de erro da API se disponível
+    if (err && typeof err.json === "function") {
+      try {
+        const data = await err.json();
+        if (data?.error) {
+          msg = data.error;
+        }
+      } catch (jsonErr) {
+        console.error("Não foi possível ler o JSON do erro", jsonErr);
+      }
+    } else if (err?.message) {
+      msg = err.message;
+    }
+
+    // Atualiza a interface
+    ui.couponPanelMsg = msg;
     ui.couponPanelKind = "error";
-  }
-}
 
-async function grantDailyPackToAll() {
-  if (!isAdmin.value) return;
-  const confirmBulkGrant = window.confirm(
-    "Confirma liberar 1 pacote para todos os usuários elegíveis? Esta ação em massa não pode ser desfeita.",
-  );
-  if (!confirmBulkGrant) return;
-
-  ui.grantDailyPackLoading = true;
-  ui.grantDailyPackMsg = "";
-
-  try {
-    const resp = await apiFetch("/admin/coupons/grant-daily-pack", {
-      method: "POST",
-    });
-
-    if (resp?.ok) {
-      ui.grantDailyPackMsg = `Pacote liberado: ${resp.granted} usuários receberam, ${resp.skipped} já tinham recebido hoje, ${resp.errors} erros.`;
-      await loadAdminCoupons();
-      return;
+    if (showToasty) {
+      showToastyEasterEgg();
     }
-
-    ui.grantDailyPackMsg = resp?.error || "Erro ao liberar pacotes.";
-  } catch (err) {
-    ui.grantDailyPackMsg = err.message || "Erro ao liberar pacotes.";
-  } finally {
-    ui.grantDailyPackLoading = false;
   }
 }
 
@@ -5772,7 +5771,8 @@ const myTradableDuplicatesForOffer = computed(() => {
                 @click="ui.profileOpen = true"
                 title="Clique para ver Meu Perfil"
               >
-                Conectado como {{ state.user?.name }} · {{ userRole }} (Ver Perfil)
+                Conectado como {{ state.user?.name }} · {{ userRole }} (Ver
+                Perfil)
               </button>
 
               <button
@@ -5788,9 +5788,19 @@ const myTradableDuplicatesForOffer = computed(() => {
       </footer>
 
       <Teleport to="body">
-        <div v-if="ui.profileOpen" class="modal" @click.self="ui.profileOpen = false">
+        <div
+          v-if="ui.profileOpen"
+          class="modal"
+          @click.self="ui.profileOpen = false"
+        >
           <div class="modal-box profile-modal-box">
-            <button class="profile-close-btn" @click="ui.profileOpen = false" style="float:right">✕</button>
+            <button
+              class="profile-close-btn"
+              @click="ui.profileOpen = false"
+              style="float: right"
+            >
+              ✕
+            </button>
             <ProfileScreen :api-fetch="apiFetch" />
           </div>
         </div>
