@@ -21,6 +21,7 @@ class TradeOfferNotifier {
         const html = `<p>Olá ${toName || "usuário"},</p><p>Você recebeu uma nova proposta de troca de figurinhas de <b>${fromName}</b>.</p><p><b>Oferta:</b> ${offeredStickerName} por ${requestedStickerName}.</p><p style='color:#0a7'><b>${coinsMsg}</b></p><p><a href='${frontendUrl}' style='background:#10a3ae;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;'>Acessar plataforma</a></p><p style='color:#444'>Acesse a janela de trocas para aceitar ou recusar a proposta.<br>Equipe Fábrica da Copa</p>`;
         // Não aguarda o envio do e-mail, apenas dispara
         sendMail({ to: toEmail, subject, text, html })
+            .then((result) => console.log(`[TradeOfferNotifier] Email de proposta de troca enviado para ${toEmail}:`, result.messageId))
             .catch((err) => console.error("[TradeOfferNotifier] Falha ao enviar email de proposta de troca:", err));
     }
 }
