@@ -286,32 +286,31 @@ function createTradeRoutes({
             );
             if (!offer) return res.status(404).json({ error: "Oferta nao encontrada" });
 
-            const fromState = await getValidCollectedMap(offer.from_user_id);
-            const toState = await getValidCollectedMap(offer.to_user_id);
-
             const nowTimestamp = nowSqlTimestamp();
-            if ((fromState[offer.offered_sticker_id] || 0) <= 1) {
-                run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
-                return res.status(409).json({ error: "O outro usuario nao tem mais essa figurinha repetida" });
-            }
-            if ((toState[offer.requested_sticker_id] || 0) <= 1) {
-                run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
-                return res.status(409).json({ error: "Voce nao tem mais essa figurinha repetida" });
-            }
-
-            // Executa todas as operações críticas em uma transação
+            
             let creatorUser, acceptorUser, offeredSticker, requestedSticker;
             let sharedPayload;
-            let newState, validCollected;
+
             try {
-
                 transaction(() => {
+                    const fromRow = get("SELECT collected_json FROM album_states WHERE user_id = ?", [offer.from_user_id]);
+                    const toRow = get("SELECT collected_json FROM album_states WHERE user_id = ?", [offer.to_user_id]);
+                    
+                    const fromCollected = fromRow && fromRow.collected_json ? JSON.parse(fromRow.collected_json) : {};
+                    const toCollected = toRow && toRow.collected_json ? JSON.parse(toRow.collected_json) : {};
 
-                    const fromCollected = { ...fromState };
+                    if ((fromCollected[offer.offered_sticker_id] || 0) <= 1) {
+                        run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
+                        throw new Error("O outro usuario nao tem mais essa figurinha repetida");
+                    }
+                    if ((toCollected[offer.requested_sticker_id] || 0) <= 1) {
+                        run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
+                        throw new Error("Voce nao tem mais essa figurinha repetida");
+                    }
+
                     fromCollected[offer.offered_sticker_id] = Number(fromCollected[offer.offered_sticker_id]) - 1;
                     fromCollected[offer.requested_sticker_id] = (Number(fromCollected[offer.requested_sticker_id]) || 0) + 1;
 
-                    const toCollected = { ...toState };
                     toCollected[offer.requested_sticker_id] = Number(toCollected[offer.requested_sticker_id]) - 1;
                     toCollected[offer.offered_sticker_id] = (Number(toCollected[offer.offered_sticker_id]) || 0) + 1;
 
@@ -365,15 +364,8 @@ function createTradeRoutes({
                          VALUES('trade_accepted', ?, ?, ?, ?, ?)`,
                         [
                             `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
-                            JSON.stringify({
-                                ...sharedPayload,
-                                recipientUserId: offer.from_user_id,
-                                recipientUserName: creatorUser?.name,
-                                coinsReceived,
-                            }),
-                            offer.to_user_id,
-                            offer.from_user_id,
-                            nowTimestamp,
+                            JSON.stringify({ ...sharedPayload, recipientUserId: offer.from_user_id, recipientUserName: creatorUser?.name, coinsReceived }),
+                            offer.to_user_id, offer.from_user_id, nowTimestamp,
                         ]
                     );
                     run(
@@ -381,23 +373,18 @@ function createTradeRoutes({
                          VALUES('trade_accepted', ?, ?, ?, ?, ?)` ,
                         [
                             `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
-                            JSON.stringify({
-                                ...sharedPayload,
-                                recipientUserId: offer.to_user_id,
-                                recipientUserName: acceptorUser?.name,
-                                coinsReceived,
-                            }),
-                            offer.to_user_id,
-                            offer.to_user_id,
-                            nowTimestamp,
+                            JSON.stringify({ ...sharedPayload, recipientUserId: offer.to_user_id, recipientUserName: acceptorUser?.name, coinsReceived }),
+                            offer.to_user_id, offer.to_user_id, nowTimestamp,
                         ]
                     );
                 })();
             } catch (err) {
+                if (err.message.includes("nao tem mais")) return res.status(409).json({ error: err.message });
                 return res.status(500).json({ error: "Erro ao aceitar oferta (transação)", detail: err.message });
             }
 
             // Atualiza estado do usuário após a transação
+            let newState, validCollected;
             ({ state: newState } = await getAlbumState(req.user.sub));
             validCollected = await getValidCollectedMap(req.user.sub);
             return res.json({ ok: true, state: { ...newState, collected: validCollected } });
