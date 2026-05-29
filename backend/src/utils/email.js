@@ -30,27 +30,33 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 /**
- * Envia um e-mail usando o Gmail
- * @param {string} to - E-mail do destinatário
- * @param {string} subject - Assunto do e-mail
- * @param {string} text - Corpo do e-mail (texto)
- * @param {string} [html] - Corpo do e-mail (HTML opcional)
+ * Envia um e-mail com suporte a múltiplos destinatários em cópia oculta
+ * @param {Object} options
+ * @param {string} options.to - E-mail do destinatário principal
+ * @param {string|string[]} [options.bcc] - E-mail(s) em cópia oculta (string ou array)
+ * @param {string} options.subject - Assunto do e-mail
+ * @param {string} options.text - Corpo do e-mail (texto)
+ * @param {string} [options.html] - Corpo do e-mail (HTML opcional)
  */
-async function sendMail({ to, subject, text, html }) {
+async function sendMail({ to, bcc, subject, text, html }) {
     const from = process.env.NODE_ENV === 'production'
         ? process.env.GMAIL_USER
         : 'mailpit@localhost';
 
-    const mailOptions = { from, to, subject, text, html };
+    // O Nodemailer aceita o campo 'bcc' tanto como string ("a@b.com, c@d.com") quanto como Array de strings
+    const mailOptions = { from, to, bcc, subject, text, html };
 
     try {
         const info = await transporter.sendMail(mailOptions);
-        // Log sutil para auditoria (evite logar o conteúdo por privacidade)
-        console.log(`[Mailer] E-mail enviado com sucesso para: ${to}. MessageId: ${info.messageId}`);
+
+        // Formata o log dependendo se bcc é array ou string
+        const bccCount = Array.isArray(bcc) ? bcc.length : (bcc ? 1 : 0);
+        console.log(`[Mailer] E-mail enviado com sucesso para: ${to}${bccCount ? ` (+${bccCount} BCC)` : ''}. MessageId: ${info.messageId}`);
+
         return info;
     } catch (error) {
         console.error(`[Mailer] Erro ao enviar e-mail para ${to}:`, error);
-        throw error; // Re-lança o erro para o controlador saber que falhou
+        throw error;
     }
 }
 

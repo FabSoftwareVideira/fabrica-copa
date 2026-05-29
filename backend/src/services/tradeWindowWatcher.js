@@ -15,11 +15,10 @@
  * @param {Function} deps.nowSqlTimestamp
  * @param {Function} deps.logError
  */
-const { sendMail } = require("../utils/email");
-const { getAllUserEmails } = require("../utils/user");
 
-// Importa FRONTEND_URL da config
 const { FRONTEND_URL } = require("../config/env");
+const { TradeWindowEmailNotifier } = require("../infrastructure/TradeWindowEmailNotifier");
+const { TradeWindowStateManager } = require("../infrastructure/TradeWindowStateManager");
 
 function createTradeWindowWatcher({
     run,
@@ -31,8 +30,8 @@ function createTradeWindowWatcher({
     nowSqlTimestamp,
     logError,
 }) {
-    // windowId -> { isOpen: boolean, openedAt: timestamp|null }
-    const openStates = new Map();
+    const emailNotifier = new TradeWindowEmailNotifier({ all, logError, FRONTEND_URL });
+    const stateManager = new TradeWindowStateManager();
 
     async function cancelPendingOffersForClosedWindow(now) {
         const pendingOffers = await all(
@@ -73,7 +72,7 @@ function createTradeWindowWatcher({
     }
 
     async function handleWindowOpened(window, now) {
-        openStates.set(window.id, { isOpen: true, openedAt: now });
+        stateManager.setOpen(window.id, now);
 
         const endsAtFormatted = new Date(window.endsAt).toLocaleString("pt-BR", {
             dateStyle: "short",
@@ -93,40 +92,11 @@ function createTradeWindowWatcher({
             ]
         );
 
-        try {
-            console.log(`[Watcher] Buscando e-mails de usuários para notificação...`);
-            const emails = await getAllUserEmails(all);
-            console.log(`[Watcher] Total de e-mails encontrados: ${emails?.length || 0}`);
-            if (emails && emails.length > 0) {
-                const subject = "Janela de trocas aberta!";
-                const text = `A janela de trocas do álbum está aberta até ${endsAtFormatted}!\n\nAcesse agora: ${FRONTEND_URL}\n\nAproveite para negociar suas figurinhas com outros colecionadores!`;
-                const html = `<p style='font-size:1.1em'>A janela de trocas do álbum está <b>aberta até ${endsAtFormatted}</b>!</p>
-<p><a href='${FRONTEND_URL}' style='background:#10a3ae;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:bold;'>Acessar plataforma</a></p>
-<p style='color:#444'>Aproveite para negociar suas figurinhas com outros colecionadores.<br>Se não deseja mais receber estes avisos, acesse seu perfil e desative a opção de e-mail.</p>`;
-
-                // Envia e-mail com texto e HTML
-                console.log(`[Watcher] Enviando e-mails de notificação para usuários...`);
-                const results = await Promise.allSettled(
-                    emails.map(email => sendMail({ to: email, subject, text, html }))
-                );
-
-                results.forEach((result, i) => {
-                    if (result.status === 'rejected') {
-                        logError(`[Watcher] Falha ao enviar email para ${emails[i]}`, { err: result.reason });
-                    } else {
-                        console.log(`[Watcher] Email enviado para ${emails[i]}:`, result.value.messageId);
-                    }
-                });
-            } else {
-                console.log(`[Watcher] Nenhum e-mail encontrado para notificação.`);
-            }
-        } catch (err) {
-            logError("[Watcher] Falha ao enviar e-mails de notificação de janela de trocas", { err });
-        }
+        await emailNotifier.sendTradeWindowOpenedEmails({ endsAtFormatted });
     }
 
     async function handleWindowClosed(window, now) {
-        openStates.set(window.id, { isOpen: false, openedAt: null });
+        stateManager.setClosed(window.id);
 
         console.log(`[Watcher] Janela de trocas encerrada (ID: ${window.id})`);
 
@@ -157,13 +127,17 @@ function createTradeWindowWatcher({
             const now = nowSqlTimestamp();
 
             for (const w of windows) {
-                const prev = openStates.get(w.id);
+                const prev = stateManager.getState(w.id);
                 const wasOpen = prev?.isOpen ?? false;
                 const isNowOpen = w.isOpen === true;
 
                 if (prev === undefined) {
                     // First check after startup — record state without emitting events
-                    openStates.set(w.id, { isOpen: isNowOpen, openedAt: isNowOpen ? now : null });
+                    if (isNowOpen) {
+                        stateManager.setOpen(w.id, now);
+                    } else {
+                        stateManager.setClosed(w.id);
+                    }
                     console.log(`[Watcher] Estado inicial registrado para janela ${w.id}: ${isNowOpen ? 'aberta' : 'fechada'}`);
                     continue;
                 }
@@ -179,9 +153,9 @@ function createTradeWindowWatcher({
 
             // Remove stale entries for windows that no longer exist
             const activeIds = new Set(windows.map((w) => w.id));
-            for (const id of openStates.keys()) {
+            for (const id of stateManager.keys()) {
                 if (!activeIds.has(id)) {
-                    openStates.delete(id);
+                    stateManager.delete(id);
                     console.log(`[Watcher] Removendo estado obsoleto da janela ${id}`);
                 }
             }
