@@ -81,6 +81,8 @@ function createTradeWindowWatcher({
             timeZone: APP_TIMEZONE,
         });
 
+        console.log(`[Watcher] Janela de trocas aberta (ID: ${window.id}) até ${endsAtFormatted}`);
+
         await run(
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
              VALUES('trade_window_opened', ?, ?, NULL, NULL, ?)`,
@@ -92,7 +94,9 @@ function createTradeWindowWatcher({
         );
 
         try {
+            console.log(`[Watcher] Buscando e-mails de usuários para notificação...`);
             const emails = await getAllUserEmails(all);
+            console.log(`[Watcher] Total de e-mails encontrados: ${emails?.length || 0}`);
             if (emails && emails.length > 0) {
                 const subject = "Janela de trocas aberta!";
                 const text = `A janela de trocas do álbum está aberta até ${endsAtFormatted}!\n\nAcesse agora: ${FRONTEND_URL}\n\nAproveite para negociar suas figurinhas com outros colecionadores!`;
@@ -101,27 +105,33 @@ function createTradeWindowWatcher({
 <p style='color:#444'>Aproveite para negociar suas figurinhas com outros colecionadores.<br>Se não deseja mais receber estes avisos, acesse seu perfil e desative a opção de e-mail.</p>`;
 
                 // Envia e-mail com texto e HTML
+                console.log(`[Watcher] Enviando e-mails de notificação para usuários...`);
                 const results = await Promise.allSettled(
                     emails.map(email => sendMail({ to: email, subject, text, html }))
                 );
 
                 results.forEach((result, i) => {
                     if (result.status === 'rejected') {
-                        logError(`Falha ao enviar email para ${emails[i]}`, { err: result.reason });
+                        logError(`[Watcher] Falha ao enviar email para ${emails[i]}`, { err: result.reason });
                     } else {
-                        console.log(`Email enviado para ${emails[i]}:`, result.value.messageId);
+                        console.log(`[Watcher] Email enviado para ${emails[i]}:`, result.value.messageId);
                     }
                 });
+            } else {
+                console.log(`[Watcher] Nenhum e-mail encontrado para notificação.`);
             }
         } catch (err) {
-            logError("Falha ao enviar e-mails de notificação de janela de trocas", { err });
+            logError("[Watcher] Falha ao enviar e-mails de notificação de janela de trocas", { err });
         }
     }
 
     async function handleWindowClosed(window, now) {
         openStates.set(window.id, { isOpen: false, openedAt: null });
 
+        console.log(`[Watcher] Janela de trocas encerrada (ID: ${window.id})`);
+
         const cancelledCount = await cancelPendingOffersForClosedWindow(now);
+        console.log(`[Watcher] Total de ofertas pendentes canceladas: ${cancelledCount}`);
 
         await run(
             `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
@@ -141,6 +151,7 @@ function createTradeWindowWatcher({
 
     async function checkTransitions() {
         try {
+            console.log('[Watcher] Iniciando verificação de transições de janelas de trocas...');
             const rows = await getAllTradeWindows();
             const windows = toTradeWindowsPayload(rows);
             const now = nowSqlTimestamp();
@@ -153,12 +164,15 @@ function createTradeWindowWatcher({
                 if (prev === undefined) {
                     // First check after startup — record state without emitting events
                     openStates.set(w.id, { isOpen: isNowOpen, openedAt: isNowOpen ? now : null });
+                    console.log(`[Watcher] Estado inicial registrado para janela ${w.id}: ${isNowOpen ? 'aberta' : 'fechada'}`);
                     continue;
                 }
 
                 if (!wasOpen && isNowOpen) {
+                    console.log(`[Watcher] Detecção: janela ${w.id} foi aberta.`);
                     await handleWindowOpened(w, now);
                 } else if (wasOpen && !isNowOpen) {
+                    console.log(`[Watcher] Detecção: janela ${w.id} foi fechada.`);
                     await handleWindowClosed(w, now);
                 }
             }
@@ -166,10 +180,14 @@ function createTradeWindowWatcher({
             // Remove stale entries for windows that no longer exist
             const activeIds = new Set(windows.map((w) => w.id));
             for (const id of openStates.keys()) {
-                if (!activeIds.has(id)) openStates.delete(id);
+                if (!activeIds.has(id)) {
+                    openStates.delete(id);
+                    console.log(`[Watcher] Removendo estado obsoleto da janela ${id}`);
+                }
             }
+            console.log('[Watcher] Verificação de transições concluída.');
         } catch (err) {
-            logError("Erro ao verificar transições de janela de trocas", { err });
+            logError("[Watcher] Erro ao verificar transições de janela de trocas", { err });
         }
     }
 
