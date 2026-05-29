@@ -37,17 +37,21 @@ if (process.env.NODE_ENV === 'development') {
  * @param {string} [html] - Corpo do e-mail (HTML opcional)
  */
 async function sendMail({ to, subject, text, html }) {
-    const from = process.env.NODE_ENV === 'development'
-        ? 'mailpit@localhost'
-        : process.env.GMAIL_USER;
-    const mailOptions = {
-        from,
-        to,
-        subject,
-        text,
-        html
-    };
-    return transporter.sendMail(mailOptions);
+    const from = process.env.NODE_ENV === 'production'
+        ? process.env.GMAIL_USER
+        : 'mailpit@localhost';
+
+    const mailOptions = { from, to, subject, text, html };
+
+    try {
+        const info = await transporter.sendMail(mailOptions);
+        // Log sutil para auditoria (evite logar o conteúdo por privacidade)
+        console.log(`[Mailer] E-mail enviado com sucesso para: ${to}. MessageId: ${info.messageId}`);
+        return info;
+    } catch (error) {
+        console.error(`[Mailer] Erro ao enviar e-mail para ${to}:`, error);
+        throw error; // Re-lança o erro para o controlador saber que falhou
+    }
 }
 
 module.exports = { sendMail };
