@@ -137,7 +137,7 @@ const {
     getCachedTradeAvailableSelection, setCachedTradeAvailableSelection,
 } = tradeAvailabilityService;
 
-const TRADE_COINS_PER_TRADE = 3;
+const { TRADE_COINS_PER_TRADE } = require("./config/constants");
 
 // ─── Swagger & controllers ───────────────────────────────────────────────────
 

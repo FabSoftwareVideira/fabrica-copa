@@ -1,4 +1,5 @@
 const express = require("express");
+const { TRADE_COINS_PER_TRADE } = require("../config/constants");
 
 function createTradeRoutes({
     authMiddleware,
@@ -11,7 +12,7 @@ function createTradeRoutes({
     run,
     nowSqlTimestamp,
     getAlbumState,
-    TRADE_COINS_PER_TRADE,
+    // TRADE_COINS_PER_TRADE,
     TRADE_AVAILABLE_LIMIT,
     TRADE_AVAILABLE_REROLL_COST,
     buildTradeAvailableEntries,
@@ -143,7 +144,8 @@ function createTradeRoutes({
                 });
             }
 
-            const toUserRow = await get("SELECT id, is_blocked FROM users WHERE id = ?", [Number(toUserId)]);
+            // Buscar email e preferência de notificação do usuário destinatário
+            const toUserRow = await get("SELECT id, is_blocked, email, name, wants_emails FROM users WHERE id = ?", [Number(toUserId)]);
             if (!toUserRow) return res.status(404).json({ error: "Usuario destino nao encontrado" });
             if (Number(toUserRow.is_blocked || 0) === 1) {
                 return res.status(400).json({ error: "Nao e possivel trocar com usuario bloqueado" });
@@ -198,6 +200,20 @@ function createTradeRoutes({
                  VALUES('trade_offer_created', ?, ?, ?, ?, ?)`,
                 [eventMessage, JSON.stringify(eventPayload), req.user.sub, Number(toUserId), nowTimestamp]
             );
+
+            // Enviar email para o destinatário, se houver email cadastrado e quiser receber
+            if (toUserRow.wants_emails) {
+                const TradeOfferNotifier = require("../services/TradeOfferNotifier");
+                TradeOfferNotifier.notifyTradeOffer({
+                    toEmail: toUserRow.email,
+                    toName: toUserRow.name,
+                    fromName: req.user.name,
+                    offeredStickerName: offeredSticker?.name || offeredStickerId,
+                    requestedStickerName: requestedSticker?.name || requestedStickerId,
+                }).catch((err) => {
+                    console.error("[TradeRoutes] Falha ao enviar email de notificação de nova oferta de troca:", err);
+                });
+            }
 
             return res.status(201).json({ ok: true, offerId: result.lastID });
         } catch (err) {
