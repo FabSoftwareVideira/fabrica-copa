@@ -111,6 +111,16 @@ function createTradeRoutes({
             if (!toUserId || !offeredStickerId || !requestedStickerId) {
                 return res.status(400).json({ error: "Campos obrigatorios: toUserId, offeredStickerId, requestedStickerId" });
             }
+            const recentOffers = await get(
+                `SELECT COUNT(*) AS count FROM trade_offers 
+                 WHERE from_user_id = ? AND created_at >= datetime('now', '-1 minute')`,
+                [req.user.sub]
+            );
+            if (recentOffers && recentOffers.count >= 30) {
+                return res.status(429).json({ 
+                    error: "Limite excedido. Para evitar spam, voce so pode enviar 30 propostas por minuto." 
+                });
+            }
             if (Number(toUserId) === req.user.sub) {
                 return res.status(400).json({ error: "Nao pode trocar com si mesmo" });
             }
