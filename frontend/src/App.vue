@@ -107,6 +107,7 @@ const state = reactive({
   notifications: [],
   notificationsUnread: 0,
   publicRanking: [],
+  publicRankingForCompleted: [],
   myRankingPosition: 0,
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
@@ -550,6 +551,13 @@ const tradeWindowStatusText = computed(() => {
 const myRankingDisplay = computed(() => {
   const position = Number(state.myRankingPosition || 0);
   return position > 0 ? `#${position}` : "-";
+});
+const completedRanking = computed(() => {
+  const albumTotal = Number(total.value || 0);
+  if (albumTotal <= 0) return [];
+  return state.publicRankingForCompleted.filter(
+    (entry) => Number(entry?.collected || 0) >= albumTotal,
+  );
 });
 const filteredTradeWindows = computed(() => {
   if (!Array.isArray(state.tradeWindows)) return [];
@@ -1451,10 +1459,20 @@ async function loadStickerCatalog() {
 
 async function loadPublicRanking() {
   try {
-    const data = await apiFetch("/ranking?limit=10");
-    state.publicRanking = Array.isArray(data.ranking) ? data.ranking : [];
+    const [topTenData, completedSourceData] = await Promise.all([
+      apiFetch("/ranking?limit=10"),
+      apiFetch("/ranking?limit=50"),
+    ]);
+
+    state.publicRanking = Array.isArray(topTenData?.ranking)
+      ? topTenData.ranking
+      : [];
+    state.publicRankingForCompleted = Array.isArray(completedSourceData?.ranking)
+      ? completedSourceData.ranking
+      : [];
   } catch (_err) {
     state.publicRanking = [];
+    state.publicRankingForCompleted = [];
   }
 }
 
@@ -3279,29 +3297,57 @@ const myTradableDuplicatesForOffer = computed(() => {
           </div>
         </div>
 
-        <section class="landing-ranking" aria-label="Ranking de jogadores">
-          <h3>Ranking de quem mais colou figurinhas</h3>
-          <p
-            v-if="state.publicRanking.length === 0"
-            class="landing-ranking-empty"
-          >
-            O ranking aparecerá assim que houver progresso dos participantes.
-          </p>
-          <ol v-else class="landing-ranking-list">
-            <li
-              v-for="entry in state.publicRanking"
-              :key="`rank-${entry.userId || entry.position}-${entry.position}`"
-              class="landing-ranking-item"
+        <section
+          class="landing-ranking-panels"
+          aria-label="Ranking de jogadores"
+        >
+          <article class="landing-ranking landing-ranking-main">
+            <h3>Ranking de quem mais colou figurinhas</h3>
+            <p
+              v-if="state.publicRanking.length === 0"
+              class="landing-ranking-empty"
             >
-              <span class="landing-ranking-position"
-                >#{{ entry.position }}</span
+              O ranking aparecerá assim que houver progresso dos participantes.
+            </p>
+            <ol v-else class="landing-ranking-list">
+              <li
+                v-for="entry in state.publicRanking"
+                :key="`rank-${entry.userId || entry.position}-${entry.position}`"
+                class="landing-ranking-item"
               >
-              <strong class="landing-ranking-name">{{ entry.name }}</strong>
-              <span class="landing-ranking-score"
-                >{{ entry.collected }} coladas</span
+                <span class="landing-ranking-position"
+                  >#{{ entry.position }}</span
+                >
+                <strong class="landing-ranking-name">{{ entry.name }}</strong>
+                <span class="landing-ranking-score"
+                  >{{ entry.collected }} coladas</span
+                >
+              </li>
+            </ol>
+          </article>
+
+          <article class="landing-ranking landing-ranking-complete">
+            <h3>Álbum completo</h3>
+            <p class="landing-ranking-note">
+              Usuários que já colaram {{ total }} de {{ total }} figurinhas.
+            </p>
+            <p
+              v-if="completedRanking.length === 0"
+              class="landing-ranking-empty"
+            >
+              Ainda não há participantes com álbum completo.
+            </p>
+            <ol v-else class="landing-ranking-list landing-complete-list">
+              <li
+                v-for="entry in completedRanking"
+                :key="`complete-${entry.userId || entry.position}`"
+                class="landing-ranking-item landing-ranking-item-complete"
               >
-            </li>
-          </ol>
+                <strong class="landing-ranking-name">{{ entry.name }}</strong>
+                <span class="landing-ranking-score">100% concluído</span>
+              </li>
+            </ol>
+          </article>
         </section>
 
         <footer class="landing-footer">

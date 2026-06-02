@@ -2598,7 +2598,7 @@ button:disabled {
     font-size: 0.92rem;
   }
 
-  .landing-ranking {
+  .landing-ranking-panels {
     padding: 0 0.9rem 1.25rem;
   }
 
@@ -3829,11 +3829,62 @@ button:disabled {
   width: 100%;
 }
 
-.landing-ranking {
+.landing-ranking-panels {
   max-width: 860px;
   margin: 0 auto;
   width: 100%;
   padding: 0 1.5rem 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.landing-ranking {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+
+.landing-ranking-main {
+  min-height: 100%;
+}
+
+.landing-ranking-complete {
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-ranking-note {
+  margin: 0 0 0.65rem;
+  color: #475569;
+  font-size: 0.78rem;
+}
+
+.landing-complete-list {
+  height: 220px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.landing-complete-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.landing-complete-list::-webkit-scrollbar-thumb {
+  background: rgba(15, 118, 110, 0.32);
+  border-radius: 999px;
+}
+
+.landing-ranking-item-complete {
+  grid-template-columns: 1fr auto;
+}
+
+.landing-ranking {
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .landing-ranking h3 {
@@ -4827,6 +4878,21 @@ button:disabled {
   .landing,
   .auth-page {
     min-height: 100dvh;
+  }
+
+  .landing-ranking-panels {
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+    padding: 0 1rem 1rem;
+  }
+
+  .landing-ranking {
+    padding: 0.75rem;
+  }
+
+  .landing-complete-list {
+    height: 180px;
+    max-height: 180px;
   }
 
   .landing-features {
