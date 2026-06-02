@@ -8,7 +8,9 @@
  * @param {Function} deps.parseJSON
  */
 function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
-    const totalStickers = Math.max(0, STICKERS.length);
+    function getTotalStickers() {
+        return Math.max(0, STICKER_BY_ID.size);
+    }
 
     function countCollectedStickers(collectedMap) {
         if (!collectedMap || typeof collectedMap !== "object") return 0;
@@ -23,6 +25,7 @@ function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
      * Ties share the same position number.
      */
     function toRankingRows(rows) {
+        const totalStickers = getTotalStickers();
         const ranked = (Array.isArray(rows) ? rows : [])
             .map((row) => {
                 const collectedMap = parseJSON(row.collected_json || "{}", {});

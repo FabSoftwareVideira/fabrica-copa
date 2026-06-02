@@ -10,7 +10,9 @@
  * @param {Function} deps.nowSqlTimestamp
  */
 function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTimestamp }) {
-    const totalStickers = Math.max(0, STICKER_BY_ID.size);
+    function getTotalStickers() {
+        return Math.max(0, STICKER_BY_ID.size);
+    }
 
     function countCollectedStickers(collectedMap) {
         if (!collectedMap || typeof collectedMap !== "object") return 0;
@@ -21,19 +23,32 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTim
     }
 
     async function markAlbumCompletedIfNeeded(userId, collectedMap) {
+        const totalStickers = getTotalStickers();
         if (!userId || totalStickers <= 0) return;
         const collected = countCollectedStickers(collectedMap);
-        if (collected < totalStickers) return;
 
-        const completedAt = nowSqlTimestamp();
+        if (collected >= totalStickers) {
+            const completedAt = nowSqlTimestamp();
+            await run(
+                `UPDATE album_states
+                 SET completed_at = CASE
+                     WHEN completed_at IS NULL OR completed_at = '' THEN ?
+                     ELSE completed_at
+                 END
+                 WHERE user_id = ?`,
+                [completedAt, userId]
+            );
+            return;
+        }
+
+        // If the catalog grew and the user is no longer complete, clear stale completion timestamp.
         await run(
             `UPDATE album_states
-             SET completed_at = CASE
-                 WHEN completed_at IS NULL OR completed_at = '' THEN ?
-                 ELSE completed_at
-             END
-             WHERE user_id = ?`,
-            [completedAt, userId]
+             SET completed_at = NULL
+             WHERE user_id = ?
+               AND completed_at IS NOT NULL
+               AND completed_at != ''`,
+            [userId]
         );
     }
 

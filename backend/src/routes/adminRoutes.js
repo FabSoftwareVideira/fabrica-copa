@@ -573,6 +573,15 @@ function createAdminRoutes({
             setCustomStickers(updatedCustomStickers);
             rebuildStickerCatalog();
 
+            // New sticker increases album total. Existing completion timestamps become stale
+            // and must be recalculated as users complete the new catalog size.
+            await run(
+                `UPDATE album_states
+                                 SET completed_at = NULL
+                                 WHERE completed_at IS NOT NULL
+                                     AND completed_at != ''`
+            );
+
             const eventPayload = {
                 stickerId: sticker.id,
                 stickerName: sticker.name,
