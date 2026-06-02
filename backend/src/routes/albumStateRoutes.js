@@ -122,16 +122,17 @@ function createAlbumStateRoutes({
             }
 
             const collectedMap = state.collected || {};
-            const missing = STICKERS.filter((s) => (collectedMap[s.id] || 0) < 1);
-            const collected = STICKERS.filter((s) => (collectedMap[s.id] || 0) >= 1);
+            // const missing = STICKERS.filter((s) => (collectedMap[s.id] || 0) < 1);
+            // const collected = STICKERS.filter((s) => (collectedMap[s.id] || 0) >= 1);
 
             const pack = [];
             const wasOwned = [];
 
             for (let i = 0; i < 5; i++) {
-                const forceRepeat = collected.length > 0 && (missing.length === 0 || Math.random() < 0.3);
-                const pool = forceRepeat ? collected : (missing.length > 0 ? missing : STICKERS);
-                const sticker = pickRandomWeighted(pool);
+                // const forceRepeat = collected.length > 0 && (missing.length === 0 || Math.random() < 0.3);
+                // const pool = forceRepeat ? collected : (missing.length > 0 ? missing : STICKERS);
+                // const sticker = pickRandomWeighted(pool);
+                const sticker = pickRandomWeighted(STICKERS);
                 pack.push(sticker);
                 wasOwned.push((collectedMap[sticker.id] || 0) >= 1);
                 collectedMap[sticker.id] = (collectedMap[sticker.id] || 0) + 1;

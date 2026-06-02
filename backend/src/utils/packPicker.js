@@ -1,7 +1,7 @@
 "use strict";
 
 // Special stickers are 20× less likely than regular ones
-const ESPECIAL_WEIGHT = 1;
+const ESPECIAL_WEIGHT = 0.2; // Ajuste esse valor para tornar os especiais mais ou menos raros. Range de 0.1 (muito raro) a 0.5 (pouco raro) é recomendado.
 
 function pickRandom(list) {
     return list[Math.floor(Math.random() * list.length)];
