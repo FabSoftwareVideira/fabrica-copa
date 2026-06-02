@@ -108,6 +108,7 @@ const state = reactive({
   notificationsUnread: 0,
   publicRanking: [],
   publicRankingForCompleted: [],
+  publicRankingTotalStickers: 0,
   completedAuditItems: [],
   completedAuditSummary: { totalRows: 0, withCompletedAt: 0 },
   completedAuditMigration: null,
@@ -479,7 +480,11 @@ const editingManagedUser = computed(() => {
 const catalogStickerIds = computed(
   () => new Set(stickers.map((item) => item.id)),
 );
-const total = computed(() => stickers.length);
+const total = computed(() => {
+  const catalogTotal = Number(stickers.length || 0);
+  const rankingTotal = Number(state.publicRankingTotalStickers || 0);
+  return Math.max(catalogTotal, rankingTotal);
+});
 const collectedCount = computed(
   () =>
     Object.entries(state.collected).filter(
@@ -1172,7 +1177,7 @@ onMounted(async () => {
     apiBaseUrl: API_BASE_URL,
   });
 
-  await loadPublicRanking();
+  await Promise.allSettled([loadStickerCatalog(), loadPublicRanking()]);
 
   if (isAuthenticated.value) {
     await bootstrapAuth();
@@ -1511,6 +1516,7 @@ function clearAuth() {
   localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
   stopSystemEventsPolling();
   saveAuth();
+  loadStickerCatalog();
   loadPublicRanking();
 }
 
@@ -1522,6 +1528,10 @@ async function loadStickerCatalog() {
 async function loadPublicRanking() {
   try {
     const sourceData = await apiFetch("/ranking?limit=50");
+    state.publicRankingTotalStickers = Math.max(
+      0,
+      Number(sourceData?.totalStickers || 0),
+    );
 
     state.publicRanking = Array.isArray(sourceData?.ranking)
       ? sourceData.ranking
@@ -1530,6 +1540,7 @@ async function loadPublicRanking() {
       ? sourceData.ranking
       : [];
   } catch (_err) {
+    state.publicRankingTotalStickers = 0;
     state.publicRanking = [];
     state.publicRankingForCompleted = [];
   }
