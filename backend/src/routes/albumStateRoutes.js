@@ -13,6 +13,7 @@ function createAlbumStateRoutes({
     pickRandomWeighted,
     getAllTradeWindows,
     toTradeWindowsPayload,
+    markAlbumCompletedIfNeeded,
 }) {
     const router = express.Router();
 
@@ -29,6 +30,7 @@ function createAlbumStateRoutes({
                 "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
                 [JSON.stringify(validCollected), nowTimestamp, req.user.sub]
             );
+            await markAlbumCompletedIfNeeded(req.user.sub, validCollected);
             const allWindows = await getAllTradeWindows();
             const tradeWindows = toTradeWindowsPayload(allWindows);
             return res.json({
@@ -70,6 +72,7 @@ function createAlbumStateRoutes({
                     req.user.sub,
                 ]
             );
+            await markAlbumCompletedIfNeeded(req.user.sub, validatedCollected);
 
             return res.json({ ok: true });
         } catch (err) {
@@ -161,6 +164,7 @@ function createAlbumStateRoutes({
                     req.user.sub,
                 ]
             );
+            await markAlbumCompletedIfNeeded(req.user.sub, collectedMap);
 
             await run(
                 "INSERT INTO pack_history(user_id, opened_at, stickers_json, new_count, repeat_count, source) VALUES(?, ?, ?, ?, ?, ?)",

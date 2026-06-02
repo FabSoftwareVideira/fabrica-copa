@@ -360,6 +360,68 @@ function createAdminRoutes({
         }
     });
 
+    router.get("/admin/ranking/completed-audit", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+        try {
+            const requestedLimit = Number(req.query?.limit || 200);
+            const limit = Number.isFinite(requestedLimit)
+                ? Math.max(1, Math.min(1000, Math.floor(requestedLimit)))
+                : 200;
+
+            const migration = await get(
+                "SELECT name, applied_at FROM db_migrations WHERE name = 'backfill_album_completed_at'"
+            );
+
+            const summary = await get(
+                `SELECT
+                    COUNT(*) AS total_completed,
+                    SUM(CASE WHEN completed_at IS NOT NULL AND completed_at != '' THEN 1 ELSE 0 END) AS with_completed_at
+                 FROM album_states`
+            );
+
+            const rows = await all(
+                `SELECT
+                    u.id,
+                    u.name,
+                    a.completed_at,
+                    a.updated_at,
+                    l.source AS backfill_source,
+                    l.created_at AS backfill_logged_at,
+                    l.migration_name
+                 FROM album_states a
+                 JOIN users u ON u.id = a.user_id
+                 LEFT JOIN album_completed_backfill_log l
+                    ON l.user_id = a.user_id AND l.migration_name = 'backfill_album_completed_at'
+                 WHERE a.completed_at IS NOT NULL AND a.completed_at != ''
+                 ORDER BY a.completed_at ASC, u.name ASC
+                 LIMIT ?`,
+                [limit]
+            );
+
+            return res.json({
+                migration: migration || null,
+                summary: {
+                    totalRows: Number(summary?.total_completed || 0),
+                    withCompletedAt: Number(summary?.with_completed_at || 0),
+                },
+                items: rows.map((row) => ({
+                    userId: Number(row.id || 0),
+                    name: row.name || "Usuário",
+                    completedAt: row.completed_at || "",
+                    updatedAt: row.updated_at || "",
+                    backfill: row.backfill_source
+                        ? {
+                            source: row.backfill_source,
+                            loggedAt: row.backfill_logged_at || "",
+                            migrationName: row.migration_name || "backfill_album_completed_at",
+                        }
+                        : null,
+                })),
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao auditar completed_at", detail: err.message });
+        }
+    });
+
     router.put("/admin/users/:id", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
         try {
             const userId = Number(req.params.id || 0);

@@ -7,9 +7,36 @@
  * @param {Function} deps.all
  * @param {Map}      deps.STICKER_BY_ID
  * @param {Function} deps.parseJSON
- * @param {Function} deps.nowSqlTimestamp  – not used here but kept for symmetry if needed
+ * @param {Function} deps.nowSqlTimestamp
  */
-function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON }) {
+function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTimestamp }) {
+    const totalStickers = Math.max(0, STICKER_BY_ID.size);
+
+    function countCollectedStickers(collectedMap) {
+        if (!collectedMap || typeof collectedMap !== "object") return 0;
+        return Object.entries(collectedMap).reduce((acc, [stickerId, count]) => {
+            if (!STICKER_BY_ID.has(String(stickerId))) return acc;
+            return acc + (Number(count) >= 1 ? 1 : 0);
+        }, 0);
+    }
+
+    async function markAlbumCompletedIfNeeded(userId, collectedMap) {
+        if (!userId || totalStickers <= 0) return;
+        const collected = countCollectedStickers(collectedMap);
+        if (collected < totalStickers) return;
+
+        const completedAt = nowSqlTimestamp();
+        await run(
+            `UPDATE album_states
+             SET completed_at = CASE
+                 WHEN completed_at IS NULL OR completed_at = '' THEN ?
+                 ELSE completed_at
+             END
+             WHERE user_id = ?`,
+            [completedAt, userId]
+        );
+    }
+
     async function getAlbumState(userId) {
         let row = await get("SELECT * FROM album_states WHERE user_id = ?", [userId]);
         if (!row) {
@@ -83,7 +110,13 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON }) {
         return collected;
     }
 
-    return { getAlbumState, rebuildCollectedFromPackHistory, getValidCollectedMap };
+    return {
+        getAlbumState,
+        rebuildCollectedFromPackHistory,
+        getValidCollectedMap,
+        countCollectedStickers,
+        markAlbumCompletedIfNeeded,
+    };
 }
 
 module.exports = { createAlbumService };

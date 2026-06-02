@@ -31,6 +31,8 @@ function createAlbumRoutes({
                     name: row.name,
                     collected: row.collected,
                     percent: row.percent,
+                    completedAt: row.completedAt,
+                    updatedAt: row.updatedAt,
                 })),
             });
         } catch (err) {

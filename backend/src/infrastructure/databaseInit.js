@@ -1,4 +1,12 @@
-async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
+function safeParseJson(value, fallback) {
+    try {
+        return JSON.parse(value);
+    } catch (_err) {
+        return fallback;
+    }
+}
+
+async function initDatabase({ run, get, all, ensureColumn, logInfo, totalStickers = 0, isKnownStickerId = null }) {
     await run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,6 +38,7 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
       used_codes_json TEXT NOT NULL DEFAULT '[]',
       trade_reroll_count INTEGER NOT NULL DEFAULT 0,
       trade_reroll_date TEXT NOT NULL DEFAULT '',
+      completed_at TEXT,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
@@ -38,6 +47,7 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
     await ensureColumn("album_states", "last_login_bonus_date", "TEXT NOT NULL DEFAULT ''");
     await ensureColumn("album_states", "trade_reroll_count", "INTEGER NOT NULL DEFAULT 0");
     await ensureColumn("album_states", "trade_reroll_date", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("album_states", "completed_at", "TEXT");
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -216,6 +226,19 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
         )
     `);
 
+    await run(`
+        CREATE TABLE IF NOT EXISTS album_completed_backfill_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            completed_at TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'timeline',
+            migration_name TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, migration_name),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
     const migrationApplied = await get(
         "SELECT name FROM db_migrations WHERE name = 'fix_trade_history_acceptor_perspective'"
     );
@@ -231,6 +254,147 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo }) {
             ["fix_trade_history_acceptor_perspective"]
         );
         logInfo("[migration] fix_trade_history_acceptor_perspective applied");
+    }
+
+    const backfillCompletedAtApplied = await get(
+        "SELECT name FROM db_migrations WHERE name = 'backfill_album_completed_at'"
+    );
+    if (!backfillCompletedAtApplied) {
+        const completeUsersWithoutTimestamp = await all(
+            `SELECT user_id, collected_json, completed_at, updated_at
+           FROM album_states
+           WHERE (completed_at IS NULL OR completed_at = '')`
+        );
+
+        const requiredTotal = Math.max(0, Number(totalStickers || 0));
+        const isKnownId = typeof isKnownStickerId === "function"
+            ? (id) => isKnownStickerId(String(id || ""))
+            : () => true;
+
+        for (const row of completeUsersWithoutTimestamp) {
+            const userId = Number(row.user_id || 0);
+            if (!userId) continue;
+
+            const finalCollected = safeParseJson(row.collected_json || "{}", {});
+            const finalUnique = Object.entries(finalCollected).reduce((acc, [stickerId, count]) => {
+                if (!isKnownId(stickerId)) return acc;
+                return acc + (Number(count) >= 1 ? 1 : 0);
+            }, 0);
+
+            // Só faz backfill para quem está completo no estado atual.
+            if (requiredTotal <= 0 || finalUnique < requiredTotal) continue;
+
+            const [packRows, tradeRows] = await Promise.all([
+                all(
+                    `SELECT id, opened_at, stickers_json
+               FROM pack_history
+               WHERE user_id = ?
+               ORDER BY opened_at ASC, id ASC`,
+                    [userId]
+                ),
+                all(
+                    `SELECT id, completed_at, offered_sticker_id, requested_sticker_id
+               FROM trade_history
+               WHERE user_id = ?
+               ORDER BY completed_at ASC, id ASC`,
+                    [userId]
+                ),
+            ]);
+
+            const events = [];
+            for (const packRow of packRows) {
+                events.push({
+                    kind: "pack",
+                    id: Number(packRow.id || 0),
+                    at: String(packRow.opened_at || ""),
+                    stickers: safeParseJson(packRow.stickers_json || "[]", []),
+                });
+            }
+            for (const tradeRow of tradeRows) {
+                events.push({
+                    kind: "trade",
+                    id: Number(tradeRow.id || 0),
+                    at: String(tradeRow.completed_at || ""),
+                    offeredStickerId: String(tradeRow.offered_sticker_id || ""),
+                    requestedStickerId: String(tradeRow.requested_sticker_id || ""),
+                });
+            }
+
+            events.sort((a, b) => {
+                const byDate = String(a.at).localeCompare(String(b.at));
+                if (byDate !== 0) return byDate;
+                if (a.kind !== b.kind) return a.kind === "pack" ? -1 : 1;
+                return Number(a.id || 0) - Number(b.id || 0);
+            });
+
+            const collected = {};
+            let uniqueCount = 0;
+            let completedAt = "";
+
+            const addSticker = (stickerId) => {
+                const id = String(stickerId || "");
+                if (!id || !isKnownId(id)) return;
+                const previous = Number(collected[id] || 0);
+                const next = previous + 1;
+                collected[id] = next;
+                if (previous < 1 && next >= 1) uniqueCount += 1;
+            };
+
+            const removeSticker = (stickerId) => {
+                const id = String(stickerId || "");
+                if (!id || !isKnownId(id)) return;
+                const previous = Number(collected[id] || 0);
+                const next = Math.max(0, previous - 1);
+                collected[id] = next;
+                if (previous >= 1 && next < 1) uniqueCount = Math.max(0, uniqueCount - 1);
+            };
+
+            for (const event of events) {
+                if (event.kind === "pack") {
+                    const stickers = Array.isArray(event.stickers) ? event.stickers : [];
+                    for (const sticker of stickers) {
+                        addSticker(sticker?.id);
+                    }
+                } else {
+                    removeSticker(event.offeredStickerId);
+                    addSticker(event.requestedStickerId);
+                }
+
+                if (uniqueCount >= requiredTotal) {
+                    completedAt = String(event.at || "");
+                    break;
+                }
+            }
+
+            if (!completedAt) {
+                completedAt = String(row.updated_at || "");
+            }
+            if (!completedAt) continue;
+
+            const source = completedAt === String(row.updated_at || "")
+                ? "fallback_updated_at"
+                : "timeline";
+
+            await run(
+                `UPDATE album_states
+             SET completed_at = ?
+             WHERE user_id = ?
+               AND (completed_at IS NULL OR completed_at = '')`,
+                [completedAt, userId]
+            );
+
+            await run(
+                `INSERT OR IGNORE INTO album_completed_backfill_log(user_id, completed_at, source, migration_name)
+                 VALUES(?, ?, ?, 'backfill_album_completed_at')`,
+                [userId, completedAt, source]
+            );
+        }
+
+        await run(
+            "INSERT INTO db_migrations(name) VALUES(?)",
+            ["backfill_album_completed_at"]
+        );
+        logInfo("[migration] backfill_album_completed_at applied");
     }
 
     await run(

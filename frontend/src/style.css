@@ -4597,6 +4597,14 @@ button:disabled {
   background: rgba(59, 130, 246, 0.08);
 }
 
+.admin-audit-stats {
+  margin-top: 0.6rem;
+}
+
+.admin-audit-table-wrap {
+  margin-top: 0.8rem;
+}
+
 .table-pill {
   display: inline-flex;
   align-items: center;

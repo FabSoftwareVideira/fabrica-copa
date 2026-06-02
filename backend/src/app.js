@@ -118,8 +118,8 @@ const { signAccessToken, createRefreshToken, revokeRefreshToken } = createTokenS
     crypto, addDaysISO, nowSqlTimestamp,
 });
 
-const { getAlbumState, getValidCollectedMap } = createAlbumService({
-    run, get, all, STICKER_BY_ID, parseJSON,
+const { getAlbumState, getValidCollectedMap, markAlbumCompletedIfNeeded } = createAlbumService({
+    run, get, all, STICKER_BY_ID, parseJSON, nowSqlTimestamp,
 });
 
 const { getGlobalRanking } = createRankingService({
@@ -200,7 +200,7 @@ app.use("/api", createAdminRoutes({
 app.use("/api", createAlbumStateRoutes({
     authMiddleware, STICKERS, STICKER_BY_ID, getAlbumState, getValidCollectedMap,
     nowSqlTimestamp, run, all, parseJSON, pickRandomWeighted,
-    getAllTradeWindows, toTradeWindowsPayload,
+    getAllTradeWindows, toTradeWindowsPayload, markAlbumCompletedIfNeeded,
 }));
 app.use("/api", createTradeRoutes({
     authMiddleware, requireTradeWindowOpen, STICKERS, STICKER_BY_ID, getValidCollectedMap,
@@ -208,7 +208,7 @@ app.use("/api", createTradeRoutes({
     TRADE_AVAILABLE_LIMIT, TRADE_AVAILABLE_REROLL_COST,
     buildTradeAvailableEntries, getCachedTradeAvailableSelection,
     pickTradeAvailableSelection, setCachedTradeAvailableSelection,
-    transaction
+    transaction, markAlbumCompletedIfNeeded,
 }));
 app.use("/api", createProfileRoutes({ get, run, authMiddleware }));
 
@@ -282,7 +282,15 @@ const tradeWindowWatcher = createTradeWindowWatcher({
 });
 
 async function initializeApplication() {
-    await initDatabase({ run, get, all, ensureColumn, logInfo });
+    await initDatabase({
+        run,
+        get,
+        all,
+        ensureColumn,
+        logInfo,
+        totalStickers: STICKERS.length,
+        isKnownStickerId: (stickerId) => STICKER_BY_ID.has(String(stickerId || "")),
+    });
     await loadCustomStickersFromDb();
     await tradeWindowWatcher.start();
 }

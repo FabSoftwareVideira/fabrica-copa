@@ -20,6 +20,7 @@ function createTradeRoutes({
     pickTradeAvailableSelection,
     setCachedTradeAvailableSelection,
     transaction,
+    markAlbumCompletedIfNeeded,
 }) {
     const router = express.Router();
 
@@ -293,6 +294,8 @@ function createTradeRoutes({
             let creatorUser, acceptorUser, offeredSticker, requestedSticker;
             let sharedPayload;
             let newState, validCollected;
+            let fromCollectedAfter = null;
+            let toCollectedAfter = null;
             try {
 
                 transaction(() => {
@@ -304,6 +307,9 @@ function createTradeRoutes({
                     const toCollected = { ...toState };
                     toCollected[offer.requested_sticker_id] = Number(toCollected[offer.requested_sticker_id]) - 1;
                     toCollected[offer.offered_sticker_id] = (Number(toCollected[offer.offered_sticker_id]) || 0) + 1;
+
+                    fromCollectedAfter = fromCollected;
+                    toCollectedAfter = toCollected;
 
                     run(
                         "UPDATE album_states SET collected_json = ?, updated_at = ? WHERE user_id = ?",
@@ -386,6 +392,11 @@ function createTradeRoutes({
             } catch (err) {
                 return res.status(500).json({ error: "Erro ao aceitar oferta (transação)", detail: err.message });
             }
+
+            await Promise.all([
+                markAlbumCompletedIfNeeded(offer.from_user_id, fromCollectedAfter),
+                markAlbumCompletedIfNeeded(offer.to_user_id, toCollectedAfter),
+            ]);
 
             // Atualiza estado do usuário após a transação
             ({ state: newState } = await getAlbumState(req.user.sub));

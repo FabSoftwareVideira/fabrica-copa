@@ -108,6 +108,9 @@ const state = reactive({
   notificationsUnread: 0,
   publicRanking: [],
   publicRankingForCompleted: [],
+  completedAuditItems: [],
+  completedAuditSummary: { totalRows: 0, withCompletedAt: 0 },
+  completedAuditMigration: null,
   myRankingPosition: 0,
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
@@ -160,6 +163,8 @@ const ui = reactive({
   adminTab: "stickers",
   adminCouponsLoading: false,
   adminCouponsMsg: "",
+  adminAuditLoading: false,
+  adminAuditMsg: "",
   deletingCouponId: 0,
   dashboardAnimatedPercent: 0,
   dashboardAnimatedTotal: 0,
@@ -240,6 +245,7 @@ const adminSubTabs = computed(() => {
   if (isAdmin.value) {
     tabs.push({ key: "trade-windows", label: "Transferências" });
     tabs.push({ key: "users", label: "Usuários" });
+    tabs.push({ key: "ranking-audit", label: "Auditoria" });
   }
   return tabs;
 });
@@ -561,9 +567,61 @@ const myRankingDisplay = computed(() => {
 const completedRanking = computed(() => {
   const albumTotal = Number(total.value || 0);
   if (albumTotal <= 0) return [];
-  return state.publicRankingForCompleted.filter(
-    (entry) => Number(entry?.collected || 0) >= albumTotal,
+  return state.publicRankingForCompleted
+    .filter((entry) => Number(entry?.collected || 0) >= albumTotal)
+    .sort((a, b) => {
+      const aCompletedTime = new Date(a?.completedAt || 0).getTime();
+      const bCompletedTime = new Date(b?.completedAt || 0).getTime();
+      const aHasCompletedTime =
+        Number.isFinite(aCompletedTime) && aCompletedTime > 0;
+      const bHasCompletedTime =
+        Number.isFinite(bCompletedTime) && bCompletedTime > 0;
+
+      if (
+        aHasCompletedTime &&
+        bHasCompletedTime &&
+        aCompletedTime !== bCompletedTime
+      )
+        return aCompletedTime - bCompletedTime;
+      if (aHasCompletedTime !== bHasCompletedTime)
+        return aHasCompletedTime ? -1 : 1;
+
+      const aTime = new Date(a?.updatedAt || 0).getTime();
+      const bTime = new Date(b?.updatedAt || 0).getTime();
+      const aHasTime = Number.isFinite(aTime) && aTime > 0;
+      const bHasTime = Number.isFinite(bTime) && bTime > 0;
+
+      if (aHasTime && bHasTime && aTime !== bTime) return aTime - bTime;
+      if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
+
+      const aPosition = Number(a?.position || 0);
+      const bPosition = Number(b?.position || 0);
+      if (aPosition && bPosition && aPosition !== bPosition)
+        return aPosition - bPosition;
+
+      return String(a?.name || "").localeCompare(
+        String(b?.name || ""),
+        "pt-BR",
+      );
+    });
+});
+const publicRankingWithoutCompleted = computed(() => {
+  if (!Array.isArray(state.publicRanking) || state.publicRanking.length === 0)
+    return [];
+
+  const completedIds = new Set(
+    completedRanking.value
+      .map((entry) => Number(entry?.userId || 0))
+      .filter((id) => id > 0),
   );
+
+  return state.publicRanking
+    .filter((entry) => {
+      const userId = Number(entry?.userId || 0);
+      if (userId <= 0) return true;
+      return !completedIds.has(userId);
+    })
+    .slice(0, 10);
 });
 const filteredTradeWindows = computed(() => {
   if (!Array.isArray(state.tradeWindows)) return [];
@@ -1465,18 +1523,13 @@ async function loadStickerCatalog() {
 
 async function loadPublicRanking() {
   try {
-    const [topTenData, completedSourceData] = await Promise.all([
-      apiFetch("/ranking?limit=10"),
-      apiFetch("/ranking?limit=50"),
-    ]);
+    const sourceData = await apiFetch("/ranking?limit=50");
 
-    state.publicRanking = Array.isArray(topTenData?.ranking)
-      ? topTenData.ranking
+    state.publicRanking = Array.isArray(sourceData?.ranking)
+      ? sourceData.ranking
       : [];
-    state.publicRankingForCompleted = Array.isArray(
-      completedSourceData?.ranking,
-    )
-      ? completedSourceData.ranking
+    state.publicRankingForCompleted = Array.isArray(sourceData?.ranking)
+      ? sourceData.ranking
       : [];
   } catch (_err) {
     state.publicRanking = [];
@@ -2053,6 +2106,32 @@ async function loadAdminCoupons() {
     ui.adminCouponsMsg = err.message || "Erro ao carregar cupons";
   } finally {
     ui.adminCouponsLoading = false;
+  }
+}
+
+async function loadAdminCompletedAudit() {
+  if (!isAuthenticated.value || !isAdmin.value) {
+    state.completedAuditItems = [];
+    state.completedAuditSummary = { totalRows: 0, withCompletedAt: 0 };
+    state.completedAuditMigration = null;
+    return;
+  }
+
+  ui.adminAuditLoading = true;
+  ui.adminAuditMsg = "";
+  try {
+    const data = await apiFetch("/admin/ranking/completed-audit?limit=300");
+    state.completedAuditItems = Array.isArray(data.items) ? data.items : [];
+    state.completedAuditSummary = {
+      totalRows: Number(data?.summary?.totalRows || 0),
+      withCompletedAt: Number(data?.summary?.withCompletedAt || 0),
+    };
+    state.completedAuditMigration = data?.migration || null;
+  } catch (err) {
+    ui.adminAuditMsg = err.message || "Erro ao carregar auditoria";
+    state.completedAuditItems = [];
+  } finally {
+    ui.adminAuditLoading = false;
   }
 }
 
@@ -2911,6 +2990,7 @@ function handleAdminRefresh() {
   if (isAdmin.value) {
     loadRecentCreatedStickers();
     loadAllTradeWindows();
+    loadAdminCompletedAudit();
   }
 }
 
@@ -3342,14 +3422,14 @@ const myTradableDuplicatesForOffer = computed(() => {
           <article class="landing-ranking landing-ranking-main">
             <h3>Ranking de quem mais colou figurinhas</h3>
             <p
-              v-if="state.publicRanking.length === 0"
+              v-if="publicRankingWithoutCompleted.length === 0"
               class="landing-ranking-empty"
             >
               O ranking aparecerá assim que houver progresso dos participantes.
             </p>
             <ol v-else class="landing-ranking-list">
               <li
-                v-for="entry in state.publicRanking"
+                v-for="entry in publicRankingWithoutCompleted"
                 :key="`rank-${entry.userId || entry.position}-${entry.position}`"
                 class="landing-ranking-item"
               >
@@ -4583,6 +4663,104 @@ const myTradableDuplicatesForOffer = computed(() => {
               </div>
               <div v-else class="read-only-hint">
                 ℹ️ Nenhuma janela encontrada com os filtros atuais.
+              </div>
+            </div>
+
+            <div
+              v-if="ui.adminTab === 'ranking-audit' && isAdmin"
+              class="manage-users-box"
+            >
+              <h4>Auditoria de conclusão do álbum</h4>
+              <p class="read-only-hint">
+                Registros com <strong>completedAt</strong> e origem do backfill.
+              </p>
+
+              <div class="admin-stats-grid admin-audit-stats">
+                <article>
+                  <small>Total em album_states</small>
+                  <strong>{{ state.completedAuditSummary.totalRows }}</strong>
+                </article>
+                <article>
+                  <small>Com completedAt</small>
+                  <strong>{{
+                    state.completedAuditSummary.withCompletedAt
+                  }}</strong>
+                </article>
+                <article>
+                  <small>Migração</small>
+                  <strong>{{
+                    state.completedAuditMigration?.name || "não aplicada"
+                  }}</strong>
+                </article>
+                <article>
+                  <small>Aplicada em</small>
+                  <strong>{{
+                    state.completedAuditMigration?.applied_at
+                      ? formatDateTime(state.completedAuditMigration.applied_at)
+                      : "-"
+                  }}</strong>
+                </article>
+              </div>
+
+              <p v-if="ui.adminAuditLoading" class="read-only-hint">
+                Carregando auditoria...
+              </p>
+              <p v-else-if="ui.adminAuditMsg" class="read-only-hint">
+                {{ ui.adminAuditMsg }}
+              </p>
+
+              <div v-else class="admin-users-table-wrap admin-audit-table-wrap">
+                <table class="admin-users-table">
+                  <thead>
+                    <tr>
+                      <th>Usuário</th>
+                      <th>completedAt</th>
+                      <th>Fonte</th>
+                      <th>Log do backfill</th>
+                      <th>updatedAt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="state.completedAuditItems.length === 0">
+                      <td colspan="5">
+                        Nenhum registro de auditoria disponível.
+                      </td>
+                    </tr>
+                    <tr
+                      v-for="item in state.completedAuditItems"
+                      :key="`audit-${item.userId}-${item.completedAt}`"
+                    >
+                      <td>
+                        <strong>{{ item.name }}</strong>
+                        <small>#{{ item.userId }}</small>
+                      </td>
+                      <td>{{ formatDateTime(item.completedAt) }}</td>
+                      <td>
+                        <span class="table-pill">
+                          {{ item.backfill?.source || "nativo" }}
+                        </span>
+                      </td>
+                      <td>
+                        <small>
+                          {{
+                            item.backfill?.loggedAt
+                              ? formatDateTime(item.backfill.loggedAt)
+                              : "-"
+                          }}
+                        </small>
+                      </td>
+                      <td>
+                        <small>
+                          {{
+                            item.updatedAt
+                              ? formatDateTime(item.updatedAt)
+                              : "-"
+                          }}
+                        </small>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>

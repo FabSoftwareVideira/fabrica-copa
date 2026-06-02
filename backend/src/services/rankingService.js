@@ -36,11 +36,24 @@ function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
                     name: String(row.name || "Usuário"),
                     collected,
                     percent,
+                    completedAt: String(row.completed_at || ""),
                     updatedAt: String(row.updated_at || ""),
                 };
             })
             .sort((a, b) => {
                 if (b.collected !== a.collected) return b.collected - a.collected;
+
+                const aIsComplete = totalStickers > 0 && a.collected >= totalStickers;
+                const bIsComplete = totalStickers > 0 && b.collected >= totalStickers;
+                if (aIsComplete && bIsComplete) {
+                    if (a.completedAt && b.completedAt && a.completedAt !== b.completedAt) {
+                        return a.completedAt.localeCompare(b.completedAt);
+                    }
+                    if (a.completedAt !== b.completedAt) {
+                        return a.completedAt ? -1 : 1;
+                    }
+                }
+
                 if (a.updatedAt && b.updatedAt && a.updatedAt !== b.updatedAt) {
                     return a.updatedAt.localeCompare(b.updatedAt);
                 }
@@ -63,7 +76,7 @@ function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
 
     async function getGlobalRanking() {
         const rows = await all(
-            `SELECT u.id, u.name, u.is_blocked, a.collected_json, a.updated_at
+            `SELECT u.id, u.name, u.is_blocked, a.collected_json, a.completed_at, a.updated_at
              FROM users u
              LEFT JOIN album_states a ON a.user_id = u.id
              WHERE u.is_blocked = 0`
