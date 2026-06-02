@@ -565,10 +565,8 @@ const myRankingDisplay = computed(() => {
   return position > 0 ? `#${position}` : "-";
 });
 const completedRanking = computed(() => {
-  const albumTotal = Number(total.value || 0);
-  if (albumTotal <= 0) return [];
   return state.publicRankingForCompleted
-    .filter((entry) => Number(entry?.collected || 0) >= albumTotal)
+    .filter((entry) => String(entry?.completedAt || "").trim() !== "")
     .sort((a, b) => {
       const aCompletedTime = new Date(a?.completedAt || 0).getTime();
       const bCompletedTime = new Date(b?.completedAt || 0).getTime();
