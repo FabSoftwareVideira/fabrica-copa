@@ -284,6 +284,12 @@ function couponTargetLabel(user) {
   return `${user.name} <${user.email}>`;
 }
 
+function userInitial(name) {
+  const value = String(name || "").trim();
+  if (!value) return "?";
+  return value.charAt(0).toLocaleUpperCase("pt-BR");
+}
+
 const couponTargetUsers = computed(() =>
   state.managedUsers.filter((u) => !u.isBlocked),
 );
@@ -1467,7 +1473,9 @@ async function loadPublicRanking() {
     state.publicRanking = Array.isArray(topTenData?.ranking)
       ? topTenData.ranking
       : [];
-    state.publicRankingForCompleted = Array.isArray(completedSourceData?.ranking)
+    state.publicRankingForCompleted = Array.isArray(
+      completedSourceData?.ranking,
+    )
       ? completedSourceData.ranking
       : [];
   } catch (_err) {
@@ -3298,6 +3306,36 @@ const myTradableDuplicatesForOffer = computed(() => {
         </div>
 
         <section
+          class="landing-complete-section"
+          aria-label="Participantes com álbum completo"
+        >
+          <div class="landing-complete-head">
+            <h3>Álbum completo</h3>
+            <p>
+              Usuários que já colaram {{ total }} de {{ total }} figurinhas.
+            </p>
+          </div>
+          <p
+            v-if="completedRanking.length === 0"
+            class="landing-ranking-empty landing-complete-empty"
+          >
+            Ainda não há participantes com álbum completo.
+          </p>
+          <ol v-else class="landing-complete-strip" role="list">
+            <li
+              v-for="entry in completedRanking"
+              :key="`complete-${entry.userId || entry.position}`"
+              class="landing-complete-pill"
+            >
+              <span class="landing-complete-avatar" aria-hidden="true">
+                {{ userInitial(entry.name) }}
+              </span>
+              <strong class="landing-complete-name">{{ entry.name }}</strong>
+            </li>
+          </ol>
+        </section>
+
+        <section
           class="landing-ranking-panels"
           aria-label="Ranking de jogadores"
         >
@@ -3322,29 +3360,6 @@ const myTradableDuplicatesForOffer = computed(() => {
                 <span class="landing-ranking-score"
                   >{{ entry.collected }} coladas</span
                 >
-              </li>
-            </ol>
-          </article>
-
-          <article class="landing-ranking landing-ranking-complete">
-            <h3>Álbum completo</h3>
-            <p class="landing-ranking-note">
-              Usuários que já colaram {{ total }} de {{ total }} figurinhas.
-            </p>
-            <p
-              v-if="completedRanking.length === 0"
-              class="landing-ranking-empty"
-            >
-              Ainda não há participantes com álbum completo.
-            </p>
-            <ol v-else class="landing-ranking-list landing-complete-list">
-              <li
-                v-for="entry in completedRanking"
-                :key="`complete-${entry.userId || entry.position}`"
-                class="landing-ranking-item landing-ranking-item-complete"
-              >
-                <strong class="landing-ranking-name">{{ entry.name }}</strong>
-                <span class="landing-ranking-score">100% concluído</span>
               </li>
             </ol>
           </article>
