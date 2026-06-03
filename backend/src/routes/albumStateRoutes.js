@@ -1,7 +1,7 @@
 const express = require("express");
 const { normalizePrestigeLevel, getPrestigeBonusMultiplier } = require("../utils/prestige");
 
-const FORCE_REPEAT_PROBABILITY = 0.7; // Probabilidade de forçar repetida quando o usuário tem figurinhas faltando. Quanto mais alto, mais chance de sair repetida mesmo com figurinhas faltando. Ajuste conforme necessário.
+const FORCE_REPEAT_PROBABILITY = 0.4; // Probabilidade de forçar repetida quando o usuário tem figurinhas faltando. Quanto mais alto, mais chance de sair repetida mesmo com figurinhas faltando. Ajuste conforme necessário.
 
 function createAlbumStateRoutes({
     authMiddleware,
