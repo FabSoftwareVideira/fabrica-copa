@@ -26,6 +26,7 @@ function createAdminRoutes({
     getCustomStickers,
     setCustomStickers,
     API_BASE_URL,
+    auditLogService,
 }) {
     // Base URL for building full image URLs stored in DB (e.g. http://host/api)
     const apiBaseUrl = String(API_BASE_URL || "").replace(/\/+$/, "");
@@ -419,6 +420,28 @@ function createAdminRoutes({
             });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao auditar completed_at", detail: err.message });
+        }
+    });
+
+    router.get("/admin/audit-logs", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+        try {
+            const result = auditLogService.listAuditLogs({
+                cursorId: req.query?.cursorId,
+                limit: req.query?.limit,
+                userId: req.query?.userId,
+                targetUserId: req.query?.targetUserId,
+                action: req.query?.action,
+                clientIp: req.query?.clientIp,
+                browserName: req.query?.browserName,
+                accessChannel: req.query?.accessChannel,
+                success: req.query?.success,
+                from: req.query?.from,
+                to: req.query?.to,
+            });
+
+            return res.json(result);
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao listar logs de auditoria", detail: err.message });
         }
     });
 

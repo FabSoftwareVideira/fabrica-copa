@@ -112,6 +112,7 @@ const state = reactive({
   completedAuditItems: [],
   completedAuditSummary: { totalRows: 0, withCompletedAt: 0 },
   completedAuditMigration: null,
+  accessAuditItems: [],
   myRankingPosition: 0,
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
@@ -166,6 +167,8 @@ const ui = reactive({
   adminCouponsMsg: "",
   adminAuditLoading: false,
   adminAuditMsg: "",
+  adminAccessAuditLoading: false,
+  adminAccessAuditMsg: "",
   deletingCouponId: 0,
   dashboardAnimatedPercent: 0,
   dashboardAnimatedTotal: 0,
@@ -198,6 +201,15 @@ const adminTools = reactive({
   couponUserFilter: "all",
   couponPage: 1,
   couponPageSize: 8,
+  accessAuditSearch: "",
+  accessAuditSuccessFilter: "all",
+  accessAuditStatusFilter: "all",
+  accessAuditFrom: "",
+  accessAuditTo: "",
+  accessAuditPage: 1,
+  accessAuditPageSize: 10,
+  accessAuditSortBy: "createdAt",
+  accessAuditSortDir: "desc",
   tradeWindowFilter: "all",
   hidePastTradeWindows: true,
 });
@@ -246,7 +258,8 @@ const adminSubTabs = computed(() => {
   if (isAdmin.value) {
     tabs.push({ key: "trade-windows", label: "Transferências" });
     tabs.push({ key: "users", label: "Usuários" });
-    tabs.push({ key: "ranking-audit", label: "Auditoria" });
+    tabs.push({ key: "ranking-audit", label: "Auditoria ranking" });
+    tabs.push({ key: "access-audit", label: "Auditoria acessos" });
   }
   return tabs;
 });
@@ -259,6 +272,9 @@ function defaultAdminTab() {
 function selectAdminTab(tab) {
   const allowedTabs = new Set(adminSubTabs.value.map((item) => item.key));
   ui.adminTab = allowedTabs.has(tab) ? tab : defaultAdminTab();
+  if (ui.adminTab === "access-audit" && isAdmin.value) {
+    loadAdminAccessAudit();
+  }
 }
 
 const collectionViews = ["album", "missing", "duplicates", "search", "flip"];
@@ -470,6 +486,121 @@ const managedCouponsPageTo = computed(() =>
   Math.min(
     managedCouponsSafePage.value * Number(adminTools.couponPageSize || 8),
     filteredManagedCoupons.value.length,
+  ),
+);
+const filteredAccessAuditItems = computed(() => {
+  const query = String(adminTools.accessAuditSearch || "")
+    .trim()
+    .toLowerCase();
+
+  return state.accessAuditItems.filter((entry) => {
+    const successFilter = String(adminTools.accessAuditSuccessFilter || "all");
+    if (successFilter === "success" && !entry.success) return false;
+    if (successFilter === "error" && entry.success) return false;
+
+    const statusFilter = String(adminTools.accessAuditStatusFilter || "all");
+    const statusCode = Number(entry.statusCode || 0);
+    if (statusFilter === "2xx" && (statusCode < 200 || statusCode >= 300)) {
+      return false;
+    }
+    if (statusFilter === "4xx" && (statusCode < 400 || statusCode >= 500)) {
+      return false;
+    }
+    if (statusFilter === "5xx" && (statusCode < 500 || statusCode >= 600)) {
+      return false;
+    }
+
+    if (!query) return true;
+    const actorName = String(entry?.actor?.name || "").toLowerCase();
+    const actorEmail = String(entry?.actor?.email || "").toLowerCase();
+    const routePath = String(entry?.request?.routePath || "").toLowerCase();
+    const originalUrl = String(entry?.request?.originalUrl || "").toLowerCase();
+    const ip = String(entry?.request?.clientIp || "").toLowerCase();
+    const userAgent = String(entry?.request?.userAgent || "").toLowerCase();
+    const action = String(entry?.action || "").toLowerCase();
+
+    return (
+      actorName.includes(query) ||
+      actorEmail.includes(query) ||
+      routePath.includes(query) ||
+      originalUrl.includes(query) ||
+      ip.includes(query) ||
+      userAgent.includes(query) ||
+      action.includes(query)
+    );
+  });
+});
+const accessAuditSortedItems = computed(() => {
+  const list = [...filteredAccessAuditItems.value];
+  const dir = adminTools.accessAuditSortDir === "asc" ? 1 : -1;
+  const sortBy = String(adminTools.accessAuditSortBy || "createdAt");
+
+  list.sort((a, b) => {
+    let aVal = "";
+    let bVal = "";
+
+    if (sortBy === "user") {
+      aVal = String(a?.actor?.name || "").toLowerCase();
+      bVal = String(b?.actor?.name || "").toLowerCase();
+    } else if (sortBy === "route") {
+      aVal = String(a?.request?.routePath || "").toLowerCase();
+      bVal = String(b?.request?.routePath || "").toLowerCase();
+    } else if (sortBy === "status") {
+      aVal = Number(a?.statusCode || 0);
+      bVal = Number(b?.statusCode || 0);
+    } else if (sortBy === "ip") {
+      aVal = String(a?.request?.clientIp || "").toLowerCase();
+      bVal = String(b?.request?.clientIp || "").toLowerCase();
+    } else if (sortBy === "agent") {
+      aVal = String(a?.request?.userAgent || "").toLowerCase();
+      bVal = String(b?.request?.userAgent || "").toLowerCase();
+    } else if (sortBy === "success") {
+      aVal = a?.success ? 1 : 0;
+      bVal = b?.success ? 1 : 0;
+    } else {
+      aVal = new Date(a?.createdAt || 0).getTime() || 0;
+      bVal = new Date(b?.createdAt || 0).getTime() || 0;
+    }
+
+    if (aVal < bVal) return -1 * dir;
+    if (aVal > bVal) return 1 * dir;
+    return 0;
+  });
+
+  return list;
+});
+const accessAuditPageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil(
+      accessAuditSortedItems.value.length /
+        Number(adminTools.accessAuditPageSize || 10),
+    ),
+  ),
+);
+const accessAuditSafePage = computed(() =>
+  Math.min(
+    Math.max(1, Number(adminTools.accessAuditPage || 1)),
+    accessAuditPageCount.value,
+  ),
+);
+const accessAuditPagedItems = computed(() => {
+  const pageSize = Number(adminTools.accessAuditPageSize || 10);
+  const start = (accessAuditSafePage.value - 1) * pageSize;
+  return accessAuditSortedItems.value.slice(start, start + pageSize);
+});
+const accessAuditPageFrom = computed(() => {
+  if (!accessAuditSortedItems.value.length) return 0;
+  return (
+    (accessAuditSafePage.value - 1) *
+      Number(adminTools.accessAuditPageSize || 10) +
+    1
+  );
+});
+const accessAuditPageTo = computed(() =>
+  Math.min(
+    accessAuditSafePage.value * Number(adminTools.accessAuditPageSize || 10),
+    accessAuditSortedItems.value.length,
   ),
 );
 const editingManagedUser = computed(() => {
@@ -1449,6 +1580,10 @@ function clearAuth() {
   state.recentPacks = [];
   state.managedUsers = [];
   state.managedCoupons = [];
+  state.completedAuditItems = [];
+  state.completedAuditSummary = { totalRows: 0, withCompletedAt: 0 };
+  state.completedAuditMigration = null;
+  state.accessAuditItems = [];
   state.recentCreatedStickers = [];
   state.newStickersUnread = 0;
   state.notifications = [];
@@ -1489,6 +1624,15 @@ function clearAuth() {
   adminTools.couponUserFilter = "all";
   adminTools.couponPage = 1;
   adminTools.couponPageSize = 8;
+  adminTools.accessAuditSearch = "";
+  adminTools.accessAuditSuccessFilter = "all";
+  adminTools.accessAuditStatusFilter = "all";
+  adminTools.accessAuditFrom = "";
+  adminTools.accessAuditTo = "";
+  adminTools.accessAuditPage = 1;
+  adminTools.accessAuditPageSize = 10;
+  adminTools.accessAuditSortBy = "createdAt";
+  adminTools.accessAuditSortDir = "desc";
   adminTools.tradeWindowFilter = "all";
   adminTools.hidePastTradeWindows = true;
   ui.managePanelMsg = "";
@@ -1498,6 +1642,7 @@ function clearAuth() {
   ui.stickerCreateMsg = "";
   ui.recentStickersMsg = "";
   ui.adminCouponsMsg = "";
+  ui.adminAccessAuditMsg = "";
   ui.adminTab = "stickers";
   ui.deletingCouponId = 0;
   ui.tradeOfferOpen = false;
@@ -2142,6 +2287,90 @@ async function loadAdminCompletedAudit() {
   } finally {
     ui.adminAuditLoading = false;
   }
+}
+
+function normalizeDateTimeFilterInput(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw.includes("T")) {
+    const normalized = raw.replace("T", " ");
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(normalized)) {
+      return `${normalized}:00`;
+    }
+    return normalized;
+  }
+  return raw;
+}
+
+async function loadAdminAccessAudit() {
+  if (!isAuthenticated.value || !isAdmin.value) {
+    state.accessAuditItems = [];
+    return;
+  }
+
+  ui.adminAccessAuditLoading = true;
+  ui.adminAccessAuditMsg = "";
+
+  try {
+    const params = new URLSearchParams();
+    params.set("limit", "300");
+
+    const successFilter = String(adminTools.accessAuditSuccessFilter || "all");
+    if (successFilter === "success") params.set("success", "true");
+    if (successFilter === "error") params.set("success", "false");
+
+    const from = normalizeDateTimeFilterInput(adminTools.accessAuditFrom);
+    const to = normalizeDateTimeFilterInput(adminTools.accessAuditTo);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+
+    const data = await apiFetch(`/admin/audit-logs?${params.toString()}`);
+    state.accessAuditItems = Array.isArray(data?.items) ? data.items : [];
+    adminTools.accessAuditPage = 1;
+  } catch (err) {
+    ui.adminAccessAuditMsg = err.message || "Erro ao carregar auditoria de acessos";
+    state.accessAuditItems = [];
+  } finally {
+    ui.adminAccessAuditLoading = false;
+  }
+}
+
+function clearAccessAuditFilters() {
+  adminTools.accessAuditSearch = "";
+  adminTools.accessAuditSuccessFilter = "all";
+  adminTools.accessAuditStatusFilter = "all";
+  adminTools.accessAuditFrom = "";
+  adminTools.accessAuditTo = "";
+  adminTools.accessAuditSortBy = "createdAt";
+  adminTools.accessAuditSortDir = "desc";
+  adminTools.accessAuditPage = 1;
+}
+
+function setAccessAuditSort(sortBy) {
+  const allowed = ["createdAt", "user", "route", "status", "ip", "agent", "success"];
+  if (!allowed.includes(sortBy)) return;
+  if (adminTools.accessAuditSortBy === sortBy) {
+    adminTools.accessAuditSortDir =
+      adminTools.accessAuditSortDir === "asc" ? "desc" : "asc";
+  } else {
+    adminTools.accessAuditSortBy = sortBy;
+    adminTools.accessAuditSortDir = sortBy === "createdAt" ? "desc" : "asc";
+  }
+  adminTools.accessAuditPage = 1;
+}
+
+function setAccessAuditPage(nextPage) {
+  const n = Number(nextPage || 1);
+  adminTools.accessAuditPage = Math.min(
+    Math.max(1, n),
+    Math.max(1, accessAuditPageCount.value),
+  );
+}
+
+function setAccessAuditPageSize(nextSize) {
+  const n = Number(nextSize || 10);
+  adminTools.accessAuditPageSize = [5, 10, 20, 50].includes(n) ? n : 10;
+  adminTools.accessAuditPage = 1;
 }
 
 async function deleteManagedCoupon(coupon) {
@@ -3000,6 +3229,7 @@ function handleAdminRefresh() {
     loadRecentCreatedStickers();
     loadAllTradeWindows();
     loadAdminCompletedAudit();
+    loadAdminAccessAudit();
   }
 }
 
@@ -4770,6 +5000,192 @@ const myTradableDuplicatesForOffer = computed(() => {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div
+              v-if="ui.adminTab === 'access-audit' && isAdmin"
+              class="manage-users-box"
+            >
+              <h4>Auditoria de acessos</h4>
+
+              <div class="manage-users-toolbar">
+                <input
+                  v-model.trim="adminTools.accessAuditSearch"
+                  type="search"
+                  placeholder="Buscar por usuário, rota, IP, action ou agent"
+                  @input="setAccessAuditPage(1)"
+                />
+                <select
+                  v-model="adminTools.accessAuditSuccessFilter"
+                  @change="setAccessAuditPage(1)"
+                >
+                  <option value="all">Success: todos</option>
+                  <option value="success">Success: true</option>
+                  <option value="error">Success: false</option>
+                </select>
+                <select
+                  v-model="adminTools.accessAuditStatusFilter"
+                  @change="setAccessAuditPage(1)"
+                >
+                  <option value="all">Status: todos</option>
+                  <option value="2xx">2xx</option>
+                  <option value="4xx">4xx</option>
+                  <option value="5xx">5xx</option>
+                </select>
+              </div>
+
+              <div class="manage-users-toolbar">
+                <label>
+                  De
+                  <input v-model="adminTools.accessAuditFrom" type="datetime-local" />
+                </label>
+                <label>
+                  Até
+                  <input v-model="adminTools.accessAuditTo" type="datetime-local" />
+                </label>
+               
+              <button
+                type="button"
+                @click="
+                  clearAccessAuditFilters();
+                  loadAdminAccessAudit();
+                "
+              >
+                Limpar filtros
+              </button>
+              </div>
+
+              <p v-if="ui.adminAccessAuditLoading" class="read-only-hint">
+                Carregando auditoria de acessos...
+              </p>
+              <p v-else-if="ui.adminAccessAuditMsg" class="read-only-hint">
+                {{ ui.adminAccessAuditMsg }}
+              </p>
+
+              <div v-else class="admin-users-table-wrap admin-audit-table-wrap">
+                <table class="admin-users-table admin-access-audit-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('createdAt')">
+                          Data
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('user')">
+                          Usuário
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('route')">
+                          Rota
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('status')">
+                          Status
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('ip')">
+                          IP
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('agent')">
+                          Agent
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setAccessAuditSort('success')">
+                          Success
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="accessAuditPagedItems.length === 0">
+                      <td colspan="7">Nenhum registro de acesso encontrado.</td>
+                    </tr>
+                    <tr
+                      v-for="entry in accessAuditPagedItems"
+                      :key="`access-audit-${entry.id}`"
+                    >
+                      <td>
+                        <small>{{ formatDateTime(entry.createdAt) }}</small>
+                      </td>
+                      <td>
+                        <strong>{{ entry.actor?.name || '-' }}</strong>
+                        <small>{{ entry.actor?.email || '-' }}</small>
+                      </td>
+                      <td class="access-audit-col-route">
+                        <small :title="entry.request?.originalUrl || entry.request?.routePath || '-'">
+                          <span class="access-audit-route-text">
+                            {{ entry.request?.routePath || entry.request?.originalUrl || '-' }}
+                          </span>
+                        </small>
+                      </td>
+                      <td>{{ entry.statusCode || '-' }}</td>
+                      <td>{{ entry.request?.clientIp || '-' }}</td>
+                      <td class="access-audit-col-agent">
+                        <small :title="entry.request?.userAgent || '-'">
+                          <span class="access-audit-agent-text">
+                            {{ entry.request?.userAgent || '-' }}
+                          </span>
+                        </small>
+                      </td>
+                      <td>
+                        <span
+                          class="table-pill"
+                          :class="entry.success ? 'active' : 'blocked'"
+                        >
+                          {{ entry.success ? 'true' : 'false' }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="admin-pagination">
+                <div>
+                  <small>
+                    Exibindo {{ accessAuditPageFrom }}-{{ accessAuditPageTo }} de
+                    {{ accessAuditSortedItems.length }}
+                  </small>
+                  <label class="page-size-label">
+                    Itens por página
+                    <select
+                      :value="adminTools.accessAuditPageSize"
+                      @change="setAccessAuditPageSize($event.target.value)"
+                    >
+                      <option :value="5">5</option>
+                      <option :value="10">10</option>
+                      <option :value="20">20</option>
+                      <option :value="50">50</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="accessAuditSafePage <= 1"
+                    @click="setAccessAuditPage(accessAuditSafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span>
+                    Página {{ accessAuditSafePage }} de {{ accessAuditPageCount }}
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="accessAuditSafePage >= accessAuditPageCount"
+                    @click="setAccessAuditPage(accessAuditSafePage + 1)"
+                  >
+                    Próxima
+                  </button>
+                </div>
               </div>
             </div>
           </div>

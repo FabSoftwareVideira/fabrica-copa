@@ -4535,6 +4535,9 @@ button:disabled {
   min-width: 0;
   width: 100%;
 }
+.manage-users-toolbar button {
+  align-self: end;
+}
 
 .manage-users-coupon-filter-btn {
   width: 100%;
@@ -4603,6 +4606,61 @@ button:disabled {
 
 .admin-audit-table-wrap {
   margin-top: 0.8rem;
+}
+
+.admin-access-audit-table {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
+.admin-access-audit-table th:nth-child(1),
+.admin-access-audit-table td:nth-child(1) {
+  width: 145px;
+}
+
+.admin-access-audit-table th:nth-child(2),
+.admin-access-audit-table td:nth-child(2) {
+  width: 180px;
+}
+
+.admin-access-audit-table th:nth-child(3),
+.admin-access-audit-table td:nth-child(3) {
+  width: 230px;
+}
+
+.admin-access-audit-table th:nth-child(4),
+.admin-access-audit-table td:nth-child(4) {
+  width: 80px;
+}
+
+.admin-access-audit-table th:nth-child(5),
+.admin-access-audit-table td:nth-child(5) {
+  width: 130px;
+}
+
+.admin-access-audit-table th:nth-child(6),
+.admin-access-audit-table td:nth-child(6) {
+  width: 280px;
+}
+
+.admin-access-audit-table th:nth-child(7),
+.admin-access-audit-table td:nth-child(7) {
+  width: 95px;
+}
+
+.access-audit-col-route small,
+.access-audit-col-agent small {
+  margin-top: 0;
+}
+
+.access-audit-route-text,
+.access-audit-agent-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .table-pill {
@@ -5123,6 +5181,102 @@ button:disabled {
     font-size: 0.65rem;
   }
 
+  .admin-access-audit-table {
+    min-width: 0;
+    table-layout: auto;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .admin-access-audit-table thead {
+    display: none;
+  }
+
+  .admin-access-audit-table,
+  .admin-access-audit-table tbody,
+  .admin-access-audit-table tr,
+  .admin-access-audit-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-access-audit-table tbody tr {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 0.2rem 0.45rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .admin-access-audit-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .admin-access-audit-table td {
+    border-bottom: 1px dashed rgba(15, 23, 42, 0.09);
+    padding: 0.35rem 0;
+  }
+
+  .admin-access-audit-table td:last-child {
+    border-bottom: none;
+  }
+
+  .admin-access-audit-table td::before {
+    display: block;
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+    margin-bottom: 0.12rem;
+    font-weight: 700;
+  }
+
+  .admin-access-audit-table td:nth-child(1)::before {
+    content: "Data";
+  }
+
+  .admin-access-audit-table td:nth-child(2)::before {
+    content: "Usuário";
+  }
+
+  .admin-access-audit-table td:nth-child(3)::before {
+    content: "Rota";
+  }
+
+  .admin-access-audit-table td:nth-child(4)::before {
+    content: "Status";
+  }
+
+  .admin-access-audit-table td:nth-child(5)::before {
+    content: "IP";
+  }
+
+  .admin-access-audit-table td:nth-child(6)::before {
+    content: "Agent";
+  }
+
+  .admin-access-audit-table td:nth-child(7)::before {
+    content: "Success";
+  }
+
+  .admin-access-audit-table td[colspan] {
+    text-align: left;
+    border-bottom: none;
+    padding: 0.5rem 0;
+  }
+
+  .admin-access-audit-table td[colspan]::before {
+    content: none;
+  }
+
+  .admin-access-audit-table .access-audit-route-text,
+  .admin-access-audit-table .access-audit-agent-text {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+  }
+
   .page-size-label {
     font-size: 0.7rem;
   }
@@ -5375,6 +5529,15 @@ button:disabled {
   .admin-users-table th:nth-child(3),
   .admin-users-table td:nth-child(3) {
     display: none;
+  }
+
+  .admin-access-audit-table td:nth-child(3) {
+    display: block;
+  }
+
+  .admin-access-audit-table td {
+    padding: 0.35rem 0;
+    font-size: 0.7rem;
   }
 
   .page-size-label {

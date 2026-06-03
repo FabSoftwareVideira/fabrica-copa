@@ -17,6 +17,9 @@ const LOG_ROTATION_ENABLED = String(process.env.LOG_ROTATION_ENABLED || "true") 
 const LOG_DIR = process.env.LOG_DIR || path.resolve(__dirname, "../../logs");
 const LOG_ROTATION_INTERVAL = process.env.LOG_ROTATION_INTERVAL || "1d";
 const LOG_ROTATION_MAX_FILES = Number(process.env.LOG_ROTATION_MAX_FILES || 14);
+const AUDIT_LOG_CLEANUP_ENABLED = String(process.env.AUDIT_LOG_CLEANUP_ENABLED || "true") === "true";
+const AUDIT_LOG_RETENTION_DAYS = Math.max(1, Number(process.env.AUDIT_LOG_RETENTION_DAYS || 10));
+const AUDIT_LOG_CLEANUP_INTERVAL_HOURS = Math.max(1, Number(process.env.AUDIT_LOG_CLEANUP_INTERVAL_HOURS || 24));
 const DAILY_LOGIN_BONUS_COINS = Math.max(0, Number(process.env.DAILY_LOGIN_BONUS_COINS || 3));
 const DAILY_LOGIN_BONUS_PACKS = Math.max(0, Number(process.env.DAILY_LOGIN_BONUS_PACKS || 1));
 
@@ -51,6 +54,9 @@ module.exports = {
     LOG_DIR,
     LOG_ROTATION_INTERVAL,
     LOG_ROTATION_MAX_FILES,
+    AUDIT_LOG_CLEANUP_ENABLED,
+    AUDIT_LOG_RETENTION_DAYS,
+    AUDIT_LOG_CLEANUP_INTERVAL_HOURS,
     DAILY_LOGIN_BONUS_COINS,
     DAILY_LOGIN_BONUS_PACKS,
     API_BASE_URL,

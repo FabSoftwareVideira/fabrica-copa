@@ -128,6 +128,55 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
     await ensureColumn("system_events", "target_user_id", "INTEGER");
 
     await run(`
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            request_id TEXT,
+            user_id INTEGER,
+            user_name_snapshot TEXT,
+            user_email_snapshot TEXT,
+            user_role_snapshot TEXT,
+            action TEXT NOT NULL,
+            http_method TEXT NOT NULL,
+            route_path TEXT NOT NULL,
+            original_url TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            client_ip TEXT NOT NULL,
+            user_agent TEXT,
+            browser_name TEXT,
+            access_channel TEXT,
+            target_user_id INTEGER,
+            success INTEGER NOT NULL DEFAULT 1,
+            metadata_json TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
+        )
+    `);
+
+    await ensureColumn("audit_logs", "request_id", "TEXT");
+    await ensureColumn("audit_logs", "user_id", "INTEGER");
+    await ensureColumn("audit_logs", "user_name_snapshot", "TEXT");
+    await ensureColumn("audit_logs", "user_email_snapshot", "TEXT");
+    await ensureColumn("audit_logs", "user_role_snapshot", "TEXT");
+    await ensureColumn("audit_logs", "action", "TEXT NOT NULL DEFAULT 'http.read'");
+    await ensureColumn("audit_logs", "http_method", "TEXT NOT NULL DEFAULT 'GET'");
+    await ensureColumn("audit_logs", "route_path", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("audit_logs", "original_url", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("audit_logs", "status_code", "INTEGER NOT NULL DEFAULT 200");
+    await ensureColumn("audit_logs", "client_ip", "TEXT NOT NULL DEFAULT 'unknown'");
+    await ensureColumn("audit_logs", "user_agent", "TEXT");
+    await ensureColumn("audit_logs", "browser_name", "TEXT");
+    await ensureColumn("audit_logs", "access_channel", "TEXT");
+    await ensureColumn("audit_logs", "target_user_id", "INTEGER");
+    await ensureColumn("audit_logs", "success", "INTEGER NOT NULL DEFAULT 1");
+    await ensureColumn("audit_logs", "metadata_json", "TEXT");
+
+    await run("CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC)");
+    await run("CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id)");
+    await run("CREATE INDEX IF NOT EXISTS idx_audit_logs_action_created_at ON audit_logs(action, created_at DESC)");
+    await run("CREATE INDEX IF NOT EXISTS idx_audit_logs_target_user_id ON audit_logs(target_user_id)");
+
+    await run(`
     CREATE TABLE IF NOT EXISTS pack_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,

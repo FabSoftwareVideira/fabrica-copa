@@ -25,6 +25,7 @@ const {
     ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL_DAYS, GOOGLE_CLIENT_ID,
     LOG_LEVEL, LOG_ROTATION_ENABLED, LOG_DIR, LOG_ROTATION_INTERVAL,
     LOG_ROTATION_MAX_FILES, DAILY_LOGIN_BONUS_COINS, DAILY_LOGIN_BONUS_PACKS,
+    AUDIT_LOG_CLEANUP_ENABLED, AUDIT_LOG_RETENTION_DAYS, AUDIT_LOG_CLEANUP_INTERVAL_HOURS,
     API_BASE_URL, DB_PATH,
     ROLE_ADMIN, ROLE_SERVIDOR, ROLE_PLAYER, ALLOWED_ROLES,
 } = require("./config/env");
@@ -45,9 +46,12 @@ const { createTradeWindowService } = require("./services/tradeWindowService");
 const { createTradeWindowWatcher } = require("./services/tradeWindowWatcher");
 const { createStickerCatalogService } = require("./services/stickerCatalogService");
 const { createTradeAvailabilityService } = require("./services/tradeAvailabilityService");
+const { createAuditLogService } = require("./services/auditLogService");
+const { createAuditRetentionService } = require("./services/auditRetentionService");
 
 // Middlewares
 const { createAuthMiddleware, requireRoles } = require("./middlewares/auth");
+const { createAuditMiddleware } = require("./middlewares/audit");
 
 // Controllers
 const { createAuthController } = require("./controllers/authController");
@@ -164,6 +168,29 @@ const authController = createAuthController({
     todayStr, DAILY_LOGIN_BONUS_COINS, DAILY_LOGIN_BONUS_PACKS,
 });
 
+const auditLogService = createAuditLogService({
+    run,
+    all,
+    nowSqlTimestamp,
+    sanitizeMeta,
+    extractClientIp,
+    logWarn,
+});
+
+const auditMiddleware = createAuditMiddleware({
+    auditLogService,
+    logWarn,
+});
+
+const auditRetentionService = createAuditRetentionService({
+    run,
+    logInfo,
+    logWarn,
+    enabled: AUDIT_LOG_CLEANUP_ENABLED,
+    retentionDays: AUDIT_LOG_RETENTION_DAYS,
+    cleanupIntervalMs: AUDIT_LOG_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000,
+});
+
 
 // ─── Express app ─────────────────────────────────────────────────────────────
 
@@ -181,6 +208,16 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     customSiteTitle: "Album Copa 2026 - API Docs",
 }));
 
+// Request context deve vir antes das rotas para estar disponivel em toda auditoria.
+app.use((req, res, next) => {
+    req.requestId = req.requestId || crypto.randomBytes(6).toString("hex");
+    req.clientIp = extractClientIp(req);
+    res.setHeader("x-request-id", req.requestId);
+    next();
+});
+
+app.use(auditMiddleware);
+
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
 const { createProfileRoutes } = require("./routes/profileRoutes");
@@ -196,6 +233,7 @@ app.use("/api", createAdminRoutes({
     getAlbumState, sanitizeUser, findTeamMeta, saveStickerImageToUploads,
     removeUploadedStickerImage, normalizeSticker, rebuildStickerCatalog,
     getCustomStickers, setCustomStickers, API_BASE_URL,
+    auditLogService,
 }));
 app.use("/api", createAlbumStateRoutes({
     authMiddleware, STICKERS, STICKER_BY_ID, getAlbumState, getValidCollectedMap,
@@ -213,13 +251,6 @@ app.use("/api", createTradeRoutes({
 app.use("/api", createProfileRoutes({ get, run, authMiddleware }));
 
 // ─── HTTP logging middlewares (after routes so requestId is set) ──────────────
-
-app.use((req, res, next) => {
-    req.requestId = req.requestId || crypto.randomBytes(6).toString("hex");
-    req.clientIp = extractClientIp(req);
-    res.setHeader("x-request-id", req.requestId);
-    next();
-});
 
 app.use(pinoHttp({
     logger,
@@ -291,6 +322,7 @@ async function initializeApplication() {
         totalStickers: STICKERS.length,
         isKnownStickerId: (stickerId) => STICKER_BY_ID.has(String(stickerId || "")),
     });
+    await auditRetentionService.start();
     await loadCustomStickersFromDb();
     await tradeWindowWatcher.start();
 }

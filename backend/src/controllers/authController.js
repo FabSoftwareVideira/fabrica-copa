@@ -60,11 +60,21 @@ function createAuthController({
 
     // Endpoint de login de teste (apenas para desenvolvimento)
     async function testLogin(req, res) {
+        req.auditContext = {
+            action: "auth.login.test",
+            accessChannel: "test_login",
+            browserName: "Development",
+        };
+
         if (process.env.NODE_ENV !== "development") {
+            req.auditContext.success = false;
             return res.status(403).json({ error: "Endpoint restrito ao ambiente de desenvolvimento" });
         }
         const email = String(req.body?.email || "").trim().toLowerCase();
-        if (!email) return res.status(400).json({ error: "Email obrigatorio" });
+        if (!email) {
+            req.auditContext.success = false;
+            return res.status(400).json({ error: "Email obrigatorio" });
+        }
 
         let userRow = await get(
             "SELECT id, name, email, role, is_blocked FROM users WHERE email = ?",
@@ -88,6 +98,7 @@ function createAuthController({
             };
         } else {
             if (Number(userRow.is_blocked || 0) === 1) {
+                req.auditContext.success = false;
                 return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
             }
         }
@@ -100,6 +111,11 @@ function createAuthController({
             email: userRow.email,
             role: userRow.role || ROLE_PLAYER,
         };
+        req.auditContext.userId = user.id;
+        req.auditContext.userName = user.name;
+        req.auditContext.userEmail = user.email;
+        req.auditContext.userRole = user.role;
+        req.auditContext.success = true;
         const accessToken = signAccessToken(user);
         const refreshToken = await createRefreshToken(user.id);
 
@@ -116,8 +132,16 @@ function createAuthController({
 
     async function authGoogle(req, res) {
         try {
+            req.auditContext = {
+                action: "auth.login.google",
+                accessChannel: "google_oauth",
+            };
+
             const idToken = String(req.body?.idToken || "").trim();
-            if (!idToken) return res.status(400).json({ error: "idToken obrigatorio" });
+            if (!idToken) {
+                req.auditContext.success = false;
+                return res.status(400).json({ error: "idToken obrigatorio" });
+            }
 
             const googleProfile = await verifyGoogleIdToken(idToken);
             const cleanEmail = String(googleProfile.email || "").trim().toLowerCase();
@@ -125,6 +149,7 @@ function createAuthController({
             const emailVerified = Boolean(googleProfile.email_verified);
 
             if (!cleanEmail || !emailVerified) {
+                req.auditContext.success = false;
                 return res.status(401).json({ error: "Conta Google invalida para autenticacao" });
             }
 
@@ -150,6 +175,7 @@ function createAuthController({
                 };
             } else {
                 if (Number(userRow.is_blocked || 0) === 1) {
+                    req.auditContext.success = false;
                     return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
                 }
 
@@ -173,6 +199,11 @@ function createAuthController({
                 email: userRow.email,
                 role: userRow.role || ROLE_PLAYER,
             };
+            req.auditContext.userId = user.id;
+            req.auditContext.userName = user.name;
+            req.auditContext.userEmail = user.email;
+            req.auditContext.userRole = user.role;
+            req.auditContext.success = true;
             const accessToken = signAccessToken(user);
             const refreshToken = await createRefreshToken(user.id);
 
@@ -186,16 +217,28 @@ function createAuthController({
             });
         } catch (err) {
             if (err?.code === "GOOGLE_CONFIG_MISSING") {
+                req.auditContext = req.auditContext || { action: "auth.login.google", accessChannel: "google_oauth" };
+                req.auditContext.success = false;
                 return res.status(500).json({ error: "Google OAuth nao configurado no servidor" });
             }
+            req.auditContext = req.auditContext || { action: "auth.login.google", accessChannel: "google_oauth" };
+            req.auditContext.success = false;
             return res.status(401).json({ error: "Falha na autenticacao Google", detail: err.message });
         }
     }
 
     async function authRefresh(req, res) {
         try {
+            req.auditContext = {
+                action: "auth.refresh",
+                accessChannel: "refresh_token",
+            };
+
             const refreshToken = String(req.body?.refreshToken || "");
-            if (!refreshToken) return res.status(400).json({ error: "refreshToken obrigatorio" });
+            if (!refreshToken) {
+                req.auditContext.success = false;
+                return res.status(400).json({ error: "refreshToken obrigatorio" });
+            }
 
             const tokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
             const row = await get(
@@ -207,14 +250,17 @@ function createAuthController({
             );
 
             if (!row || row.revoked) {
+                req.auditContext.success = false;
                 return res.status(401).json({ error: "Refresh token invalido", code: "REFRESH_INVALID" });
             }
             if (new Date(row.expires_at).getTime() <= Date.now()) {
                 await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
+                req.auditContext.success = false;
                 return res.status(401).json({ error: "Refresh token expirado", code: "REFRESH_EXPIRED" });
             }
             if (Number(row.is_blocked || 0) === 1) {
                 await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
+                req.auditContext.success = false;
                 return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador.", code: "USER_BLOCKED" });
             }
 
@@ -222,6 +268,11 @@ function createAuthController({
 
             await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
             const user = { id: row.user_id, name: row.name, email: row.email, role: row.role || ROLE_PLAYER };
+            req.auditContext.userId = user.id;
+            req.auditContext.userName = user.name;
+            req.auditContext.userEmail = user.email;
+            req.auditContext.userRole = user.role;
+            req.auditContext.success = true;
             const accessToken = signAccessToken(user);
             const newRefreshToken = await createRefreshToken(user.id);
 
@@ -234,18 +285,31 @@ function createAuthController({
                 dailyBonus,
             });
         } catch (err) {
+            req.auditContext = req.auditContext || { action: "auth.refresh", accessChannel: "refresh_token" };
+            req.auditContext.success = false;
             return res.status(500).json({ error: "Erro no refresh", detail: err.message });
         }
     }
 
     async function authLogout(req, res) {
         try {
+            req.auditContext = {
+                action: "auth.logout",
+                accessChannel: "logout",
+                success: true,
+                userId: req.user?.sub,
+                userName: req.user?.name,
+                userEmail: req.user?.email,
+                userRole: req.user?.role,
+            };
             const refreshToken = String(req.body?.refreshToken || "");
             if (refreshToken) {
                 await revokeRefreshToken(refreshToken);
             }
             return res.json({ ok: true });
         } catch (err) {
+            req.auditContext = req.auditContext || { action: "auth.logout", accessChannel: "logout" };
+            req.auditContext.success = false;
             return res.status(500).json({ error: "Erro no logout", detail: err.message });
         }
     }
