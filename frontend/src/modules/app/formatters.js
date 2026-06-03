@@ -3,9 +3,13 @@ import { APP_TIMEZONE } from "./constants";
 // Formatar datas para o formato "dd/mm/yyyy", sem horário.
 function formatDate(value, timezone = APP_TIMEZONE) {
     if (!value) return "-";
-    const date = new Date(value);
+    const normalizedValue = typeof value === 'string' ? value.replace(/-/g, '/') : value;
+
+    const date = new Date(normalizedValue);
     if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleDateString("pt-BR", { timeZone: timezone });
+
+    const formattedDate = date.toLocaleDateString("pt-BR", { timeZone: timezone });
+    return formattedDate;
 }
 
 function formatDateTime(value, timeZone = APP_TIMEZONE) {
