@@ -3688,14 +3688,28 @@ async function cancelTradeOffer(offer) {
 
 async function redeemTradeCoinsCoupon() {
   if (ui.tradeCoinRedeemLoading) return;
+
+  const confirmed = window.confirm(
+    "Deseja trocar 10 moedas por 1 pacote? Esta ação não pode ser desfeita.",
+  );
+
+  if (!confirmed) return;
+
   ui.tradeCoinRedeemLoading = true;
+
   try {
     const data = await apiFetch("/trade/coins/redeem", { method: "POST" });
+
     state.tradeCoins = Number(data.tradeCoins ?? state.tradeCoins);
-    if (data.extraPacks != null) state.extraPacks = Number(data.extraPacks);
+
+    if (data.extraPacks != null) {
+      state.extraPacks = Number(data.extraPacks);
+    }
+
     setToast(
       "🎉 Pacotinho liberado! Abra seus pacotes para colar as figurinhas.",
     );
+
     await loadSystemEvents(false).catch(() => null);
   } catch (err) {
     setToast(err.message || "Erro ao resgatar moedas");
@@ -4314,6 +4328,19 @@ const myTradableDuplicatesForOffer = computed(() => {
                   <strong>{{ state.tradeCoins }}</strong>
                   <small>moedas</small>
                 </div>
+                <button
+                  type="button"
+                  class="dashboard-simple-link"
+                  title="Resgatar moedas de troca por pacotinhos"
+                  aria-label="Resgatar moedas de troca por pacotinhos"
+                  :disabled="
+                    !canRedeemTradeCoinsCoupon || ui.tradeCoinRedeemLoading
+                  "
+                  @click="redeemTradeCoinsCoupon"
+                  :confirm
+                >
+                  💱
+                </button>
                 <button
                   type="button"
                   class="dashboard-simple-link"
