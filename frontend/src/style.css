@@ -3177,6 +3177,9 @@ button:disabled {
   border-left: 4px solid;
   border-radius: 8px;
   transition: all 160ms ease;
+
+  flex-wrap: wrap; /* Permite que o bloco de chips ou o botão desçam se a tela for muito pequena */
+  gap: 0.8rem; /* Espaçamento entre os elementos, mesmo quando empilhados */
 }
 
 .trade-available-row:hover {
@@ -3199,9 +3202,11 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  flex: 1;
-  min-width: 0;
-  flex-shrink: 0;
+  /* flex: 1; */
+  /* min-width: 0; */
+  /* flex-shrink: 0; */
+  flex: 0 0 auto; /* MUDOU: não encolhe e não cresce desordenadamente */
+  width: 200px; /* Opcional: define uma largura fixa pro nome do jogador não variar */
 }
 
 .trade-row-num {
@@ -3237,6 +3242,8 @@ button:disabled {
   flex-wrap: wrap;
   gap: 0.35rem;
   align-items: center;
+  flex: 1;
+  min-width: 150px; /* Garante um espaço mínimo antes de quebrar o layout */
 }
 
 .trade-user-list {
