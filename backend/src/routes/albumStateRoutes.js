@@ -1,5 +1,7 @@
 const express = require("express");
 
+const FORCE_REPEAT_PROBABILITY = 0.8; // Probabilidade de forçar repetida quando o usuário tem figurinhas faltando. Quanto mais alto, mais chance de sair repetida mesmo com figurinhas faltando. Ajuste conforme necessário.
+
 function createAlbumStateRoutes({
     authMiddleware,
     STICKERS,
@@ -121,18 +123,23 @@ function createAlbumStateRoutes({
                 return res.status(400).json({ error: "Sem pacotes disponíveis" });
             }
 
+            // Gerar pacote considerando o estado atual do álbum
             const collectedMap = state.collected || {};
-            // const missing = STICKERS.filter((s) => (collectedMap[s.id] || 0) < 1);
-            // const collected = STICKERS.filter((s) => (collectedMap[s.id] || 0) >= 1);
+            // Separar figurinhas em faltantes e já coletadas
+            const missing = STICKERS.filter((s) => (collectedMap[s.id] || 0) < 1);
+            // Para aumentar a chance de repetidas, vamos considerar como "coletadas" as figurinhas que o usuário já tem pelo menos 1 exemplar.
+            const collected = STICKERS.filter((s) => (collectedMap[s.id] || 0) >= 1);
 
             const pack = [];
             const wasOwned = [];
 
             for (let i = 0; i < 5; i++) {
-                // const forceRepeat = collected.length > 0 && (missing.length === 0 || Math.random() < 0.3);
-                // const pool = forceRepeat ? collected : (missing.length > 0 ? missing : STICKERS);
-                // const sticker = pickRandomWeighted(pool);
-                const sticker = pickRandomWeighted(STICKERS);
+                // Para aumentar a chance de repetidas, vamos usar uma abordagem ponderada.
+                const forceRepeat = collected.length > 0 && (missing.length === 0 || Math.random() < FORCE_REPEAT_PROBABILITY);
+                // Se for para forçar repetida, ou se não houver figurinhas faltando, escolhemos do pool de coletadas. Caso contrário, escolhemos do pool de faltantes.
+                const pool = forceRepeat ? collected : (missing.length > 0 ? missing : STICKERS);
+                const sticker = pickRandomWeighted(pool);
+                // const sticker = pickRandomWeighted(STICKERS);
                 pack.push(sticker);
                 wasOwned.push((collectedMap[sticker.id] || 0) >= 1);
                 collectedMap[sticker.id] = (collectedMap[sticker.id] || 0) + 1;
