@@ -58,6 +58,7 @@ const PRESTIGE_BONUS_STEP = 0.25;
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
+const BURN_REPEAT_DAILY_LIMIT = 10;
 
 const playerImageMap = new Map(
   playerImageItems
@@ -97,6 +98,8 @@ const state = reactive({
   tradeHistoryPage: 1,
   tradePageSize: 8,
   tradeCoins: 0,
+  burnRepeatsDate: "",
+  burnRepeatsToday: 0,
   tradeIncoming: [],
   tradeOutgoing: [],
   tradeHistory: [],
@@ -179,6 +182,8 @@ const ui = reactive({
   dashboardAnimatedMissing: 0,
   dashboardAnimatedDuplicates: 0,
   prestigeResetLoading: false,
+  burnRepeatLoading: false,
+  burningStickerId: "",
   notificationsOpen: false,
   invalidPromoStreak: 0,
   toastyVisible: false,
@@ -1722,6 +1727,8 @@ function clearAuth() {
   state.tradeHistoryPage = 1;
   state.tradePageSize = 8;
   state.tradeCoins = 0;
+  state.burnRepeatsDate = "";
+  state.burnRepeatsToday = 0;
   state.tradeSubView = "available";
   adminTools.targetUserId = "";
   adminTools.targetUserInput = "";
@@ -1766,6 +1773,8 @@ function clearAuth() {
   ui.tradeLoading = false;
   ui.tradeWindowSaving = false;
   ui.tradeWindowMsg = "";
+  ui.burnRepeatLoading = false;
+  ui.burningStickerId = "";
   ui.adminTradeWindowStartInput = "";
   ui.adminTradeWindowEndInput = "";
   ui.notificationsOpen = false;
@@ -2604,6 +2613,9 @@ function openCollectionView(view) {
   state.view = view;
   ui.mobileMenuOpen = false;
   state.newStickersUnread = 0;
+  if (view === "duplicates" && isAuthenticated.value) {
+    loadTradeOffers().catch(() => null);
+  }
 }
 
 function openDashboardView() {
@@ -2736,6 +2748,8 @@ async function loadAlbumState() {
   state.packsUsedToday = Number(data.packsUsedToday || 0);
   state.extraPacks = Number(data.extraPacks || 0);
   state.tradeCoins = Number(data.tradeCoins || 0);
+  state.burnRepeatsDate = String(data.burnRepeatsDate || "");
+  state.burnRepeatsToday = Number(data.burnRepeatsToday || 0);
   state.usedCodes = Array.isArray(data.usedCodes) ? data.usedCodes : [];
   state.prestigeLevel = Math.max(0, Number(data.prestigeLevel || 0));
   state.prestigeBonusMultiplier = Number(data.prestigeBonusMultiplier || 1);
@@ -3707,6 +3721,72 @@ async function openTradeView() {
 const myDuplicatesForOffer = computed(() =>
   stickers.filter((item) => getCount(item.id) > 1),
 );
+const pendingOutgoingOffers = computed(() =>
+  state.tradeOutgoing.filter(
+    (offer) => String(offer?.status || "") === "pending",
+  ),
+);
+const reservedDuplicateCountBySticker = computed(() => {
+  const reserved = new Map();
+  for (const offer of pendingOutgoingOffers.value) {
+    const stickerId = String(offer?.offeredSticker?.id || "");
+    if (!stickerId) continue;
+    reserved.set(stickerId, Number(reserved.get(stickerId) || 0) + 1);
+  }
+  return reserved;
+});
+const burnRepeatsDailyUsed = computed(() => {
+  if (state.burnRepeatsDate !== todayStr()) return 0;
+  return Math.max(0, Number(state.burnRepeatsToday || 0));
+});
+const burnRepeatsDailyRemaining = computed(() =>
+  Math.max(0, BURN_REPEAT_DAILY_LIMIT - burnRepeatsDailyUsed.value),
+);
+
+function duplicateReservedCount(stickerId) {
+  return Number(
+    reservedDuplicateCountBySticker.value.get(String(stickerId)) || 0,
+  );
+}
+
+function duplicateBurnableCount(stickerId) {
+  const count = Number(getCount(stickerId) || 0);
+  const reserved = duplicateReservedCount(stickerId);
+  return Math.max(0, count - 1 - reserved);
+}
+
+async function burnDuplicateSticker(item) {
+  if (!isAuthenticated.value || ui.burnRepeatLoading) return;
+  if (!item?.id) return;
+  ui.burnRepeatLoading = true;
+  ui.burningStickerId = String(item.id);
+  try {
+    const data = await apiFetch(`/album/duplicates/${item.id}/burn`, {
+      method: "POST",
+      body: JSON.stringify({ count: 1 }),
+    });
+
+    state.collected = data.state?.collected || state.collected;
+    state.tradeCoins = Number(data.state?.tradeCoins ?? state.tradeCoins);
+    state.burnRepeatsDate = String(
+      data.state?.burnRepeatsDate || state.burnRepeatsDate || "",
+    );
+    state.burnRepeatsToday = Number(
+      data.state?.burnRepeatsToday ?? state.burnRepeatsToday,
+    );
+
+    const stickerName = String(item.name || "figurinha");
+    setToast(
+      `Reciclagem concluída: ${stickerName} (+${Number(data.coinsGained || 1)} coin).`,
+    );
+  } catch (err) {
+    setToast(err.message || "Não foi possível reciclar essa figurinha agora.");
+    await loadTradeOffers().catch(() => null);
+  } finally {
+    ui.burnRepeatLoading = false;
+    ui.burningStickerId = "";
+  }
+}
 const myTradableDuplicatesForOffer = computed(() => {
   const reservedBySticker = new Map();
   for (const offer of state.tradeOutgoing) {
@@ -4234,6 +4314,15 @@ const myTradableDuplicatesForOffer = computed(() => {
                   <strong>{{ state.tradeCoins }}</strong>
                   <small>moedas</small>
                 </div>
+                <button
+                  type="button"
+                  class="dashboard-simple-link"
+                  title="Reciclar figurinhas repetidas"
+                  aria-label="Abrir tela de reciclagem de figurinhas repetidas"
+                  @click="openCollectionView('duplicates')"
+                >
+                  ♻️
+                </button>
               </div>
             </div>
           </div>
@@ -4308,6 +4397,13 @@ const myTradableDuplicatesForOffer = computed(() => {
               </article>
             </div>
           </div>
+          <!--<button
+            type="button"
+            class="dashboard-simple-link"
+            @click="openCollectionView('duplicates')"
+          >
+            Reciclar figurinhas por coins
+          </button>-->
           <div v-if="isAuthenticated" class="dashboard-prestige-box">
             <div
               v-if="lastAchievedBadgeImage"
@@ -5605,6 +5701,23 @@ const myTradableDuplicatesForOffer = computed(() => {
             <h2>Figurinhas Repetidas</h2>
             <span class="badge-chip">{{ duplicatesList.length }} itens</span>
           </div>
+          <div class="duplicates-burn-summary">
+            <strong>
+              Reciclagem diária: {{ burnRepeatsDailyUsed }}/{{
+                BURN_REPEAT_DAILY_LIMIT
+              }}
+            </strong>
+            <small>
+              Você pode reciclar até {{ BURN_REPEAT_DAILY_LIMIT }} repetidas por
+              dia para ganhar 1 coin por figurinha.
+            </small>
+            <small
+              v-if="burnRepeatsDailyRemaining <= 0"
+              class="duplicates-burn-limit"
+            >
+              Limite diário atingido. Novas reciclagens liberam amanhã.
+            </small>
+          </div>
           <h3>Figurinhas repetidas ({{ duplicatesList.length }})</h3>
           <div class="list">
             <article
@@ -5627,6 +5740,34 @@ const myTradableDuplicatesForOffer = computed(() => {
                 <span class="detail-chip detail-chip-alert">
                   +{{ Math.max(0, getCount(item.id) - 1) }} repetidas
                 </span>
+                <span
+                  v-if="duplicateReservedCount(item.id) > 0"
+                  class="detail-chip detail-chip-muted"
+                >
+                  {{ duplicateReservedCount(item.id) }} em transferência
+                </span>
+              </div>
+              <div class="detail-list-actions">
+                <button
+                  type="button"
+                  class="burn-duplicate-btn"
+                  :disabled="
+                    ui.burnRepeatLoading ||
+                    burnRepeatsDailyRemaining <= 0 ||
+                    duplicateBurnableCount(item.id) <= 0
+                  "
+                  @click="burnDuplicateSticker(item)"
+                >
+                  {{
+                    ui.burnRepeatLoading && ui.burningStickerId === item.id
+                      ? "Reciclando..."
+                      : "Reciclar 1 (+1 coin)"
+                  }}
+                </button>
+                <small class="burn-duplicate-hint">
+                  Disponíveis para reciclagem:
+                  {{ duplicateBurnableCount(item.id) }}
+                </small>
               </div>
             </article>
           </div>

@@ -50,6 +50,8 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
     await ensureColumn("album_states", "completed_at", "TEXT");
     await ensureColumn("album_states", "prestige_level", "INTEGER NOT NULL DEFAULT 0");
     await ensureColumn("album_states", "last_prestige_at", "TEXT");
+    await ensureColumn("album_states", "burn_repeats_date", "TEXT NOT NULL DEFAULT ''");
+    await ensureColumn("album_states", "burn_repeats_today", "INTEGER NOT NULL DEFAULT 0");
 
     await run(`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
@@ -220,6 +222,18 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
       FOREIGN KEY (to_user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+    await run(`
+        CREATE TABLE IF NOT EXISTS sticker_burn_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            sticker_id TEXT NOT NULL,
+            burned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            coins_gained INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+    await run("CREATE INDEX IF NOT EXISTS idx_sticker_burn_history_user_id ON sticker_burn_history(user_id)");
 
     await run(`
         CREATE TABLE IF NOT EXISTS trade_window_config (

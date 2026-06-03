@@ -2,6 +2,7 @@ const express = require("express");
 const { normalizePrestigeLevel, getPrestigeBonusMultiplier } = require("../utils/prestige");
 
 const FORCE_REPEAT_PROBABILITY = 0.4; // Probabilidade de forçar repetida quando o usuário tem figurinhas faltando. Quanto mais alto, mais chance de sair repetida mesmo com figurinhas faltando. Ajuste conforme necessário.
+const DAILY_BURN_REPEATS_LIMIT = 10;
 
 function createAlbumStateRoutes({
     authMiddleware,
@@ -231,6 +232,7 @@ function createAlbumStateRoutes({
 
             await run("DELETE FROM pack_history WHERE user_id = ?", [req.user.sub]);
             await run("DELETE FROM trade_history WHERE user_id = ?", [req.user.sub]);
+            await run("DELETE FROM sticker_burn_history WHERE user_id = ?", [req.user.sub]);
             await run(
                 `UPDATE trade_offers
                  SET status = 'cancelled', updated_at = ?
@@ -242,6 +244,8 @@ function createAlbumStateRoutes({
                 `UPDATE album_states
                  SET collected_json = '{}',
                      completed_at = NULL,
+                     burn_repeats_date = '',
+                     burn_repeats_today = 0,
                      prestige_level = ?,
                      last_prestige_at = ?,
                      updated_at = ?
@@ -265,7 +269,8 @@ function createAlbumStateRoutes({
 
             const row = await get(
                 `SELECT collected_json, packs_used_date, packs_used_today, extra_packs, trade_coins,
-                        used_codes_json, last_login_bonus_date, trade_reroll_count, trade_reroll_date,
+                    burn_repeats_date, burn_repeats_today,
+                    used_codes_json, last_login_bonus_date, trade_reroll_count, trade_reroll_date,
                         completed_at, prestige_level, last_prestige_at
                  FROM album_states
                  WHERE user_id = ?`,
@@ -284,6 +289,8 @@ function createAlbumStateRoutes({
                     packsUsedToday: Number(row?.packs_used_today || 0),
                     extraPacks: Number(row?.extra_packs || 0),
                     tradeCoins: Number(row?.trade_coins || 0),
+                    burnRepeatsDate: row?.burn_repeats_date || "",
+                    burnRepeatsToday: Number(row?.burn_repeats_today || 0),
                     usedCodes: parseJSON(row?.used_codes_json || "[]", []),
                     lastLoginBonusDate: row?.last_login_bonus_date || "",
                     tradeRerollCount: Number(row?.trade_reroll_count || 0),
@@ -325,6 +332,119 @@ function createAlbumStateRoutes({
         const sticker = STICKER_BY_ID.get(req.params.id);
         if (!sticker) return res.status(404).json({ error: "Figurinha nao encontrada" });
         return res.json({ sticker });
+    });
+
+    router.post("/album/duplicates/:id/burn", authMiddleware, async (req, res) => {
+        try {
+            const stickerId = String(req.params.id || "").trim();
+            if (!stickerId || !STICKER_BY_ID.has(stickerId)) {
+                return res.status(400).json({ error: "Figurinha inválida para reciclar." });
+            }
+
+            const requestedCount = Number(req.body?.count || 1);
+            const burnRequested = Number.isInteger(requestedCount)
+                ? Math.max(1, requestedCount)
+                : 1;
+
+            const { row: albumRow } = await getAlbumState(req.user.sub);
+            const validCollected = await getValidCollectedMap(req.user.sub);
+
+            const pendingRows = await all(
+                `SELECT offered_sticker_id, COUNT(*) AS pending_count
+                 FROM trade_offers
+                 WHERE from_user_id = ? AND status = 'pending'
+                 GROUP BY offered_sticker_id`,
+                [req.user.sub]
+            );
+            const reservedBySticker = new Map(
+                pendingRows.map((entry) => [String(entry.offered_sticker_id), Number(entry.pending_count || 0)])
+            );
+
+            const ownedCount = Number(validCollected[stickerId] || 0);
+            const reservedCount = Number(reservedBySticker.get(stickerId) || 0);
+            const burnableCount = Math.max(0, ownedCount - 1 - reservedCount);
+
+            if (burnableCount <= 0) {
+                return res.status(409).json({
+                    error: "Você não pode reciclar essa figurinha porque ela não está repetida disponível ou está reservada em troca pendente.",
+                });
+            }
+
+            const nowTimestamp = nowSqlTimestamp();
+            const today = String(nowTimestamp).slice(0, 10);
+            const burnDate = String(albumRow?.burn_repeats_date || "");
+            const alreadyBurnedToday =
+                burnDate === today ? Number(albumRow?.burn_repeats_today || 0) : 0;
+            const dailyRemaining = Math.max(0, DAILY_BURN_REPEATS_LIMIT - alreadyBurnedToday);
+
+            if (dailyRemaining <= 0) {
+                return res.status(429).json({
+                    error: `Limite diário atingido. Você já reciclou ${DAILY_BURN_REPEATS_LIMIT} figurinhas hoje.`,
+                    dailyLimit: DAILY_BURN_REPEATS_LIMIT,
+                    dailyUsed: alreadyBurnedToday,
+                    dailyRemaining: 0,
+                });
+            }
+
+            const burnedCount = Math.max(
+                0,
+                Math.min(burnRequested, burnableCount, dailyRemaining)
+            );
+            if (burnedCount <= 0) {
+                return res.status(409).json({ error: "Nenhuma figurinha disponível para reciclagem." });
+            }
+
+            for (let i = 0; i < burnedCount; i += 1) {
+                await run(
+                    `INSERT INTO sticker_burn_history(user_id, sticker_id, burned_at, coins_gained)
+                     VALUES(?, ?, ?, 1)`,
+                    [req.user.sub, stickerId, nowTimestamp]
+                );
+            }
+
+            await run(
+                `UPDATE album_states
+                 SET trade_coins = trade_coins + ?,
+                     burn_repeats_date = ?,
+                     burn_repeats_today = ?,
+                     updated_at = ?
+                 WHERE user_id = ?`,
+                [
+                    burnedCount,
+                    today,
+                    alreadyBurnedToday + burnedCount,
+                    nowTimestamp,
+                    req.user.sub,
+                ]
+            );
+
+            const tradeCoins = Number(albumRow?.trade_coins || 0) + burnedCount;
+            const collectedAfter = {
+                ...validCollected,
+                [stickerId]: Math.max(0, ownedCount - burnedCount),
+            };
+
+            return res.json({
+                ok: true,
+                burnedCount,
+                coinsGained: burnedCount,
+                dailyLimit: DAILY_BURN_REPEATS_LIMIT,
+                dailyUsed: alreadyBurnedToday + burnedCount,
+                dailyRemaining: Math.max(
+                    0,
+                    DAILY_BURN_REPEATS_LIMIT - (alreadyBurnedToday + burnedCount)
+                ),
+                stickerId,
+                state: {
+                    collected: collectedAfter,
+                    tradeCoins,
+                    burnRepeatsDate: today,
+                    burnRepeatsToday: alreadyBurnedToday + burnedCount,
+                },
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao reciclar figurinha", detail: err.message });
+        }
     });
 
     return router;

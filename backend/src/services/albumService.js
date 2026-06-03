@@ -67,6 +67,8 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTim
                 packsUsedToday: row.packs_used_today || 0,
                 extraPacks: row.extra_packs || 0,
                 tradeCoins: Number(row.trade_coins || 0),
+                burnRepeatsDate: row.burn_repeats_date || "",
+                burnRepeatsToday: Number(row.burn_repeats_today || 0),
                 usedCodes: parseJSON(row.used_codes_json || "[]", []),
                 lastLoginBonusDate: row.last_login_bonus_date || "",
                 tradeRerollCount: Number(row.trade_reroll_count || 0),
@@ -123,6 +125,22 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTim
             if (requestedId && STICKER_BY_ID.has(requestedId)) {
                 collected[requestedId] = (collected[requestedId] || 0) + 1;
             }
+        }
+
+        const burnRows = await all(
+            `SELECT sticker_id, COUNT(*) AS burned_count
+             FROM sticker_burn_history
+             WHERE user_id = ?
+             GROUP BY sticker_id`,
+            [userId]
+        );
+
+        for (const burn of burnRows) {
+            const stickerId = String(burn.sticker_id || "");
+            if (!stickerId || !STICKER_BY_ID.has(stickerId)) continue;
+            const burnedCount = Math.max(0, Number(burn.burned_count || 0));
+            if (burnedCount <= 0) continue;
+            collected[stickerId] = Math.max(0, Number(collected[stickerId] || 0) - burnedCount);
         }
 
         return collected;
