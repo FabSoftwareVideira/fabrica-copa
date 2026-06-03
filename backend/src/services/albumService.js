@@ -71,6 +71,9 @@ function createAlbumService({ run, get, all, STICKER_BY_ID, parseJSON, nowSqlTim
                 lastLoginBonusDate: row.last_login_bonus_date || "",
                 tradeRerollCount: Number(row.trade_reroll_count || 0),
                 tradeRerollDate: row.trade_reroll_date || "",
+                completedAt: row.completed_at || "",
+                prestigeLevel: Number(row.prestige_level || 0),
+                lastPrestigeAt: row.last_prestige_at || "",
             },
         };
     }

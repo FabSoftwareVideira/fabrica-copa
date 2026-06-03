@@ -1,5 +1,6 @@
 const express = require("express");
 const { TRADE_COINS_PER_TRADE } = require("../config/constants");
+const { getPrestigeBonusMultiplier } = require("../utils/prestige");
 
 function createTradeRoutes({
     authMiddleware,
@@ -280,6 +281,25 @@ function createTradeRoutes({
             const fromState = await getValidCollectedMap(offer.from_user_id);
             const toState = await getValidCollectedMap(offer.to_user_id);
 
+            const creatorAlbumState = await get(
+                "SELECT prestige_level FROM album_states WHERE user_id = ?",
+                [offer.from_user_id]
+            );
+            const acceptorAlbumState = await get(
+                "SELECT prestige_level FROM album_states WHERE user_id = ?",
+                [offer.to_user_id]
+            );
+            const creatorBonusMultiplier = getPrestigeBonusMultiplier(creatorAlbumState?.prestige_level || 0);
+            const acceptorBonusMultiplier = getPrestigeBonusMultiplier(acceptorAlbumState?.prestige_level || 0);
+            const creatorCoinsReceived = Math.max(
+                0,
+                Math.round(Number(TRADE_COINS_PER_TRADE || 0) * creatorBonusMultiplier)
+            );
+            const acceptorCoinsReceived = Math.max(
+                0,
+                Math.round(Number(TRADE_COINS_PER_TRADE || 0) * acceptorBonusMultiplier)
+            );
+
             const nowTimestamp = nowSqlTimestamp();
             if ((fromState[offer.offered_sticker_id] || 0) <= 1) {
                 run("UPDATE trade_offers SET status = 'cancelled', updated_at = ? WHERE id = ?", [nowTimestamp, offerId]);
@@ -317,11 +337,11 @@ function createTradeRoutes({
                     );
                     run(
                         "UPDATE album_states SET collected_json = ?, trade_coins = trade_coins + ?, updated_at = ? WHERE user_id = ?",
-                        [JSON.stringify(toCollected), TRADE_COINS_PER_TRADE, nowTimestamp, offer.to_user_id]
+                        [JSON.stringify(toCollected), acceptorCoinsReceived, nowTimestamp, offer.to_user_id]
                     );
                     run(
                         "UPDATE album_states SET trade_coins = trade_coins + ?, updated_at = ? WHERE user_id = ?",
-                        [TRADE_COINS_PER_TRADE, nowTimestamp, offer.from_user_id]
+                        [creatorCoinsReceived, nowTimestamp, offer.from_user_id]
                     );
                     run(
                         "UPDATE trade_offers SET status = 'accepted', updated_at = ? WHERE id = ?",
@@ -337,7 +357,6 @@ function createTradeRoutes({
                         [offer.to_user_id, offer.from_user_id, offer.to_user_id, offer.requested_sticker_id, offer.offered_sticker_id, nowTimestamp]
                     );
 
-                    const coinsReceived = TRADE_COINS_PER_TRADE;
                     offeredSticker = STICKER_BY_ID.get(offer.offered_sticker_id);
                     requestedSticker = STICKER_BY_ID.get(offer.requested_sticker_id);
                     creatorUser = get("SELECT name FROM users WHERE id = ?", [offer.from_user_id]);
@@ -354,18 +373,21 @@ function createTradeRoutes({
                         requestedStickerId: offer.requested_sticker_id,
                         requestedStickerNum: requestedSticker?.num,
                         requestedStickerName: requestedSticker?.name,
-                        coinsReceived,
+                        creatorCoinsReceived,
+                        acceptorCoinsReceived,
+                        creatorBonusMultiplier,
+                        acceptorBonusMultiplier,
                     };
                     run(
                         `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
                          VALUES('trade_accepted', ?, ?, ?, ?, ?)`,
                         [
-                            `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
+                            `${acceptorUser?.name || "Usuário"} aceitou sua troca: #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"} por #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"}. Você recebeu ${creatorCoinsReceived} moedas.`,
                             JSON.stringify({
                                 ...sharedPayload,
                                 recipientUserId: offer.from_user_id,
                                 recipientUserName: creatorUser?.name,
-                                coinsReceived,
+                                coinsReceived: creatorCoinsReceived,
                             }),
                             offer.to_user_id,
                             offer.from_user_id,
@@ -376,12 +398,12 @@ function createTradeRoutes({
                         `INSERT INTO system_events(event_type, message, payload_json, created_by_user_id, target_user_id, created_at)
                          VALUES('trade_accepted', ?, ?, ?, ?, ?)` ,
                         [
-                            `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${coinsReceived} moedas.`,
+                            `Você aceitou a troca de ${creatorUser?.name || "Usuário"}: #${requestedSticker?.num} ${requestedSticker?.name || "figurinha"} por #${offeredSticker?.num} ${offeredSticker?.name || "figurinha"}. Você recebeu ${acceptorCoinsReceived} moedas.`,
                             JSON.stringify({
                                 ...sharedPayload,
                                 recipientUserId: offer.to_user_id,
                                 recipientUserName: acceptorUser?.name,
-                                coinsReceived,
+                                coinsReceived: acceptorCoinsReceived,
                             }),
                             offer.to_user_id,
                             offer.to_user_id,

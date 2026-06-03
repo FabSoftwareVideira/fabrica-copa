@@ -22,6 +22,10 @@ function createAlbumRoutes({
                 ? Math.max(1, Math.min(50, Math.floor(requestedLimit)))
                 : 10;
             const ranking = await getGlobalRanking();
+            const completedRanking = ranking.filter((row) => {
+                const completedAt = String(row.completedAt || "").trim();
+                return completedAt !== "" || Number(row.prestigeLevel || 0) > 0;
+            });
 
             return res.json({
                 totalStickers: STICKERS.length,
@@ -33,6 +37,17 @@ function createAlbumRoutes({
                     percent: row.percent,
                     completedAt: row.completedAt,
                     updatedAt: row.updatedAt,
+                    prestigeLevel: row.prestigeLevel,
+                })),
+                completedRanking: completedRanking.map((row) => ({
+                    position: row.position,
+                    userId: row.userId,
+                    name: row.name,
+                    collected: row.collected,
+                    percent: row.percent,
+                    completedAt: row.completedAt,
+                    updatedAt: row.updatedAt,
+                    prestigeLevel: row.prestigeLevel,
                 })),
             });
         } catch (err) {

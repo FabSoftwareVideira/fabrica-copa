@@ -1,3 +1,5 @@
+const { normalizePrestigeLevel, getPrestigeBonusMultiplier } = require("../utils/prestige");
+
 function createAuthController({
     get,
     run,
@@ -22,6 +24,13 @@ function createAuthController({
         const today = todayStr();
         const updatedAt = nowSqlTimestamp();
         await run("INSERT OR IGNORE INTO album_states(user_id) VALUES(?)", [userId]);
+
+        const albumRow = await get("SELECT prestige_level FROM album_states WHERE user_id = ?", [userId]);
+        const prestigeLevel = normalizePrestigeLevel(albumRow?.prestige_level || 0);
+        const bonusMultiplier = getPrestigeBonusMultiplier(prestigeLevel);
+        const bonusCoins = Math.max(0, Math.round(Number(DAILY_LOGIN_BONUS_COINS || 0) * bonusMultiplier));
+        const bonusPacks = Math.max(0, Number(DAILY_LOGIN_BONUS_PACKS || 0));
+
         const result = await run(
             `UPDATE album_states
              SET trade_coins = trade_coins + ?,
@@ -31,8 +40,8 @@ function createAuthController({
              WHERE user_id = ?
                AND (last_login_bonus_date IS NULL OR last_login_bonus_date <> ?)`,
             [
-                Number(DAILY_LOGIN_BONUS_COINS || 0),
-                Number(DAILY_LOGIN_BONUS_PACKS || 0),
+                bonusCoins,
+                bonusPacks,
                 today,
                 updatedAt,
                 userId,
@@ -43,12 +52,13 @@ function createAuthController({
         const granted = Number(result?.changes || 0) > 0;
         return {
             granted,
-            coins: granted ? Number(DAILY_LOGIN_BONUS_COINS || 0) : 0,
-            packs: granted ? Number(DAILY_LOGIN_BONUS_PACKS || 0) : 0,
+            coins: granted ? bonusCoins : 0,
+            packs: granted ? bonusPacks : 0,
             date: today,
+            prestigeLevel,
+            bonusMultiplier,
         };
     }
-
 
     async function registerDisabled(_req, res) {
         return res.status(410).json({ error: "Cadastro por email/senha desativado. Use login com Google." });
@@ -70,6 +80,7 @@ function createAuthController({
             req.auditContext.success = false;
             return res.status(403).json({ error: "Endpoint restrito ao ambiente de desenvolvimento" });
         }
+
         const email = String(req.body?.email || "").trim().toLowerCase();
         if (!email) {
             req.auditContext.success = false;
@@ -77,12 +88,14 @@ function createAuthController({
         }
 
         let userRow = await get(
-            "SELECT id, name, email, role, is_blocked FROM users WHERE email = ?",
+            `SELECT u.id, u.name, u.email, u.role, u.is_blocked, a.prestige_level
+             FROM users u
+             LEFT JOIN album_states a ON a.user_id = u.id
+             WHERE u.email = ?`,
             [email],
         );
 
         if (!userRow) {
-            // Cria usuário fake se não existir
             const name = email.split("@")[0] || "Teste";
             const pseudoPasswordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
             const created = await run(
@@ -95,12 +108,11 @@ function createAuthController({
                 email,
                 role: ROLE_PLAYER,
                 is_blocked: 0,
+                prestige_level: 0,
             };
-        } else {
-            if (Number(userRow.is_blocked || 0) === 1) {
-                req.auditContext.success = false;
-                return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
-            }
+        } else if (Number(userRow.is_blocked || 0) === 1) {
+            req.auditContext.success = false;
+            return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });
         }
 
         const dailyBonus = await grantDailyLoginBonus(userRow.id);
@@ -110,12 +122,15 @@ function createAuthController({
             name: userRow.name,
             email: userRow.email,
             role: userRow.role || ROLE_PLAYER,
+            prestigeLevel: normalizePrestigeLevel(userRow.prestige_level || 0),
         };
+
         req.auditContext.userId = user.id;
         req.auditContext.userName = user.name;
         req.auditContext.userEmail = user.email;
         req.auditContext.userRole = user.role;
         req.auditContext.success = true;
+
         const accessToken = signAccessToken(user);
         const refreshToken = await createRefreshToken(user.id);
 
@@ -154,7 +169,10 @@ function createAuthController({
             }
 
             let userRow = await get(
-                "SELECT id, name, email, role, is_blocked FROM users WHERE email = ?",
+                `SELECT u.id, u.name, u.email, u.role, u.is_blocked, a.prestige_level
+                 FROM users u
+                 LEFT JOIN album_states a ON a.user_id = u.id
+                 WHERE u.email = ?`,
                 [cleanEmail],
             );
 
@@ -172,6 +190,7 @@ function createAuthController({
                     email: cleanEmail,
                     role: initialRole,
                     is_blocked: 0,
+                    prestige_level: 0,
                 };
             } else {
                 if (Number(userRow.is_blocked || 0) === 1) {
@@ -198,12 +217,15 @@ function createAuthController({
                 name: userRow.name,
                 email: userRow.email,
                 role: userRow.role || ROLE_PLAYER,
+                prestigeLevel: normalizePrestigeLevel(userRow.prestige_level || 0),
             };
+
             req.auditContext.userId = user.id;
             req.auditContext.userName = user.name;
             req.auditContext.userEmail = user.email;
             req.auditContext.userRole = user.role;
             req.auditContext.success = true;
+
             const accessToken = signAccessToken(user);
             const refreshToken = await createRefreshToken(user.id);
 
@@ -242,10 +264,11 @@ function createAuthController({
 
             const tokenHash = crypto.createHash("sha256").update(refreshToken).digest("hex");
             const row = await get(
-                `SELECT rt.user_id, rt.expires_at, rt.revoked, u.name, u.email, u.role, u.is_blocked
-         FROM refresh_tokens rt
-         JOIN users u ON u.id = rt.user_id
-         WHERE rt.token_hash = ?`,
+                `SELECT rt.user_id, rt.expires_at, rt.revoked, u.name, u.email, u.role, u.is_blocked, a.prestige_level
+                 FROM refresh_tokens rt
+                 JOIN users u ON u.id = rt.user_id
+                 LEFT JOIN album_states a ON a.user_id = u.id
+                 WHERE rt.token_hash = ?`,
                 [tokenHash],
             );
 
@@ -267,12 +290,20 @@ function createAuthController({
             const dailyBonus = await grantDailyLoginBonus(row.user_id);
 
             await run("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", [tokenHash]);
-            const user = { id: row.user_id, name: row.name, email: row.email, role: row.role || ROLE_PLAYER };
+            const user = {
+                id: row.user_id,
+                name: row.name,
+                email: row.email,
+                role: row.role || ROLE_PLAYER,
+                prestigeLevel: normalizePrestigeLevel(row.prestige_level || 0),
+            };
+
             req.auditContext.userId = user.id;
             req.auditContext.userName = user.name;
             req.auditContext.userEmail = user.email;
             req.auditContext.userRole = user.role;
             req.auditContext.success = true;
+
             const accessToken = signAccessToken(user);
             const newRefreshToken = await createRefreshToken(user.id);
 
@@ -316,7 +347,13 @@ function createAuthController({
 
     async function authMe(req, res) {
         try {
-            const row = await get("SELECT id, name, email, role, is_blocked FROM users WHERE id = ?", [req.user.sub]);
+            const row = await get(
+                `SELECT u.id, u.name, u.email, u.role, u.is_blocked, a.prestige_level
+                 FROM users u
+                 LEFT JOIN album_states a ON a.user_id = u.id
+                 WHERE u.id = ?`,
+                [req.user.sub]
+            );
             if (!row) return res.status(404).json({ error: "Usuario nao encontrado" });
             if (Number(row.is_blocked || 0) === 1) {
                 return res.status(403).json({ error: "Acesso bloqueado. Contate o administrador." });

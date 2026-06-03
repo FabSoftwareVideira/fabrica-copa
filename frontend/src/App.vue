@@ -54,6 +54,7 @@ let googleIdentityInitialized = false;
 const stickers = reactive(
   Array.isArray(window.ALL_STICKERS) ? [...window.ALL_STICKERS] : [],
 );
+const PRESTIGE_BONUS_STEP = 0.25;
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
@@ -114,6 +115,8 @@ const state = reactive({
   completedAuditMigration: null,
   accessAuditItems: [],
   myRankingPosition: 0,
+  prestigeLevel: 0,
+  prestigeBonusMultiplier: 1,
   systemLastEventId: Number(
     localStorage.getItem(SYSTEM_EVENTS_CURSOR_KEY) || 0,
   ),
@@ -175,6 +178,7 @@ const ui = reactive({
   dashboardAnimatedCollected: 0,
   dashboardAnimatedMissing: 0,
   dashboardAnimatedDuplicates: 0,
+  prestigeResetLoading: false,
   notificationsOpen: false,
   invalidPromoStreak: 0,
   toastyVisible: false,
@@ -653,6 +657,106 @@ const dashboardMissingDisplay = computed(() =>
 const dashboardDuplicatesDisplay = computed(() =>
   Math.max(0, Math.round(Number(ui.dashboardAnimatedDuplicates || 0))),
 );
+const PRESTIGE_TIERS = Object.freeze({
+  1: {
+    title: "Campeão",
+    stars: "★",
+    subtitle: "1º álbum completo",
+  },
+  2: {
+    title: "Bicampeão",
+    stars: "★★",
+    subtitle: "2º álbum completo",
+  },
+  3: {
+    title: "Tricampeão",
+    stars: "★★★",
+    subtitle: "3º álbum completo",
+  },
+  4: {
+    title: "Tetracampeão",
+    stars: "★★★★",
+    subtitle: "4º álbum completo",
+  },
+  5: {
+    title: "Pentacampeão",
+    stars: "★★★★★",
+    subtitle: "5º álbum completo",
+  },
+  6: {
+    title: "Hexacampeão",
+    stars: "★★★★★★",
+    subtitle: "O topo do mundo",
+  },
+});
+
+function normalizePrestigeTierLevel(level) {
+  const parsed = Number(level || 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function prestigeTier(level) {
+  const normalized = normalizePrestigeTierLevel(level);
+  if (normalized <= 0) return null;
+  const clamped = Math.min(6, normalized);
+  return PRESTIGE_TIERS[clamped] || null;
+}
+
+function prestigeBadgeImage(level) {
+  const normalized = Math.min(6, normalizePrestigeTierLevel(level));
+  if (normalized <= 0) return "";
+  return `/badges/prestige-${normalized}.webp`;
+}
+
+const prestigeLevelDisplay = computed(() => {
+  const fromState = Math.max(0, Number(state.prestigeLevel || 0));
+  const fromUser = Math.max(0, Number(state.user?.prestigeLevel || 0));
+  return Math.max(fromState, fromUser);
+});
+const prestigeBonusMultiplierDisplay = computed(() => {
+  const fromState = Number(state.prestigeBonusMultiplier || 0);
+  if (Number.isFinite(fromState) && fromState >= 1) return fromState;
+  return Number(
+    (1 + prestigeLevelDisplay.value * PRESTIGE_BONUS_STEP).toFixed(2),
+  );
+});
+const albumCompleted = computed(
+  () => total.value > 0 && collectedCount.value >= total.value,
+);
+const championLevelDisplay = computed(() => {
+  const base = normalizePrestigeTierLevel(prestigeLevelDisplay.value);
+  return albumCompleted.value ? base + 1 : base;
+});
+const nextPrestigeLevel = computed(() => prestigeLevelDisplay.value + 1);
+const nextPrestigeBonusMultiplier = computed(() =>
+  Number((1 + nextPrestigeLevel.value * PRESTIGE_BONUS_STEP).toFixed(2)),
+);
+const prestigeTierDisplay = computed(() =>
+  prestigeTier(championLevelDisplay.value),
+);
+const lastAchievedBadgeLevel = computed(() => {
+  const level = normalizePrestigeTierLevel(championLevelDisplay.value);
+  return level > 0 ? level : 0;
+});
+const lastAchievedBadgeImage = computed(() =>
+  lastAchievedBadgeLevel.value > 0
+    ? prestigeBadgeImage(lastAchievedBadgeLevel.value)
+    : "",
+);
+const lastAchievedBadgeAlt = computed(() => {
+  const tier = prestigeTier(lastAchievedBadgeLevel.value);
+  if (!tier) return "";
+  return `Badge de ${tier.title}`;
+});
+const nextPrestigeTierDisplay = computed(() =>
+  prestigeTier(nextPrestigeLevel.value),
+);
+const prestigeBadgeLabel = computed(() =>
+  prestigeTierDisplay.value
+    ? `${prestigeTierDisplay.value.title} (${prestigeTierDisplay.value.stars})`
+    : "",
+);
 const progressTheme = computed(() => {
   if (percent.value >= 76) {
     return { key: "theme-finals", label: "Fase 4: Final" };
@@ -700,10 +804,29 @@ const myRankingDisplay = computed(() => {
   const position = Number(state.myRankingPosition || 0);
   return position > 0 ? `#${position}` : "-";
 });
+
+function hasCompletedAnyCycle(entry) {
+  const completedAt = String(entry?.completedAt || "").trim();
+  if (completedAt !== "") return true;
+  return Number(entry?.prestigeLevel || 0) > 0;
+}
+
+function completedChampionLevel(entry) {
+  const base = normalizePrestigeTierLevel(entry?.prestigeLevel || 0);
+  const completedAt = String(entry?.completedAt || "").trim();
+  return completedAt !== "" ? base + 1 : base;
+}
+
 const completedRanking = computed(() => {
   return state.publicRankingForCompleted
-    .filter((entry) => String(entry?.completedAt || "").trim() !== "")
+    .filter((entry) => hasCompletedAnyCycle(entry))
     .sort((a, b) => {
+      const aChampionLevel = completedChampionLevel(a);
+      const bChampionLevel = completedChampionLevel(b);
+      if (aChampionLevel !== bChampionLevel) {
+        return bChampionLevel - aChampionLevel;
+      }
+
       const aCompletedTime = new Date(a?.completedAt || 0).getTime();
       const bCompletedTime = new Date(b?.completedAt || 0).getTime();
       const aHasCompletedTime =
@@ -719,19 +842,6 @@ const completedRanking = computed(() => {
         return aCompletedTime - bCompletedTime;
       if (aHasCompletedTime !== bHasCompletedTime)
         return aHasCompletedTime ? -1 : 1;
-
-      const aTime = new Date(a?.updatedAt || 0).getTime();
-      const bTime = new Date(b?.updatedAt || 0).getTime();
-      const aHasTime = Number.isFinite(aTime) && aTime > 0;
-      const bHasTime = Number.isFinite(bTime) && bTime > 0;
-
-      if (aHasTime && bHasTime && aTime !== bTime) return aTime - bTime;
-      if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
-
-      const aPosition = Number(a?.position || 0);
-      const bPosition = Number(b?.position || 0);
-      if (aPosition && bPosition && aPosition !== bPosition)
-        return aPosition - bPosition;
 
       return String(a?.name || "").localeCompare(
         String(b?.name || ""),
@@ -1596,6 +1706,8 @@ function clearAuth() {
   state.tradeOutgoing = [];
   state.tradeHistory = [];
   state.myRankingPosition = 0;
+  state.prestigeLevel = 0;
+  state.prestigeBonusMultiplier = 1;
   state.tradeWindowStartsAt = "";
   state.tradeWindowEndsAt = "";
   state.tradeSearchIncoming = "";
@@ -1681,9 +1793,13 @@ async function loadPublicRanking() {
     state.publicRanking = Array.isArray(sourceData?.ranking)
       ? sourceData.ranking
       : [];
-    state.publicRankingForCompleted = Array.isArray(sourceData?.ranking)
-      ? sourceData.ranking
-      : [];
+    state.publicRankingForCompleted = Array.isArray(
+      sourceData?.completedRanking,
+    )
+      ? sourceData.completedRanking
+      : Array.isArray(sourceData?.ranking)
+        ? sourceData.ranking
+        : [];
   } catch (_err) {
     state.publicRankingTotalStickers = 0;
     state.publicRanking = [];
@@ -1849,6 +1965,19 @@ async function loadSystemEvents(silent = false) {
           createdAt: evt.createdAt,
         });
         await loadAllTradeWindows();
+      }
+
+      if (evt?.type === "album_prestige_reset" && !silent) {
+        pushNotification({
+          id: evt.id,
+          type: "album_prestige_reset",
+          icon: "🌟",
+          title: isOwnAction
+            ? "New Game Plus ativado"
+            : "Novo nível de Prestígio",
+          message: evt.message || "Um jogador avançou no sistema de Prestígio.",
+          createdAt: evt.createdAt,
+        });
       }
     }
 
@@ -2328,7 +2457,8 @@ async function loadAdminAccessAudit() {
     state.accessAuditItems = Array.isArray(data?.items) ? data.items : [];
     adminTools.accessAuditPage = 1;
   } catch (err) {
-    ui.adminAccessAuditMsg = err.message || "Erro ao carregar auditoria de acessos";
+    ui.adminAccessAuditMsg =
+      err.message || "Erro ao carregar auditoria de acessos";
     state.accessAuditItems = [];
   } finally {
     ui.adminAccessAuditLoading = false;
@@ -2347,7 +2477,15 @@ function clearAccessAuditFilters() {
 }
 
 function setAccessAuditSort(sortBy) {
-  const allowed = ["createdAt", "user", "route", "status", "ip", "agent", "success"];
+  const allowed = [
+    "createdAt",
+    "user",
+    "route",
+    "status",
+    "ip",
+    "agent",
+    "success",
+  ];
   if (!allowed.includes(sortBy)) return;
   if (adminTools.accessAuditSortBy === sortBy) {
     adminTools.accessAuditSortDir =
@@ -2599,7 +2737,75 @@ async function loadAlbumState() {
   state.extraPacks = Number(data.extraPacks || 0);
   state.tradeCoins = Number(data.tradeCoins || 0);
   state.usedCodes = Array.isArray(data.usedCodes) ? data.usedCodes : [];
+  state.prestigeLevel = Math.max(0, Number(data.prestigeLevel || 0));
+  state.prestigeBonusMultiplier = Number(data.prestigeBonusMultiplier || 1);
+  if (state.user) {
+    state.user.prestigeLevel = state.prestigeLevel;
+    saveAuth();
+  }
   setTradeWindowStateFromPayload(data.tradeWindows || []);
+}
+
+async function activatePrestigeReset() {
+  if (!isAuthenticated.value || ui.prestigeResetLoading) return;
+  if (!albumCompleted.value) {
+    setToast("Complete o álbum para ativar o Prestígio.");
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Ativar New Game Plus (${nextPrestigeTierDisplay.value?.title || "Campeão"})?\n\nSeu álbum será reiniciado e você começará do zero, mas seu status sobe para ${nextPrestigeTierDisplay.value?.title || "Campeão"} ${nextPrestigeTierDisplay.value?.stars || "★"} com bônus diário de ${nextPrestigeBonusMultiplier.value.toFixed(2)}x em moedas.`,
+  );
+  if (!confirmed) return;
+
+  ui.prestigeResetLoading = true;
+  try {
+    const data = await apiFetch("/album/prestige/reset", { method: "POST" });
+    const newState = data.state || {};
+
+    state.collected = newState.collected || {};
+    state.packsUsedDate = newState.packsUsedDate || "";
+    state.packsUsedToday = Number(newState.packsUsedToday || 0);
+    state.extraPacks = Number(newState.extraPacks || 0);
+    state.tradeCoins = Number(newState.tradeCoins || 0);
+    state.usedCodes = Array.isArray(newState.usedCodes)
+      ? newState.usedCodes
+      : [];
+    state.prestigeLevel = Math.max(
+      0,
+      Number(data.prestigeLevel || newState.prestigeLevel || 0),
+    );
+    state.prestigeBonusMultiplier = Number(
+      data.prestigeBonusMultiplier ||
+        1 + state.prestigeLevel * PRESTIGE_BONUS_STEP,
+    );
+
+    if (state.user) {
+      state.user.prestigeLevel = state.prestigeLevel;
+      saveAuth();
+    }
+
+    await Promise.all([
+      loadPackHistory(),
+      loadTradeHistory(),
+      loadTradeOffers(),
+      loadPublicRanking(),
+      loadMyRankingPosition(),
+      loadSystemEvents(false),
+    ]);
+
+    const tier = prestigeTier(state.prestigeLevel);
+    setToast(
+      data.message ||
+        (tier
+          ? `${tier.title} ${tier.stars} ativado!`
+          : "New Game Plus ativado!"),
+    );
+  } catch (err) {
+    setToast(err.message || "Não foi possível ativar o Prestígio agora.");
+  } finally {
+    ui.prestigeResetLoading = false;
+  }
 }
 
 async function loadTradeWindowConfig() {
@@ -3647,9 +3853,27 @@ const myTradableDuplicatesForOffer = computed(() => {
               class="landing-complete-pill"
             >
               <span class="landing-complete-avatar" aria-hidden="true">
-                {{ userInitial(entry.name) }}
+                <img
+                  class="landing-complete-avatar-img"
+                  :src="prestigeBadgeImage(completedChampionLevel(entry))"
+                  :alt="`${prestigeTier(completedChampionLevel(entry))?.title || 'Badge'}`"
+                  loading="lazy"
+                />
               </span>
               <strong class="landing-complete-name">{{ entry.name }}</strong>
+              <span
+                v-if="prestigeTier(completedChampionLevel(entry))"
+                :class="[
+                  'landing-complete-prestige',
+                  `landing-complete-prestige-lv-${Math.min(6, completedChampionLevel(entry))}`,
+                ]"
+              >
+                <span
+                  >{{ prestigeTier(completedChampionLevel(entry)).title }}
+                  <br />
+                  {{ prestigeTier(completedChampionLevel(entry)).stars }}
+                </span>
+              </span>
             </li>
           </ol>
         </section>
@@ -3659,7 +3883,7 @@ const myTradableDuplicatesForOffer = computed(() => {
           aria-label="Ranking de jogadores"
         >
           <article class="landing-ranking landing-ranking-main">
-            <h3>Ranking de quem mais colou figurinhas</h3>
+            <h3>Ranking geral</h3>
             <p
               v-if="publicRankingWithoutCompleted.length === 0"
               class="landing-ranking-empty"
@@ -4018,6 +4242,11 @@ const myTradableDuplicatesForOffer = computed(() => {
               <span class="badge-chip"
                 >{{ dashboardPercentDisplay }}% completo</span
               >
+              <span
+                class="badge-chip badge-chip-prestige"
+                v-if="prestigeBadgeLabel"
+                >{{ prestigeBadgeLabel }}</span
+              >
             </div>
             <div class="panel-head-ranking" v-if="isAuthenticated">
               <small>Posição</small>
@@ -4078,6 +4307,65 @@ const myTradableDuplicatesForOffer = computed(() => {
                 </div>
               </article>
             </div>
+          </div>
+          <div v-if="isAuthenticated" class="dashboard-prestige-box">
+            <div
+              v-if="lastAchievedBadgeImage"
+              class="dashboard-prestige-badge-highlight"
+            >
+              <img
+                :src="lastAchievedBadgeImage"
+                :alt="lastAchievedBadgeAlt"
+                class="dashboard-prestige-badge-img"
+                loading="lazy"
+                decoding="async"
+              />
+              <div class="dashboard-prestige-badge-caption">
+                <strong>{{ lastAchievedBadgeAlt }}</strong>
+                <small>Último badge conquistado</small>
+              </div>
+            </div>
+            <div v-if="prestigeTierDisplay" class="dashboard-prestige-summary">
+              <strong>{{ prestigeBadgeLabel }}</strong>
+              <small>{{ prestigeTierDisplay.subtitle }}</small>
+              <small>
+                Multiplicador atual:
+                {{ prestigeBonusMultiplierDisplay.toFixed(2) }}x em moedas
+                diárias e moedas de troca com trocas aceitas.
+              </small>
+              <small v-if="albumCompleted">
+                Ao ativar o New Game Plus, seu álbum atual será reiniciado do
+                zero para iniciar o próximo ciclo de campeão.
+              </small>
+            </div>
+            <div v-else class="dashboard-prestige-summary">
+              <strong>Rumo ao título de Campeão (★)</strong>
+              <small
+                >Complete o álbum para encerrar seu primeiro ciclo
+                vitorioso.</small
+              >
+              <small>
+                Quando ativar o New Game Plus, sua coleção será reiniciada e
+                você começará um novo ciclo com bônus maior.
+              </small>
+            </div>
+            <button
+              v-if="albumCompleted"
+              type="button"
+              class="prestige-reset-btn"
+              :disabled="ui.prestigeResetLoading"
+              @click="activatePrestigeReset"
+            >
+              {{
+                ui.prestigeResetLoading
+                  ? "Ativando novo ciclo..."
+                  : `Reiniciar álbum com New Game Plus (${nextPrestigeTierDisplay?.title || "Campeão"} ${nextPrestigeTierDisplay?.stars || "★"})`
+              }}
+            </button>
+            <small v-else>
+              Complete 100% do álbum para liberar uma nova conquista de
+              prestígio e iniciar um novo ciclo de coleção com bônus exclusivos.
+            </small>
           </div>
           <div v-if="isAuthenticated" class="history">
             <h3>Últimas figurinhas</h3>
@@ -5038,22 +5326,28 @@ const myTradableDuplicatesForOffer = computed(() => {
               <div class="manage-users-toolbar">
                 <label>
                   De
-                  <input v-model="adminTools.accessAuditFrom" type="datetime-local" />
+                  <input
+                    v-model="adminTools.accessAuditFrom"
+                    type="datetime-local"
+                  />
                 </label>
                 <label>
                   Até
-                  <input v-model="adminTools.accessAuditTo" type="datetime-local" />
+                  <input
+                    v-model="adminTools.accessAuditTo"
+                    type="datetime-local"
+                  />
                 </label>
-               
-              <button
-                type="button"
-                @click="
-                  clearAccessAuditFilters();
-                  loadAdminAccessAudit();
-                "
-              >
-                Limpar filtros
-              </button>
+
+                <button
+                  type="button"
+                  @click="
+                    clearAccessAuditFilters();
+                    loadAdminAccessAudit();
+                  "
+                >
+                  Limpar filtros
+                </button>
               </div>
 
               <p v-if="ui.adminAccessAuditLoading" class="read-only-hint">
@@ -5068,22 +5362,34 @@ const myTradableDuplicatesForOffer = computed(() => {
                   <thead>
                     <tr>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('createdAt')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('createdAt')"
+                        >
                           Data
                         </button>
                       </th>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('user')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('user')"
+                        >
                           Usuário
                         </button>
                       </th>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('route')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('route')"
+                        >
                           Rota
                         </button>
                       </th>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('status')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('status')"
+                        >
                           Status
                         </button>
                       </th>
@@ -5093,12 +5399,18 @@ const myTradableDuplicatesForOffer = computed(() => {
                         </button>
                       </th>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('agent')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('agent')"
+                        >
                           Agent
                         </button>
                       </th>
                       <th>
-                        <button type="button" @click="setAccessAuditSort('success')">
+                        <button
+                          type="button"
+                          @click="setAccessAuditSort('success')"
+                        >
                           Success
                         </button>
                       </th>
@@ -5116,22 +5428,32 @@ const myTradableDuplicatesForOffer = computed(() => {
                         <small>{{ formatDateTime(entry.createdAt) }}</small>
                       </td>
                       <td>
-                        <strong>{{ entry.actor?.name || '-' }}</strong>
-                        <small>{{ entry.actor?.email || '-' }}</small>
+                        <strong>{{ entry.actor?.name || "-" }}</strong>
+                        <small>{{ entry.actor?.email || "-" }}</small>
                       </td>
                       <td class="access-audit-col-route">
-                        <small :title="entry.request?.originalUrl || entry.request?.routePath || '-'">
+                        <small
+                          :title="
+                            entry.request?.originalUrl ||
+                            entry.request?.routePath ||
+                            '-'
+                          "
+                        >
                           <span class="access-audit-route-text">
-                            {{ entry.request?.routePath || entry.request?.originalUrl || '-' }}
+                            {{
+                              entry.request?.routePath ||
+                              entry.request?.originalUrl ||
+                              "-"
+                            }}
                           </span>
                         </small>
                       </td>
-                      <td>{{ entry.statusCode || '-' }}</td>
-                      <td>{{ entry.request?.clientIp || '-' }}</td>
+                      <td>{{ entry.statusCode || "-" }}</td>
+                      <td>{{ entry.request?.clientIp || "-" }}</td>
                       <td class="access-audit-col-agent">
                         <small :title="entry.request?.userAgent || '-'">
                           <span class="access-audit-agent-text">
-                            {{ entry.request?.userAgent || '-' }}
+                            {{ entry.request?.userAgent || "-" }}
                           </span>
                         </small>
                       </td>
@@ -5140,7 +5462,7 @@ const myTradableDuplicatesForOffer = computed(() => {
                           class="table-pill"
                           :class="entry.success ? 'active' : 'blocked'"
                         >
-                          {{ entry.success ? 'true' : 'false' }}
+                          {{ entry.success ? "true" : "false" }}
                         </span>
                       </td>
                     </tr>
@@ -5151,7 +5473,8 @@ const myTradableDuplicatesForOffer = computed(() => {
               <div class="admin-pagination">
                 <div>
                   <small>
-                    Exibindo {{ accessAuditPageFrom }}-{{ accessAuditPageTo }} de
+                    Exibindo {{ accessAuditPageFrom }}-{{ accessAuditPageTo }}
+                    de
                     {{ accessAuditSortedItems.length }}
                   </small>
                   <label class="page-size-label">
@@ -5176,7 +5499,8 @@ const myTradableDuplicatesForOffer = computed(() => {
                     Anterior
                   </button>
                   <span>
-                    Página {{ accessAuditSafePage }} de {{ accessAuditPageCount }}
+                    Página {{ accessAuditSafePage }} de
+                    {{ accessAuditPageCount }}
                   </span>
                   <button
                     type="button"
@@ -6435,6 +6759,18 @@ const myTradableDuplicatesForOffer = computed(() => {
                 @click="ui.profileOpen = true"
                 title="Clique para ver Meu Perfil"
               >
+                <img
+                  v-if="lastAchievedBadgeImage"
+                  class="user-pill-badge-img"
+                  :src="lastAchievedBadgeImage"
+                  :alt="lastAchievedBadgeAlt"
+                  loading="lazy"
+                  @error="
+                    (event) => {
+                      event.target.style.display = 'none';
+                    }
+                  "
+                />
                 Conectado como {{ state.user?.name }} · {{ userRole }} (Ver
                 Perfil)
               </button>

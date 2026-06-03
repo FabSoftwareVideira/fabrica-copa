@@ -158,6 +158,7 @@ function sanitizeUser(row) {
         email: row.email,
         role: row.role || ROLE_PLAYER,
         isBlocked: Number(row.is_blocked || 0) === 1,
+        prestigeLevel: Number(row.prestige_level || 0),
     };
 }
 
@@ -237,7 +238,7 @@ app.use("/api", createAdminRoutes({
 }));
 app.use("/api", createAlbumStateRoutes({
     authMiddleware, STICKERS, STICKER_BY_ID, getAlbumState, getValidCollectedMap,
-    nowSqlTimestamp, run, all, parseJSON, pickRandomWeighted,
+    nowSqlTimestamp, run, get, all, parseJSON, pickRandomWeighted,
     getAllTradeWindows, toTradeWindowsPayload, markAlbumCompletedIfNeeded,
 }));
 app.use("/api", createTradeRoutes({

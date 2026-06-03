@@ -41,6 +41,7 @@ function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
                     percent,
                     completedAt: String(row.completed_at || ""),
                     updatedAt: String(row.updated_at || ""),
+                    prestigeLevel: Math.max(0, Number(row.prestige_level || 0)),
                 };
             })
             .sort((a, b) => {
@@ -79,7 +80,7 @@ function createRankingService({ all, STICKERS, STICKER_BY_ID, parseJSON }) {
 
     async function getGlobalRanking() {
         const rows = await all(
-            `SELECT u.id, u.name, u.is_blocked, a.collected_json, a.completed_at, a.updated_at
+            `SELECT u.id, u.name, u.is_blocked, a.collected_json, a.completed_at, a.updated_at, a.prestige_level
              FROM users u
              LEFT JOIN album_states a ON a.user_id = u.id
              WHERE u.is_blocked = 0`
