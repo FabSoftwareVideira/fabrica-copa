@@ -104,6 +104,9 @@ const state = reactive({
   tradeOutgoing: [],
   tradeHistory: [],
   tradeWindows: [],
+  predictionMatches: [],
+  predictionMine: [],
+  matches: [],
   managedUsers: [],
   managedCoupons: [],
   recentCreatedStickers: [],
@@ -156,6 +159,12 @@ const ui = reactive({
   tradeAvailableRerollLoading: false,
   tradeUsersLoading: false,
   tradeAvailableLoading: false,
+  predictionsLoading: false,
+  predictionsMsg: "",
+  predictionsMineLoading: false,
+  predictionsMineMsg: "",
+  predictionRewardClaiming: false,
+  predictionSubmittingMatchId: 0,
   tradeWindowClockNow: Date.now(),
   adminWindowForm: { startsAt: "", endsAt: "" },
   adminWindowMsg: "",
@@ -175,6 +184,9 @@ const ui = reactive({
   adminAuditMsg: "",
   adminAccessAuditLoading: false,
   adminAccessAuditMsg: "",
+  adminMatchesLoading: false,
+  adminMatchesMsg: "",
+  adminMatchSaving: false,
   deletingCouponId: 0,
   dashboardAnimatedPercent: 0,
   dashboardAnimatedTotal: 0,
@@ -234,6 +246,18 @@ const adminStickerForm = reactive({
   type: "custom",
 });
 
+const adminMatchForm = reactive({
+  homeTeam: "",
+  awayTeam: "",
+  matchDatetime: "",
+  homeGoals: "",
+  awayGoals: "",
+});
+
+const predictionForm = reactive({
+  valuesByMatchId: {},
+});
+
 function startEditCustomSticker(item) {
   if (!item) return;
   adminStickerForm.editingId = item.id || "";
@@ -263,6 +287,7 @@ const adminSubTabs = computed(() => {
   tabs.push({ key: "coupons", label: "Cupons" });
   if (isAdmin.value) {
     tabs.push({ key: "stickers", label: "Figurinhas" });
+    tabs.push({ key: "matches", label: "Partidas" });
   }
   if (isAdmin.value) {
     tabs.push({ key: "trade-windows", label: "Transferências" });
@@ -283,6 +308,9 @@ function selectAdminTab(tab) {
   ui.adminTab = allowedTabs.has(tab) ? tab : defaultAdminTab();
   if (ui.adminTab === "access-audit" && isAdmin.value) {
     loadAdminAccessAudit();
+  }
+  if (ui.adminTab === "matches" && isAdmin.value) {
+    loadAdminMatches();
   }
 }
 
@@ -1699,6 +1727,7 @@ function clearAuth() {
   state.completedAuditSummary = { totalRows: 0, withCompletedAt: 0 };
   state.completedAuditMigration = null;
   state.accessAuditItems = [];
+  state.matches = [];
   state.recentCreatedStickers = [];
   state.newStickersUnread = 0;
   state.notifications = [];
@@ -1710,6 +1739,8 @@ function clearAuth() {
   state.tradeIncoming = [];
   state.tradeOutgoing = [];
   state.tradeHistory = [];
+  state.predictionMatches = [];
+  state.predictionMine = [];
   state.myRankingPosition = 0;
   state.prestigeLevel = 0;
   state.prestigeBonusMultiplier = 1;
@@ -1762,6 +1793,9 @@ function clearAuth() {
   ui.recentStickersMsg = "";
   ui.adminCouponsMsg = "";
   ui.adminAccessAuditMsg = "";
+  ui.adminMatchesMsg = "";
+  ui.adminMatchesLoading = false;
+  ui.adminMatchSaving = false;
   ui.adminTab = "stickers";
   ui.deletingCouponId = 0;
   ui.tradeOfferOpen = false;
@@ -1771,6 +1805,12 @@ function clearAuth() {
   ui.tradeAvailableRerollLoading = false;
   ui.tradeOfferChoices = [];
   ui.tradeLoading = false;
+  ui.predictionsLoading = false;
+  ui.predictionsMsg = "";
+  ui.predictionsMineLoading = false;
+  ui.predictionsMineMsg = "";
+  ui.predictionRewardClaiming = false;
+  ui.predictionSubmittingMatchId = 0;
   ui.tradeWindowSaving = false;
   ui.tradeWindowMsg = "";
   ui.burnRepeatLoading = false;
@@ -1778,6 +1818,8 @@ function clearAuth() {
   ui.adminTradeWindowStartInput = "";
   ui.adminTradeWindowEndInput = "";
   ui.notificationsOpen = false;
+  predictionForm.valuesByMatchId = {};
+  resetAdminMatchForm();
   state.systemLastEventId = 0;
   localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
   stopSystemEventsPolling();
@@ -2398,6 +2440,161 @@ async function loadAdminCoupons() {
     ui.adminCouponsMsg = err.message || "Erro ao carregar cupons";
   } finally {
     ui.adminCouponsLoading = false;
+  }
+}
+
+function resetAdminMatchForm() {
+  adminMatchForm.homeTeam = "";
+  adminMatchForm.awayTeam = "";
+  adminMatchForm.matchDatetime = "";
+  adminMatchForm.homeGoals = "";
+  adminMatchForm.awayGoals = "";
+}
+
+function parseGoalInput(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 0) return NaN;
+  return value;
+}
+
+async function loadAdminMatches() {
+  if (!isAuthenticated.value || !isAdmin.value) {
+    state.matches = [];
+    return;
+  }
+
+  ui.adminMatchesLoading = true;
+  ui.adminMatchesMsg = "";
+  try {
+    const data = await apiFetch("/matches");
+    state.matches = Array.isArray(data.matches)
+      ? data.matches
+        .map((match) => ({
+          ...match,
+          homeGoals:
+            match?.homeGoals == null || match?.homeGoals === ""
+              ? ""
+              : String(match.homeGoals),
+          awayGoals:
+            match?.awayGoals == null || match?.awayGoals === ""
+              ? ""
+              : String(match.awayGoals),
+        }))
+        .sort((a, b) => {
+          const aTime = new Date(a?.matchDatetime || 0).getTime() || 0;
+          const bTime = new Date(b?.matchDatetime || 0).getTime() || 0;
+          return aTime - bTime;
+        })
+      : [];
+  } catch (err) {
+    ui.adminMatchesMsg = err.message || "Erro ao carregar partidas";
+    state.matches = [];
+  } finally {
+    ui.adminMatchesLoading = false;
+  }
+}
+
+async function createAdminMatch() {
+  if (!isAdmin.value || ui.adminMatchSaving) return;
+
+  const homeTeam = String(adminMatchForm.homeTeam || "").trim();
+  const awayTeam = String(adminMatchForm.awayTeam || "").trim();
+  const datetimeRaw = String(adminMatchForm.matchDatetime || "").trim();
+  const homeGoals = parseGoalInput(adminMatchForm.homeGoals);
+  const awayGoals = parseGoalInput(adminMatchForm.awayGoals);
+
+  if (!homeTeam || !awayTeam || !datetimeRaw) {
+    ui.adminMatchesMsg =
+      "Preencha time mandante, visitante e data/hora da partida.";
+    return;
+  }
+
+  if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
+    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    return;
+  }
+
+  const date = new Date(datetimeRaw);
+  if (Number.isNaN(date.getTime())) {
+    ui.adminMatchesMsg = "Data/hora da partida inválida.";
+    return;
+  }
+
+  ui.adminMatchSaving = true;
+  ui.adminMatchesMsg = "";
+  try {
+    await apiFetch("/matches", {
+      method: "POST",
+      body: JSON.stringify({
+        homeTeam,
+        awayTeam,
+        matchDatetime: date.toISOString(),
+        homeGoals,
+        awayGoals,
+      }),
+    });
+    resetAdminMatchForm();
+    await loadAdminMatches();
+    ui.adminMatchesMsg = "Partida cadastrada com sucesso.";
+    setToast("Partida cadastrada");
+  } catch (err) {
+    ui.adminMatchesMsg = err.message || "Erro ao cadastrar partida";
+  } finally {
+    ui.adminMatchSaving = false;
+  }
+}
+
+async function saveAdminMatchGoals(match) {
+  if (!isAdmin.value || !match?.id || ui.adminMatchSaving) return;
+
+  const homeGoals = parseGoalInput(match.homeGoals);
+  const awayGoals = parseGoalInput(match.awayGoals);
+
+  if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
+    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    return;
+  }
+
+  ui.adminMatchSaving = true;
+  ui.adminMatchesMsg = "";
+  try {
+    await apiFetch(`/matches/${match.id}/goals`, {
+      method: "PATCH",
+      body: JSON.stringify({ homeGoals, awayGoals }),
+    });
+    await loadAdminMatches();
+    ui.adminMatchesMsg = "Placar salvo com sucesso.";
+    setToast("Placar atualizado");
+  } catch (err) {
+    ui.adminMatchesMsg = err.message || "Erro ao salvar placar";
+  } finally {
+    ui.adminMatchSaving = false;
+  }
+}
+
+async function deleteAdminMatch(match) {
+  if (!isAdmin.value || !match?.id) return;
+  if (
+    !confirm(
+      `Excluir a partida ${match.homeTeam || "-"} x ${match.awayTeam || "-"}?`,
+    )
+  ) {
+    return;
+  }
+
+  ui.adminMatchSaving = true;
+  ui.adminMatchesMsg = "";
+  try {
+    await apiFetch(`/matches/${match.id}`, { method: "DELETE" });
+    await loadAdminMatches();
+    ui.adminMatchesMsg = "Partida excluída com sucesso.";
+    setToast("Partida excluída");
+  } catch (err) {
+    ui.adminMatchesMsg = err.message || "Erro ao excluir partida";
+  } finally {
+    ui.adminMatchSaving = false;
   }
 }
 
@@ -3446,6 +3643,7 @@ function handleAdminRefresh() {
   loadManagedUsers();
   loadAdminCoupons();
   if (isAdmin.value) {
+    loadAdminMatches();
     loadRecentCreatedStickers();
     loadAllTradeWindows();
     loadAdminCompletedAudit();
@@ -3729,6 +3927,148 @@ async function openTradeView() {
       loadTradeUsers(),
       loadTradeOffers(),
     ]);
+  }
+}
+
+function predictionDraftFor(matchId) {
+  const key = String(matchId || "");
+  if (!predictionForm.valuesByMatchId[key]) {
+    predictionForm.valuesByMatchId[key] = { homeGoals: "", awayGoals: "" };
+  }
+  return predictionForm.valuesByMatchId[key];
+}
+
+function parsePredictionGoals(value) {
+  const n = Number(String(value ?? "").trim());
+  if (!Number.isInteger(n) || n < 0 || n > 99) return NaN;
+  return n;
+}
+
+async function loadPredictionMatches() {
+  if (!isAuthenticated.value) {
+    state.predictionMatches = [];
+    return;
+  }
+
+  ui.predictionsLoading = true;
+  ui.predictionsMsg = "";
+  try {
+    const data = await apiFetch("/matches/predictions/available");
+    state.predictionMatches = Array.isArray(data.matches) ? data.matches : [];
+    for (const match of state.predictionMatches) {
+      predictionDraftFor(match.id);
+    }
+    if (state.predictionMatches.length === 0) {
+      ui.predictionsMsg =
+        "Nenhuma partida disponível para palpite no momento.";
+    }
+  } catch (err) {
+    ui.predictionsMsg = err.message || "Erro ao carregar partidas para palpite";
+    state.predictionMatches = [];
+  } finally {
+    ui.predictionsLoading = false;
+  }
+}
+
+async function loadMyPredictions() {
+  if (!isAuthenticated.value) {
+    state.predictionMine = [];
+    return;
+  }
+
+  ui.predictionsMineLoading = true;
+  ui.predictionsMineMsg = "";
+  try {
+    const data = await apiFetch("/matches/predictions/mine");
+    state.predictionMine = Array.isArray(data.predictions) ? data.predictions : [];
+  } catch (err) {
+    ui.predictionsMineMsg = err.message || "Erro ao carregar seus palpites";
+    state.predictionMine = [];
+  } finally {
+    ui.predictionsMineLoading = false;
+  }
+}
+
+async function openPredictionsView() {
+  state.view = "predictions";
+  ui.mobileMenuOpen = false;
+  await Promise.all([loadPredictionMatches(), loadMyPredictions()]);
+}
+
+const predictionClaimableCoins = computed(() =>
+  state.predictionMine.reduce((acc, entry) => {
+    const canClaim = Boolean(entry?.reward?.canClaimReward);
+    const coins = Number(entry?.reward?.rewardCoins || 0);
+    return canClaim ? acc + coins : acc;
+  }, 0),
+);
+
+const predictionClaimableCount = computed(
+  () =>
+    state.predictionMine.filter((entry) =>
+      Boolean(entry?.reward?.canClaimReward),
+    ).length,
+);
+
+function predictionBadgeClass(entry) {
+  const key = String(entry?.reward?.badgeKey || "pending");
+  if (key === "exact") return "active";
+  if (key === "winner") return "active";
+  if (key === "one-team-goals") return "active";
+  return "blocked";
+}
+
+async function claimPredictionRewards() {
+  if (ui.predictionRewardClaiming || predictionClaimableCoins.value <= 0) {
+    return;
+  }
+
+  ui.predictionRewardClaiming = true;
+  ui.predictionsMineMsg = "";
+  try {
+    const data = await apiFetch("/matches/predictions/rewards/claim", {
+      method: "POST",
+    });
+    const awardedCoins = Number(data?.awardedCoins || 0);
+    const tradeCoins = Number(data?.tradeCoins || state.tradeCoins);
+    state.tradeCoins = tradeCoins;
+    ui.predictionsMineMsg = `Prêmio resgatado: +${awardedCoins} moedas.`;
+    setToast(`Prêmio resgatado: +${awardedCoins} moedas`);
+    await loadMyPredictions();
+  } catch (err) {
+    ui.predictionsMineMsg = err.message || "Erro ao resgatar prêmio";
+  } finally {
+    ui.predictionRewardClaiming = false;
+  }
+}
+
+async function submitPrediction(match) {
+  const matchId = Number(match?.id || 0);
+  if (!matchId || ui.predictionSubmittingMatchId) return;
+
+  const draft = predictionDraftFor(matchId);
+  const homeGoals = parsePredictionGoals(draft.homeGoals);
+  const awayGoals = parsePredictionGoals(draft.awayGoals);
+
+  if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
+    ui.predictionsMsg = "Informe gols válidos entre 0 e 99 para os dois times.";
+    return;
+  }
+
+  ui.predictionSubmittingMatchId = matchId;
+  ui.predictionsMsg = "";
+  try {
+    await apiFetch(`/matches/${matchId}/predictions`, {
+      method: "POST",
+      body: JSON.stringify({ homeGoals, awayGoals }),
+    });
+    ui.predictionsMsg = "Palpite registrado com sucesso.";
+    setToast("Palpite enviado");
+    await Promise.all([loadPredictionMatches(), loadMyPredictions()]);
+  } catch (err) {
+    ui.predictionsMsg = err.message || "Erro ao enviar palpite";
+  } finally {
+    ui.predictionSubmittingMatchId = 0;
   }
 }
 
@@ -4250,6 +4590,13 @@ const myTradableDuplicatesForOffer = computed(() => {
           }}</span>
         </button>
         <button
+          type="button"
+          :class="{ active: state.view === 'predictions' }"
+          @click="openPredictionsView"
+        >
+          Palpites
+        </button>
+        <button
           v-if="canManageCoupons"
           type="button"
           :class="{ active: state.view === 'admin' }"
@@ -4528,6 +4875,172 @@ const myTradableDuplicatesForOffer = computed(() => {
                 </small>
               </article>
             </div>
+          </div>
+        </section>
+
+        <section v-if="state.view === 'predictions'" class="panel">
+          <div class="panel-head">
+            <div>
+              <span class="badge-chip">Palpites</span>
+              <h2>Partidas disponíveis</h2>
+            </div>
+          </div>
+
+          <p class="read-only-hint">
+            Você pode enviar apenas um palpite por jogo, até 3 horas antes do início da partida.
+          </p>
+
+          <p v-if="ui.predictionsLoading" class="read-only-hint">
+            Carregando partidas para palpite...
+          </p>
+          <p v-else-if="ui.predictionsMsg" class="read-only-hint">
+            {{ ui.predictionsMsg }}
+          </p>
+
+          <div v-if="!ui.predictionsLoading" class="admin-users-table-wrap">
+            <table class="admin-users-table">
+              <thead>
+                <tr>
+                  <th>Partida</th>
+                  <th>Início</th>
+                  <th>Prazo do palpite</th>
+                  <th>Seu palpite</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="state.predictionMatches.length === 0">
+                  <td colspan="5">Nenhuma partida apta para receber palpite.</td>
+                </tr>
+                <tr v-for="match in state.predictionMatches" :key="`prediction-${match.id}`">
+                  <td>
+                    <strong>{{ match.homeTeam }}</strong>
+                    <small>x {{ match.awayTeam }}</small>
+                  </td>
+                  <td>{{ formatDateTime(match.matchDatetime) }}</td>
+                  <td>
+                    {{ match.predictionDeadline ? formatDateTime(match.predictionDeadline) : "-" }}
+                  </td>
+                  <td>
+                    <div class="manage-users-toolbar">
+                      <input
+                        v-model="predictionDraftFor(match.id).homeGoals"
+                        type="number"
+                        min="0"
+                        max="99"
+                        placeholder="Casa"
+                      />
+                      <span>x</span>
+                      <input
+                        v-model="predictionDraftFor(match.id).awayGoals"
+                        type="number"
+                        min="0"
+                        max="99"
+                        placeholder="Fora"
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      :disabled="ui.predictionSubmittingMatchId === match.id"
+                      @click="submitPrediction(match)"
+                    >
+                      {{
+                        ui.predictionSubmittingMatchId === match.id
+                          ? "Enviando..."
+                          : "Enviar palpite"
+                      }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="admin-users-table-wrap" style="margin-top: 1rem">
+            <h3>Meus palpites</h3>
+            <div
+              v-if="predictionClaimableCoins > 0"
+              class="manage-users-toolbar"
+              style="margin-bottom: 0.75rem"
+            >
+              <span>
+                Você possui {{ predictionClaimableCount }} premiação(ões)
+                pendente(s), total de {{ predictionClaimableCoins }} moedas.
+              </span>
+              <button
+                type="button"
+                :disabled="ui.predictionRewardClaiming"
+                @click="claimPredictionRewards"
+              >
+                {{
+                  ui.predictionRewardClaiming
+                    ? "Resgatando..."
+                    : "Resgatar prêmio"
+                }}
+              </button>
+            </div>
+            <p v-if="ui.predictionsMineLoading" class="read-only-hint">
+              Carregando seus palpites...
+            </p>
+            <p v-else-if="ui.predictionsMineMsg" class="read-only-hint">
+              {{ ui.predictionsMineMsg }}
+            </p>
+
+            <table v-if="!ui.predictionsMineLoading" class="admin-users-table">
+              <thead>
+                <tr>
+                  <th>Partida</th>
+                  <th>Seu placar</th>
+                  <th>Resultado</th>
+                  <th>Badge</th>
+                  <th>Data da partida</th>
+                  <th>Data do palpite</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="state.predictionMine.length === 0">
+                  <td colspan="6">Você ainda não registrou palpites.</td>
+                </tr>
+                <tr
+                  v-for="entry in state.predictionMine"
+                  :key="`mine-prediction-${entry.id}`"
+                >
+                  <td>
+                    <strong>{{ entry.match?.homeTeam || "-" }}</strong>
+                    <small>x {{ entry.match?.awayTeam || "-" }}</small>
+                  </td>
+                  <td>
+                    <strong>{{ entry.homeGoals }} x {{ entry.awayGoals }}</strong>
+                  </td>
+                  <td>
+                    <strong
+                      v-if="entry.match?.homeGoals != null && entry.match?.awayGoals != null"
+                    >
+                      {{ entry.match.homeGoals }} x {{ entry.match.awayGoals }}
+                    </strong>
+                    <span v-else>em processamento</span>
+                  </td>
+                  <td>
+                    <span
+                      class="table-pill"
+                      :class="predictionBadgeClass(entry)"
+                    >
+                      {{ entry.reward?.badgeLabel || "Em processamento" }}
+                    </span>
+                    <small v-if="(entry.reward?.rewardCoins || 0) > 0">
+                      +{{ entry.reward.rewardCoins }} moeda(s)
+                    </small>
+                    <small v-if="entry.reward?.claimed">
+                      (resgatado)
+                    </small>
+                  </td>
+                  <td>{{ formatDateTime(entry.match?.matchDatetime) }}</td>
+                  <td>{{ formatDateTime(entry.createdAt) }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -4821,6 +5334,114 @@ const myTradableDuplicatesForOffer = computed(() => {
               >
                 {{ ui.grantDailyPackMsg }}
               </p>
+            </div>
+
+            <div
+              v-if="ui.adminTab === 'matches' && isAdmin"
+              class="manage-users-box"
+            >
+              <h4>Cadastrar partidas</h4>
+              <div class="manage-users-toolbar">
+                <input
+                  v-model.trim="adminMatchForm.homeTeam"
+                  type="text"
+                  placeholder="Time mandante"
+                />
+                <input
+                  v-model.trim="adminMatchForm.awayTeam"
+                  type="text"
+                  placeholder="Time visitante"
+                />
+                <input
+                  v-model="adminMatchForm.matchDatetime"
+                  type="datetime-local"
+                />
+                <input
+                  v-model="adminMatchForm.homeGoals"
+                  type="number"
+                  min="0"
+                  placeholder="Gols mandante"
+                />
+                <input
+                  v-model="adminMatchForm.awayGoals"
+                  type="number"
+                  min="0"
+                  placeholder="Gols visitante"
+                />
+                <button
+                  type="button"
+                  :disabled="ui.adminMatchSaving"
+                  @click="createAdminMatch"
+                >
+                  {{ ui.adminMatchSaving ? "Salvando..." : "Cadastrar" }}
+                </button>
+              </div>
+
+              <p v-if="ui.adminMatchesLoading" class="read-only-hint">
+                Carregando partidas...
+              </p>
+              <p v-if="!ui.adminMatchesLoading && ui.adminMatchesMsg" class="read-only-hint">
+                {{ ui.adminMatchesMsg }}
+              </p>
+
+              <div v-if="!ui.adminMatchesLoading" class="admin-users-table-wrap">
+                <table class="admin-users-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Mandante</th>
+                      <th>Visitante</th>
+                      <th>Data e hora</th>
+                      <th>Gols mandante</th>
+                      <th>Gols visitante</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="state.matches.length === 0">
+                      <td colspan="7">Nenhuma partida cadastrada.</td>
+                    </tr>
+                    <tr v-for="match in state.matches" :key="match.id">
+                      <td>{{ match.id }}</td>
+                      <td>{{ match.homeTeam }}</td>
+                      <td>{{ match.awayTeam }}</td>
+                      <td>{{ formatDateTime(match.matchDatetime) }}</td>
+                      <td>
+                        <input
+                          v-model="match.homeGoals"
+                          type="number"
+                          min="0"
+                          placeholder="-"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          v-model="match.awayGoals"
+                          type="number"
+                          min="0"
+                          placeholder="-"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          :disabled="ui.adminMatchSaving"
+                          @click="saveAdminMatchGoals(match)"
+                        >
+                          Salvar gols
+                        </button>
+                        <button
+                          type="button"
+                          :disabled="ui.adminMatchSaving"
+                          @click="deleteAdminMatch(match)"
+                        >
+                          Excluir
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             <div

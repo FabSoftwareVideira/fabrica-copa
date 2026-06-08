@@ -64,6 +64,7 @@ const { createAlbumRoutes } = require("./routes/albumRoutes");
 const { createAdminRoutes } = require("./routes/adminRoutes");
 const { createAlbumStateRoutes } = require("./routes/albumStateRoutes");
 const { createTradeRoutes } = require("./routes/tradeRoutes");
+const { createMatchRoutes } = require("./routes/matchRoutes");
 
 
 // ─── Database ────────────────────────────────────────────────────────────────
@@ -248,6 +249,9 @@ app.use("/api", createTradeRoutes({
     buildTradeAvailableEntries, getCachedTradeAvailableSelection,
     pickTradeAvailableSelection, setCachedTradeAvailableSelection,
     transaction, markAlbumCompletedIfNeeded,
+}));
+app.use("/api", createMatchRoutes({
+    authMiddleware, requireRoles, ROLE_ADMIN, all, get, run, transaction, nowSqlTimestamp,
 }));
 app.use("/api", createProfileRoutes({ get, run, authMiddleware }));
 

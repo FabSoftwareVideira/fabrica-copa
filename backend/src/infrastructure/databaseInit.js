@@ -223,6 +223,40 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
     )
   `);
 
+        await run(`
+        CREATE TABLE IF NOT EXISTS matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            home_team TEXT NOT NULL,
+            away_team TEXT NOT NULL,
+            match_datetime TEXT NOT NULL,
+            home_goals INTEGER,
+            away_goals INTEGER
+        )
+    `);
+        await ensureColumn("matches", "home_goals", "INTEGER");
+        await ensureColumn("matches", "away_goals", "INTEGER");
+
+        await run(`
+        CREATE TABLE IF NOT EXISTS match_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            match_id INTEGER NOT NULL,
+            home_goals INTEGER NOT NULL CHECK(home_goals BETWEEN 0 AND 99),
+            away_goals INTEGER NOT NULL CHECK(away_goals BETWEEN 0 AND 99),
+            reward_claimed_at TEXT,
+            reward_claimed_coins INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, match_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+        )
+    `);
+        await ensureColumn("match_predictions", "reward_claimed_at", "TEXT");
+        await ensureColumn("match_predictions", "reward_claimed_coins", "INTEGER NOT NULL DEFAULT 0");
+        await run("CREATE INDEX IF NOT EXISTS idx_match_predictions_user_id ON match_predictions(user_id)");
+        await run("CREATE INDEX IF NOT EXISTS idx_match_predictions_match_id ON match_predictions(match_id)");
+
     await run(`
         CREATE TABLE IF NOT EXISTS sticker_burn_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -303,6 +337,97 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         )
     `);
+
+    const matchesGoalsNullableApplied = await get(
+        "SELECT name FROM db_migrations WHERE name = 'matches_goals_nullable'"
+    );
+    if (!matchesGoalsNullableApplied) {
+        const matchCols = await all("PRAGMA table_info(matches)");
+        const homeGoalsCol = matchCols.find((c) => c.name === "home_goals");
+        const awayGoalsCol = matchCols.find((c) => c.name === "away_goals");
+        const homeGoalsNotNull = Number(homeGoalsCol?.notnull || 0) === 1;
+        const awayGoalsNotNull = Number(awayGoalsCol?.notnull || 0) === 1;
+
+        if (homeGoalsNotNull || awayGoalsNotNull) {
+            await run("ALTER TABLE matches RENAME TO matches_old");
+            await run(`
+                CREATE TABLE matches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    home_team TEXT NOT NULL,
+                    away_team TEXT NOT NULL,
+                    match_datetime TEXT NOT NULL,
+                    home_goals INTEGER,
+                    away_goals INTEGER
+                )
+            `);
+            await run(`
+                INSERT INTO matches(id, home_team, away_team, match_datetime, home_goals, away_goals)
+                SELECT id, home_team, away_team, match_datetime, home_goals, away_goals
+                FROM matches_old
+            `);
+            await run("DROP TABLE matches_old");
+        }
+
+        await run(
+            "INSERT INTO db_migrations(name) VALUES(?)",
+            ["matches_goals_nullable"]
+        );
+        logInfo("[migration] matches_goals_nullable applied");
+    }
+
+    const matchPredictionsConstraintsApplied = await get(
+        "SELECT name FROM db_migrations WHERE name = 'match_predictions_constraints_v2'"
+    );
+    if (!matchPredictionsConstraintsApplied) {
+        const predictionCols = await all("PRAGMA table_info(match_predictions)");
+        const homeGoalsCol = predictionCols.find((c) => c.name === "home_goals");
+        const awayGoalsCol = predictionCols.find((c) => c.name === "away_goals");
+        const needsNotNull = Number(homeGoalsCol?.notnull || 0) !== 1 || Number(awayGoalsCol?.notnull || 0) !== 1;
+
+        const predictionChecks = await all("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'match_predictions'");
+        const tableSql = String(predictionChecks?.[0]?.sql || "").toLowerCase();
+        const hasHomeCheck = tableSql.includes("check(home_goals between 0 and 99)");
+        const hasAwayCheck = tableSql.includes("check(away_goals between 0 and 99)");
+        const needsCheck = !hasHomeCheck || !hasAwayCheck;
+
+        if (needsNotNull || needsCheck) {
+            await run("ALTER TABLE match_predictions RENAME TO match_predictions_old");
+            await run(`
+                CREATE TABLE match_predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    match_id INTEGER NOT NULL,
+                    home_goals INTEGER NOT NULL CHECK(home_goals BETWEEN 0 AND 99),
+                    away_goals INTEGER NOT NULL CHECK(away_goals BETWEEN 0 AND 99),
+                    reward_claimed_at TEXT,
+                    reward_claimed_coins INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, match_id),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
+                )
+            `);
+            await run(`
+                INSERT INTO match_predictions(id, user_id, match_id, home_goals, away_goals, reward_claimed_at, reward_claimed_coins, created_at, updated_at)
+                SELECT id, user_id, match_id, home_goals, away_goals, NULL, 0, created_at, updated_at
+                FROM match_predictions_old
+                WHERE home_goals IS NOT NULL
+                  AND away_goals IS NOT NULL
+                  AND home_goals BETWEEN 0 AND 99
+                  AND away_goals BETWEEN 0 AND 99
+            `);
+            await run("DROP TABLE match_predictions_old");
+            await run("CREATE INDEX IF NOT EXISTS idx_match_predictions_user_id ON match_predictions(user_id)");
+            await run("CREATE INDEX IF NOT EXISTS idx_match_predictions_match_id ON match_predictions(match_id)");
+        }
+
+        await run(
+            "INSERT INTO db_migrations(name) VALUES(?)",
+            ["match_predictions_constraints_v2"]
+        );
+        logInfo("[migration] match_predictions_constraints_v2 applied");
+    }
 
     const migrationApplied = await get(
         "SELECT name FROM db_migrations WHERE name = 'fix_trade_history_acceptor_perspective'"

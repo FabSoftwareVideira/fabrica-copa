@@ -1,4 +1,5 @@
 *.db
+*.ia.md
 node_modules
 **/dev-dist/
 dist
