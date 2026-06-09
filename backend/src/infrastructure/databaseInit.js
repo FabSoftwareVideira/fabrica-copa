@@ -1,9 +1,77 @@
+const fs = require("fs");
+const path = require("path");
+
 function safeParseJson(value, fallback) {
     try {
         return JSON.parse(value);
     } catch (_err) {
         return fallback;
     }
+}
+
+function parseCsvLine(line) {
+    const fields = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (ch === "," && !inQuotes) {
+            fields.push(current);
+            current = "";
+            continue;
+        }
+
+        current += ch;
+    }
+
+    fields.push(current);
+    return fields.map((value) => String(value || "").trim());
+}
+
+function loadMatchesSeedRows(matchesCsvPath) {
+    if (!fs.existsSync(matchesCsvPath)) return [];
+
+    const raw = fs.readFileSync(matchesCsvPath, "utf8").replace(/^\uFEFF/, "");
+    const lines = raw
+        .split(/\r?\n/)
+        .map((line) => String(line || "").trim())
+        .filter(Boolean);
+
+    if (lines.length <= 1) return [];
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i += 1) {
+        const parts = parseCsvLine(lines[i]);
+        if (parts.length < 3) continue;
+
+        const homeTeam = String(parts[0] || "").trim();
+        const awayTeam = String(parts[1] || "").trim();
+        const matchDatetime = String(parts[2] || "").trim();
+        const parsedDate = new Date(matchDatetime);
+
+        if (!homeTeam || !awayTeam || Number.isNaN(parsedDate.getTime())) {
+            continue;
+        }
+
+        rows.push({
+            homeTeam,
+            awayTeam,
+            matchDatetime,
+        });
+    }
+
+    return rows;
 }
 
 async function initDatabase({ run, get, all, ensureColumn, logInfo, totalStickers = 0, isKnownStickerId = null }) {
@@ -324,6 +392,42 @@ async function initDatabase({ run, get, all, ensureColumn, logInfo, totalSticker
             applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    const seedMatchesCsvApplied = await get(
+        "SELECT name FROM db_migrations WHERE name = 'seed_matches_csv_v1'"
+    );
+    if (!seedMatchesCsvApplied) {
+        const matchesCsvPath = path.resolve(__dirname, "../../../data/matches.csv");
+        const seedRows = loadMatchesSeedRows(matchesCsvPath);
+        let insertedCount = 0;
+
+        for (const row of seedRows) {
+            const exists = await get(
+                `SELECT id
+                 FROM matches
+                 WHERE home_team = ?
+                   AND away_team = ?
+                   AND match_datetime = ?
+                 LIMIT 1`,
+                [row.homeTeam, row.awayTeam, row.matchDatetime]
+            );
+
+            if (exists) continue;
+
+            await run(
+                `INSERT INTO matches(home_team, away_team, match_datetime, home_goals, away_goals)
+                 VALUES(?, ?, ?, NULL, NULL)`,
+                [row.homeTeam, row.awayTeam, row.matchDatetime]
+            );
+            insertedCount += 1;
+        }
+
+        await run(
+            "INSERT INTO db_migrations(name) VALUES(?)",
+            ["seed_matches_csv_v1"]
+        );
+        logInfo(`[migration] seed_matches_csv_v1 applied (inserted ${insertedCount} matches)`);
+    }
 
     await run(`
         CREATE TABLE IF NOT EXISTS album_completed_backfill_log (

@@ -34,6 +34,10 @@ function parseScore(rawValue) {
     return n;
 }
 
+function utcDateKeyFromMs(timestampMs) {
+    return new Date(timestampMs).toISOString().slice(0, 10);
+}
+
 function matchOutcome(homeGoals, awayGoals) {
     if (homeGoals === awayGoals) return "draw";
     return homeGoals > awayGoals ? "home" : "away";
@@ -186,6 +190,7 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
                    ON mp.match_id = m.id
                   AND mp.user_id = ?
                  WHERE mp.id IS NULL
+                   AND date(m.match_datetime) = date('now')
                  ORDER BY m.match_datetime ASC, m.id ASC`,
                 [req.user.sub],
             );
@@ -194,7 +199,7 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
             const matches = rows
                 .map((row) => {
                     const kickoffMs = new Date(row.match_datetime).getTime();
-                    const deadlineMs = kickoffMs - (3 * 60 * 60 * 1000);
+                    const deadlineMs = kickoffMs - (1 * 60 * 60 * 1000);
                     return {
                         id: row.id,
                         homeTeam: row.home_team,
@@ -486,10 +491,18 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
                 return res.status(500).json({ error: "Data da partida invalida no banco" });
             }
 
-            const deadlineMs = kickoffMs - (3 * 60 * 60 * 1000);
-            if (Date.now() > deadlineMs) {
+            const nowMs = Date.now();
+            const isMatchToday = utcDateKeyFromMs(kickoffMs) === utcDateKeyFromMs(nowMs);
+            if (!isMatchToday) {
                 return res.status(409).json({
-                    error: "Prazo encerrado: o palpite deve ser enviado ate 3 horas antes do inicio do jogo",
+                    error: "Palpites so podem ser enviados para partidas do dia",
+                });
+            }
+
+            const deadlineMs = kickoffMs - (1 * 60 * 60 * 1000);
+            if (nowMs > deadlineMs) {
+                return res.status(409).json({
+                    error: "Prazo encerrado: o palpite deve ser enviado ate 1 hora antes do inicio do jogo",
                 });
             }
 

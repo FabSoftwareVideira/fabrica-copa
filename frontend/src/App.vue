@@ -3960,7 +3960,7 @@ async function loadPredictionMatches() {
     }
     if (state.predictionMatches.length === 0) {
       ui.predictionsMsg =
-        "Nenhuma partida disponível para palpite no momento.";
+        "Hoje não há partidas elegíveis para palpite (ou o prazo de 1h já encerrou).";
     }
   } catch (err) {
     ui.predictionsMsg = err.message || "Erro ao carregar partidas para palpite";
@@ -4882,12 +4882,12 @@ const myTradableDuplicatesForOffer = computed(() => {
           <div class="panel-head">
             <div>
               <span class="badge-chip">Palpites</span>
-              <h2>Partidas disponíveis</h2>
+              <h2>Partidas de hoje</h2>
             </div>
           </div>
 
           <p class="read-only-hint">
-            Você pode enviar apenas um palpite por jogo, até 3 horas antes do início da partida.
+            Você pode enviar apenas um palpite por jogo do dia, até 1 hora antes do início da partida.
           </p>
 
           <p v-if="ui.predictionsLoading" class="read-only-hint">
@@ -4910,7 +4910,7 @@ const myTradableDuplicatesForOffer = computed(() => {
               </thead>
               <tbody>
                 <tr v-if="state.predictionMatches.length === 0">
-                  <td colspan="5">Nenhuma partida apta para receber palpite.</td>
+                  <td colspan="5">Nenhuma partida de hoje apta para receber palpite.</td>
                 </tr>
                 <tr v-for="match in state.predictionMatches" :key="`prediction-${match.id}`">
                   <td>
