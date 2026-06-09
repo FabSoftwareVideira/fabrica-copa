@@ -4,6 +4,113 @@ function normalizeText(value) {
     return String(value || "").trim();
 }
 
+function parseCsvLine(line) {
+    const fields = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (ch === "," && !inQuotes) {
+            fields.push(current);
+            current = "";
+            continue;
+        }
+
+        current += ch;
+    }
+
+    fields.push(current);
+    return fields.map((value) => String(value || "").trim());
+}
+
+function parseOptionalGoal(raw) {
+    if (raw == null || raw === "") {
+        return { provided: false, value: null, invalid: false };
+    }
+
+    const value = Number(String(raw).trim());
+    if (!Number.isInteger(value) || value < 0) {
+        return { provided: true, value: null, invalid: true };
+    }
+
+    return { provided: true, value, invalid: false };
+}
+
+function parseMatchesCsvRows(csvContent) {
+    const lines = String(csvContent || "")
+        .replace(/^\uFEFF/, "")
+        .split(/\r?\n/)
+        .map((line) => String(line || "").trim())
+        .filter(Boolean);
+
+    if (lines.length === 0) {
+        return { rows: [], parseErrors: [] };
+    }
+
+    const firstParts = parseCsvLine(lines[0]);
+    const thirdLooksLikeDate = !Number.isNaN(new Date(String(firstParts[2] || "")).getTime());
+    const looksLikeHeader = firstParts.length >= 3 && !thirdLooksLikeDate;
+    const startIndex = looksLikeHeader ? 1 : 0;
+
+    const rows = [];
+    const parseErrors = [];
+
+    for (let i = startIndex; i < lines.length; i += 1) {
+        const line = lines[i];
+        const lineNo = i + 1;
+        const parts = parseCsvLine(line);
+
+        if (parts.length < 3) {
+            parseErrors.push({ line: lineNo, reason: "menos de 3 colunas" });
+            continue;
+        }
+
+        const homeTeam = normalizeText(parts[0]);
+        const awayTeam = normalizeText(parts[1]);
+        const matchDatetimeRaw = normalizeText(parts[2]);
+        const parsedDate = new Date(matchDatetimeRaw);
+
+        if (!homeTeam || !awayTeam) {
+            parseErrors.push({ line: lineNo, reason: "time mandante/visitante vazio" });
+            continue;
+        }
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            parseErrors.push({ line: lineNo, reason: "data/hora invalida" });
+            continue;
+        }
+
+        const homeGoals = parseOptionalGoal(parts[3]);
+        const awayGoals = parseOptionalGoal(parts[4]);
+        if (homeGoals.invalid || awayGoals.invalid) {
+            parseErrors.push({ line: lineNo, reason: "gols invalidos" });
+            continue;
+        }
+
+        rows.push({
+            line: lineNo,
+            homeTeam,
+            awayTeam,
+            matchDatetime: parsedDate.toISOString(),
+            homeGoals,
+            awayGoals,
+        });
+    }
+
+    return { rows, parseErrors };
+}
+
 function parseMatchPayload(body = {}) {
     const homeTeam = normalizeText(body.homeTeam || body.home_team);
     const awayTeam = normalizeText(body.awayTeam || body.away_team);
@@ -32,10 +139,6 @@ function parseScore(rawValue) {
     const n = Number(rawValue);
     if (!Number.isInteger(n) || n < 0 || n > 99) return NaN;
     return n;
-}
-
-function utcDateKeyFromMs(timestampMs) {
-    return new Date(timestampMs).toISOString().slice(0, 10);
 }
 
 function matchOutcome(homeGoals, awayGoals) {
@@ -190,7 +293,6 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
                    ON mp.match_id = m.id
                   AND mp.user_id = ?
                  WHERE mp.id IS NULL
-                   AND date(m.match_datetime) = date('now')
                  ORDER BY m.match_datetime ASC, m.id ASC`,
                 [req.user.sub],
             );
@@ -199,16 +301,23 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
             const matches = rows
                 .map((row) => {
                     const kickoffMs = new Date(row.match_datetime).getTime();
+                    const openWindowMs = kickoffMs - (24 * 60 * 60 * 1000);
                     const deadlineMs = kickoffMs - (1 * 60 * 60 * 1000);
                     return {
                         id: row.id,
                         homeTeam: row.home_team,
                         awayTeam: row.away_team,
                         matchDatetime: row.match_datetime,
+                        predictionOpensAt: Number.isFinite(openWindowMs)
+                            ? new Date(openWindowMs).toISOString()
+                            : null,
                         predictionDeadline: Number.isFinite(deadlineMs)
                             ? new Date(deadlineMs).toISOString()
                             : null,
-                        canPredict: Number.isFinite(deadlineMs) && now <= deadlineMs,
+                        canPredict: Number.isFinite(openWindowMs)
+                            && Number.isFinite(deadlineMs)
+                            && now >= openWindowMs
+                            && now <= deadlineMs,
                     };
                 })
                 .filter((item) => item.canPredict);
@@ -467,6 +576,90 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
         }
     });
 
+    router.post("/matches/import-csv", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+        try {
+            const csvContent = String(req.body?.csvContent || "");
+            if (!csvContent.trim()) {
+                return res.status(400).json({ error: "CSV obrigatorio" });
+            }
+
+            const { rows, parseErrors } = parseMatchesCsvRows(csvContent);
+            if (rows.length === 0) {
+                return res.status(400).json({
+                    error: "Nenhuma linha valida encontrada no CSV",
+                    parseErrors: parseErrors.slice(0, 20),
+                });
+            }
+
+            let inserted = 0;
+            let updated = 0;
+            let skipped = 0;
+
+            for (const row of rows) {
+                const existing = await get(
+                    `SELECT id, home_goals, away_goals
+                     FROM matches
+                     WHERE home_team = ?
+                       AND away_team = ?
+                       AND match_datetime = ?
+                     LIMIT 1`,
+                    [row.homeTeam, row.awayTeam, row.matchDatetime],
+                );
+
+                if (!existing) {
+                    const homeGoalsToSave = row.homeGoals.provided ? row.homeGoals.value : null;
+                    const awayGoalsToSave = row.awayGoals.provided ? row.awayGoals.value : null;
+                    await run(
+                        `INSERT INTO matches(home_team, away_team, match_datetime, home_goals, away_goals)
+                         VALUES(?, ?, ?, ?, ?)`,
+                        [
+                            row.homeTeam,
+                            row.awayTeam,
+                            row.matchDatetime,
+                            homeGoalsToSave,
+                            awayGoalsToSave,
+                        ],
+                    );
+                    inserted += 1;
+                    continue;
+                }
+
+                const previousHomeGoals = existing.home_goals == null ? null : Number(existing.home_goals);
+                const previousAwayGoals = existing.away_goals == null ? null : Number(existing.away_goals);
+                const nextHomeGoals = row.homeGoals.provided ? row.homeGoals.value : previousHomeGoals;
+                const nextAwayGoals = row.awayGoals.provided ? row.awayGoals.value : previousAwayGoals;
+                const hasChange = previousHomeGoals !== nextHomeGoals || previousAwayGoals !== nextAwayGoals;
+
+                if (!hasChange) {
+                    skipped += 1;
+                    continue;
+                }
+
+                await run(
+                    `UPDATE matches
+                     SET home_goals = ?, away_goals = ?
+                     WHERE id = ?`,
+                    [nextHomeGoals, nextAwayGoals, existing.id],
+                );
+                updated += 1;
+            }
+
+            return res.status(201).json({
+                ok: true,
+                summary: {
+                    totalRows: rows.length,
+                    inserted,
+                    updated,
+                    skipped,
+                    invalid: parseErrors.length,
+                },
+                parseErrors: parseErrors.slice(0, 20),
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao importar partidas em massa", detail: err.message });
+        }
+    });
+
     router.post("/matches/:id/predictions", authMiddleware, async (req, res) => {
         try {
             const matchId = parsePositiveId(req.params?.id);
@@ -492,17 +685,18 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
             }
 
             const nowMs = Date.now();
-            const isMatchToday = utcDateKeyFromMs(kickoffMs) === utcDateKeyFromMs(nowMs);
-            if (!isMatchToday) {
+            const predictionOpenMs = kickoffMs - (24 * 60 * 60 * 1000);
+            const deadlineMs = kickoffMs - (1 * 60 * 60 * 1000);
+
+            if (nowMs < predictionOpenMs) {
                 return res.status(409).json({
-                    error: "Palpites so podem ser enviados para partidas do dia",
+                    error: "Palpite ainda indisponivel: ele abre 24 horas antes do inicio da partida",
                 });
             }
 
-            const deadlineMs = kickoffMs - (1 * 60 * 60 * 1000);
             if (nowMs > deadlineMs) {
                 return res.status(409).json({
-                    error: "Prazo encerrado: o palpite deve ser enviado ate 1 hora antes do inicio do jogo",
+                    error: "Prazo encerrado: o palpite deve ser enviado entre 24h e 1h antes do inicio do jogo",
                 });
             }
 

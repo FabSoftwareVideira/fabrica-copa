@@ -1,6 +1,6 @@
 <script setup>
 import ProfileScreen from "./components/ProfileScreen.vue";
-import { computed, onBeforeUnmount, onMounted, reactive, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import playerImagesData from "../js/player-images.json";
 import {
   API_BASE_ORIGIN,
@@ -187,6 +187,7 @@ const ui = reactive({
   adminMatchesLoading: false,
   adminMatchesMsg: "",
   adminMatchSaving: false,
+  adminMatchesImporting: false,
   deletingCouponId: 0,
   dashboardAnimatedPercent: 0,
   dashboardAnimatedTotal: 0,
@@ -253,6 +254,7 @@ const adminMatchForm = reactive({
   homeGoals: "",
   awayGoals: "",
 });
+const adminMatchesCsvFile = ref(null);
 
 const predictionForm = reactive({
   valuesByMatchId: {},
@@ -1796,6 +1798,7 @@ function clearAuth() {
   ui.adminMatchesMsg = "";
   ui.adminMatchesLoading = false;
   ui.adminMatchSaving = false;
+  ui.adminMatchesImporting = false;
   ui.adminTab = "stickers";
   ui.deletingCouponId = 0;
   ui.tradeOfferOpen = false;
@@ -1819,6 +1822,7 @@ function clearAuth() {
   ui.adminTradeWindowEndInput = "";
   ui.notificationsOpen = false;
   predictionForm.valuesByMatchId = {};
+  adminMatchesCsvFile.value = null;
   resetAdminMatchForm();
   state.systemLastEventId = 0;
   localStorage.removeItem(SYSTEM_EVENTS_CURSOR_KEY);
@@ -2543,6 +2547,54 @@ async function createAdminMatch() {
     ui.adminMatchesMsg = err.message || "Erro ao cadastrar partida";
   } finally {
     ui.adminMatchSaving = false;
+  }
+}
+
+function onAdminMatchesCsvSelected(event) {
+  const file = event?.target?.files?.[0] || null;
+  adminMatchesCsvFile.value = file;
+  if (!file) {
+    ui.adminMatchesMsg = "";
+    return;
+  }
+  ui.adminMatchesMsg = `Arquivo selecionado: ${file.name}`;
+}
+
+async function importAdminMatchesCsv() {
+  if (!isAdmin.value || ui.adminMatchesImporting || ui.adminMatchSaving) return;
+
+  const file = adminMatchesCsvFile.value;
+  if (!file) {
+    ui.adminMatchesMsg = "Selecione um arquivo CSV para importar.";
+    return;
+  }
+
+  ui.adminMatchesImporting = true;
+  ui.adminMatchesMsg = "";
+
+  try {
+    const csvContent = await file.text();
+    const data = await apiFetch("/matches/import-csv", {
+      method: "POST",
+      body: JSON.stringify({ csvContent }),
+    });
+
+    const summary = data?.summary || {};
+    const totalRows = Number(summary.totalRows || 0);
+    const inserted = Number(summary.inserted || 0);
+    const updated = Number(summary.updated || 0);
+    const skipped = Number(summary.skipped || 0);
+    const invalid = Number(summary.invalid || 0);
+
+    await loadAdminMatches();
+    ui.adminMatchesMsg =
+      `Importação concluída: ${inserted} inseridas, ${updated} atualizadas, ` +
+      `${skipped} sem alteração, ${invalid} inválidas (de ${totalRows} linhas válidas).`;
+    setToast("CSV de partidas processado");
+  } catch (err) {
+    ui.adminMatchesMsg = err.message || "Erro ao importar CSV de partidas";
+  } finally {
+    ui.adminMatchesImporting = false;
   }
 }
 
@@ -3960,7 +4012,7 @@ async function loadPredictionMatches() {
     }
     if (state.predictionMatches.length === 0) {
       ui.predictionsMsg =
-        "Hoje não há partidas elegíveis para palpite (ou o prazo de 1h já encerrou).";
+        "Não há partidas na janela de palpite (disponível entre 24h e 1h antes do jogo).";
     }
   } catch (err) {
     ui.predictionsMsg = err.message || "Erro ao carregar partidas para palpite";
@@ -4882,12 +4934,12 @@ const myTradableDuplicatesForOffer = computed(() => {
           <div class="panel-head">
             <div>
               <span class="badge-chip">Palpites</span>
-              <h2>Partidas de hoje</h2>
+              <h2>Próximas partidas para palpite</h2>
             </div>
           </div>
 
           <p class="read-only-hint">
-            Você pode enviar apenas um palpite por jogo do dia, até 1 hora antes do início da partida.
+            Você pode enviar apenas um palpite por jogo entre 24 horas e 1 hora antes do início da partida.
           </p>
 
           <p v-if="ui.predictionsLoading" class="read-only-hint">
@@ -4910,7 +4962,7 @@ const myTradableDuplicatesForOffer = computed(() => {
               </thead>
               <tbody>
                 <tr v-if="state.predictionMatches.length === 0">
-                  <td colspan="5">Nenhuma partida de hoje apta para receber palpite.</td>
+                  <td colspan="5">Nenhuma partida apta para receber palpite nessa janela.</td>
                 </tr>
                 <tr v-for="match in state.predictionMatches" :key="`prediction-${match.id}`">
                   <td>
@@ -5375,6 +5427,28 @@ const myTradableDuplicatesForOffer = computed(() => {
                 >
                   {{ ui.adminMatchSaving ? "Salvando..." : "Cadastrar" }}
                 </button>
+              </div>
+
+              <div class="admin-matches-import-box">
+                <h5>Importar partidas por CSV</h5>
+                <p class="read-only-hint">
+                  Formato: mandante, visitante, data/hora ISO. Colunas 4 e 5 (gols) são opcionais.
+                </p>
+                <div class="admin-matches-import-actions">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    :disabled="ui.adminMatchesImporting || ui.adminMatchSaving"
+                    @change="onAdminMatchesCsvSelected"
+                  />
+                  <button
+                    type="button"
+                    :disabled="ui.adminMatchesImporting || ui.adminMatchSaving"
+                    @click="importAdminMatchesCsv"
+                  >
+                    {{ ui.adminMatchesImporting ? "Importando..." : "Importar CSV" }}
+                  </button>
+                </div>
               </div>
 
               <p v-if="ui.adminMatchesLoading" class="read-only-hint">

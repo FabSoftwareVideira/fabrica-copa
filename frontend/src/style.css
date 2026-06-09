@@ -4781,6 +4781,37 @@ button:disabled {
   align-self: end;
 }
 
+.admin-matches-import-box {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.7rem;
+  border-radius: 12px;
+  border: 1px solid rgba(14, 116, 144, 0.3);
+  background: linear-gradient(
+    135deg,
+    rgba(236, 254, 255, 0.9),
+    rgba(224, 242, 254, 0.84)
+  );
+}
+
+.admin-matches-import-box h5 {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+
+.admin-matches-import-actions {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-matches-import-actions input[type="file"] {
+  max-width: 320px;
+}
+
 .manage-users-coupon-filter-btn {
   width: 100%;
 }
