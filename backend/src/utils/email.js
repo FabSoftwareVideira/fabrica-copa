@@ -27,7 +27,7 @@ if (process.env.NODE_ENV === 'development') {
             pass: process.env.GMAIL_PASS  // Defina no .env (App Password recomendado)
         },
         logger: true, // Habilita logs detalhados do Nodemailer
-        debug: true   // Habilita debug para ver detalhes da comunicação SMTP
+        debug: false   // Habilita debug para ver detalhes da comunicação SMTP
     });
 }
 
