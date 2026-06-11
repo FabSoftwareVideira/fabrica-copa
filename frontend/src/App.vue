@@ -278,7 +278,7 @@ const adminTools = reactive({
 const adminStickerForm = reactive({
   editingId: "",
   name: "",
-  icon: "🎟️",
+  icon: "",
   image: "",
   originalImage: "",
   imageFileName: "",
@@ -1618,7 +1618,7 @@ function normalizeStickerForUi(raw) {
       raw?.section || (raw?.groupId ? `grupo-${raw.groupId}` : "especial"),
     sectionName:
       raw?.sectionName || (raw?.groupId ? `Grupo ${raw.groupId}` : "Especial"),
-    icon: raw?.icon || "🎟️",
+    icon: raw?.icon || "",
     type: raw?.type || "custom",
     image: raw?.image || "",
     teamId: raw?.teamId || null,
@@ -4992,7 +4992,9 @@ const myTradableDuplicatesForOffer = computed(() => {
                     loading="lazy"
                     @error="onStickerPhotoError($event, item)"
                   />
-                  <span class="sticker-flag">{{ item.icon }}</span>
+                  <span v-if="item.icon" class="sticker-flag">{{
+                    item.icon
+                  }}</span>
                 </div>
                 <span class="num">#{{ item.num }}</span>
                 <strong>{{ item.name }}</strong>
@@ -6699,7 +6701,9 @@ const myTradableDuplicatesForOffer = computed(() => {
                         loading="lazy"
                         @error="onStickerPhotoError($event, item)"
                       />
-                      <span class="sticker-flag">{{ item.icon }}</span>
+                      <span v-if="item.icon" class="sticker-flag">{{
+                        item.icon
+                      }}</span>
                     </div>
                     <strong>{{ item.name }}</strong>
                     <small>

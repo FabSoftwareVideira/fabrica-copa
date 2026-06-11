@@ -297,7 +297,7 @@ const ALBUM_DATA = {
             startNum: 323,
             teams: [
                 {
-                    id: "info", name: "INFO", flag: "ℹ️", abbr: "INFO",
+                    id: "info", name: "INFO", flag: "", abbr: "INFO",
                     players: ["Arthur Teixeira", "Hurick", "Romanato", "Fuerst V", "Otávio", "Fuerst L", "Cendron", "Xavier"]
                 }
             ]
