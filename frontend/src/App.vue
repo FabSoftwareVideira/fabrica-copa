@@ -900,6 +900,27 @@ const publicRankingWithoutCompleted = computed(() => {
       if (userId <= 0) return true;
       return !completedIds.has(userId);
     })
+    .sort((a, b) => {
+      const byCollected = Number(b?.collected || 0) - Number(a?.collected || 0);
+      if (byCollected !== 0) return byCollected;
+
+      const byPercent = Number(b?.percent || 0) - Number(a?.percent || 0);
+      if (byPercent !== 0) return byPercent;
+
+      const aUpdatedAt = new Date(a?.updatedAt || 0).getTime();
+      const bUpdatedAt = new Date(b?.updatedAt || 0).getTime();
+      const aHasUpdatedAt = Number.isFinite(aUpdatedAt) && aUpdatedAt > 0;
+      const bHasUpdatedAt = Number.isFinite(bUpdatedAt) && bUpdatedAt > 0;
+
+      if (aHasUpdatedAt && bHasUpdatedAt && aUpdatedAt !== bUpdatedAt) {
+        return aUpdatedAt - bUpdatedAt;
+      }
+      if (aHasUpdatedAt !== bHasUpdatedAt) {
+        return aHasUpdatedAt ? -1 : 1;
+      }
+
+      return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
+    })
     .slice(0, 10);
 });
 const filteredTradeWindows = computed(() => {
@@ -4378,12 +4399,12 @@ const myTradableDuplicatesForOffer = computed(() => {
             </p>
             <ol v-else class="landing-ranking-list">
               <li
-                v-for="entry in publicRankingWithoutCompleted"
-                :key="`rank-${entry.userId || entry.position}-${entry.position}`"
+                v-for="(entry, index) in publicRankingWithoutCompleted"
+                :key="`rank-${entry.userId || entry.position}-${index + 1}`"
                 class="landing-ranking-item"
               >
                 <span class="landing-ranking-position"
-                  >#{{ entry.position }}</span
+                  >#{{ index + 1 }}</span
                 >
                 <strong class="landing-ranking-name">{{ entry.name }}</strong>
                 <span class="landing-ranking-score"
