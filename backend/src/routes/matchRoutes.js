@@ -194,6 +194,78 @@ function evaluatePredictionReward({ predictedHomeGoals, predictedAwayGoals, actu
 function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get, run, transaction, nowSqlTimestamp }) {
     const router = express.Router();
 
+    function buildPredictionRanking(rows) {
+        const byUser = new Map();
+
+        for (const row of Array.isArray(rows) ? rows : []) {
+            const userId = Number(row.user_id || 0);
+            if (userId <= 0) continue;
+
+            if (!byUser.has(userId)) {
+                byUser.set(userId, {
+                    userId,
+                    name: String(row.user_name || "Usuário"),
+                    predictionCoins: 0,
+                    exactHits: 0,
+                    winnerHits: 0,
+                    oneTeamGoalHits: 0,
+                    resolvedPredictions: 0,
+                    submittedPredictions: 0,
+                    lastResolvedAt: "",
+                });
+            }
+
+            const entry = byUser.get(userId);
+            entry.submittedPredictions += 1;
+
+            const actualHomeGoals = row.actual_home_goals == null ? null : Number(row.actual_home_goals);
+            const actualAwayGoals = row.actual_away_goals == null ? null : Number(row.actual_away_goals);
+            const reward = evaluatePredictionReward({
+                predictedHomeGoals: Number(row.predicted_home_goals),
+                predictedAwayGoals: Number(row.predicted_away_goals),
+                actualHomeGoals,
+                actualAwayGoals,
+            });
+
+            if (!reward.resolved) continue;
+
+            entry.resolvedPredictions += 1;
+            entry.predictionCoins += reward.rewardCoins;
+
+            if (reward.badgeKey === "exact") entry.exactHits += 1;
+            else if (reward.badgeKey === "winner") entry.winnerHits += 1;
+            else if (reward.badgeKey === "one-team-goals") entry.oneTeamGoalHits += 1;
+
+            const resolvedAt = String(row.match_datetime || "").trim();
+            if (resolvedAt && (!entry.lastResolvedAt || resolvedAt > entry.lastResolvedAt)) {
+                entry.lastResolvedAt = resolvedAt;
+            }
+        }
+
+        const ranking = [...byUser.values()]
+            .filter((entry) => entry.resolvedPredictions > 0)
+            .sort((a, b) => {
+                if (b.predictionCoins !== a.predictionCoins) return b.predictionCoins - a.predictionCoins;
+                if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
+                if (b.winnerHits !== a.winnerHits) return b.winnerHits - a.winnerHits;
+                if (b.oneTeamGoalHits !== a.oneTeamGoalHits) return b.oneTeamGoalHits - a.oneTeamGoalHits;
+                if (b.resolvedPredictions !== a.resolvedPredictions) return b.resolvedPredictions - a.resolvedPredictions;
+                return a.name.localeCompare(b.name, "pt-BR");
+            });
+
+        let lastCoins = null;
+        let currentPosition = 0;
+        for (let idx = 0; idx < ranking.length; idx++) {
+            if (lastCoins === null || ranking[idx].predictionCoins !== lastCoins) {
+                currentPosition = idx + 1;
+                lastCoins = ranking[idx].predictionCoins;
+            }
+            ranking[idx].position = currentPosition;
+        }
+
+        return ranking;
+    }
+
     const claimPredictionRewardsTx = transaction((userId, claimedAt) => {
         const rows = all(
             `SELECT mp.id,
@@ -391,6 +463,63 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
             return res.json({ predictions });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao listar seus palpites", detail: err.message });
+        }
+    });
+
+    router.get("/matches/predictions/ranking", authMiddleware, async (req, res) => {
+        try {
+            const requestedLimit = Number(req.query?.limit || 5);
+            const limit = Number.isFinite(requestedLimit)
+                ? Math.max(1, Math.min(20, Math.floor(requestedLimit)))
+                : 5;
+            const rows = await all(
+                `SELECT u.id AS user_id,
+                        u.name AS user_name,
+                        mp.id AS prediction_id,
+                        mp.home_goals AS predicted_home_goals,
+                        mp.away_goals AS predicted_away_goals,
+                        m.home_goals AS actual_home_goals,
+                        m.away_goals AS actual_away_goals,
+                        m.match_datetime
+                 FROM match_predictions mp
+                 JOIN users u ON u.id = mp.user_id
+                 JOIN matches m ON m.id = mp.match_id
+                 WHERE u.is_blocked = 0
+                 ORDER BY mp.created_at DESC, mp.id DESC`
+            );
+            const ranking = buildPredictionRanking(rows);
+            const myEntry = ranking.find((entry) => entry.userId === Number(req.user.sub)) || null;
+            const generatedAt = typeof nowSqlTimestamp === "function"
+                ? nowSqlTimestamp()
+                : new Date().toISOString();
+
+            return res.json({
+                generatedAt,
+                ranking: ranking.slice(0, limit).map((entry) => ({
+                    position: entry.position,
+                    userId: entry.userId,
+                    name: entry.name,
+                    predictionCoins: entry.predictionCoins,
+                    exactHits: entry.exactHits,
+                    winnerHits: entry.winnerHits,
+                    oneTeamGoalHits: entry.oneTeamGoalHits,
+                    resolvedPredictions: entry.resolvedPredictions,
+                })),
+                me: myEntry
+                    ? {
+                        position: myEntry.position,
+                        userId: myEntry.userId,
+                        name: myEntry.name,
+                        predictionCoins: myEntry.predictionCoins,
+                        exactHits: myEntry.exactHits,
+                        winnerHits: myEntry.winnerHits,
+                        oneTeamGoalHits: myEntry.oneTeamGoalHits,
+                        resolvedPredictions: myEntry.resolvedPredictions,
+                    }
+                    : null,
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao carregar ranking de palpiteiros", detail: err.message });
         }
     });
 

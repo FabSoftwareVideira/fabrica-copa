@@ -106,6 +106,7 @@ const state = reactive({
   tradeWindows: [],
   predictionMatches: [],
   predictionMine: [],
+  predictionRanking: [],
   matches: [],
   managedUsers: [],
   managedCoupons: [],
@@ -121,6 +122,9 @@ const state = reactive({
   completedAuditMigration: null,
   accessAuditItems: [],
   myRankingPosition: 0,
+  myPredictionRankingPosition: 0,
+  myPredictionRankingCoins: 0,
+  predictionRankingUpdatedAt: "",
   prestigeLevel: 0,
   prestigeBonusMultiplier: 1,
   systemLastEventId: Number(
@@ -163,6 +167,8 @@ const ui = reactive({
   predictionsMsg: "",
   predictionsMineLoading: false,
   predictionsMineMsg: "",
+  predictionRankingLoading: false,
+  predictionRankingMsg: "",
   predictionRewardClaiming: false,
   predictionSubmittingMatchId: 0,
   tradeWindowClockNow: Date.now(),
@@ -223,6 +229,7 @@ const adminTools = reactive({
   couponUserFilter: "all",
   couponPage: 1,
   couponPageSize: 8,
+  matchDateFilter: "",
   accessAuditSearch: "",
   accessAuditSuccessFilter: "all",
   accessAuditStatusFilter: "all",
@@ -527,6 +534,21 @@ const managedCouponsPageTo = computed(() =>
     filteredManagedCoupons.value.length,
   ),
 );
+const filteredAdminMatches = computed(() => {
+  const dateFilter = String(adminTools.matchDateFilter || "").trim();
+  if (!dateFilter) return state.matches;
+
+  return state.matches.filter((match) => {
+    const matchDate = String(match?.matchDatetime || "").trim();
+    if (!matchDate) return false;
+    const isoDate = matchDate.slice(0, 10);
+    if (isoDate === dateFilter) return true;
+
+    const parsed = new Date(matchDate);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.toISOString().slice(0, 10) === dateFilter;
+  });
+});
 const filteredAccessAuditItems = computed(() => {
   const query = String(adminTools.accessAuditSearch || "")
     .trim()
@@ -838,6 +860,14 @@ const tradeWindowStatusText = computed(() => {
 const myRankingDisplay = computed(() => {
   const position = Number(state.myRankingPosition || 0);
   return position > 0 ? `#${position}` : "-";
+});
+const myPredictionRankingDisplay = computed(() => {
+  const position = Number(state.myPredictionRankingPosition || 0);
+  return position > 0 ? `#${position}` : "-";
+});
+const topPredictionRanking = computed(() => {
+  if (!Array.isArray(state.predictionRanking)) return [];
+  return state.predictionRanking.slice(0, 5);
 });
 
 function hasCompletedAnyCycle(entry) {
@@ -1743,7 +1773,11 @@ function clearAuth() {
   state.tradeHistory = [];
   state.predictionMatches = [];
   state.predictionMine = [];
+  state.predictionRanking = [];
   state.myRankingPosition = 0;
+  state.myPredictionRankingPosition = 0;
+  state.myPredictionRankingCoins = 0;
+  state.predictionRankingUpdatedAt = "";
   state.prestigeLevel = 0;
   state.prestigeBonusMultiplier = 1;
   state.tradeWindowStartsAt = "";
@@ -1776,6 +1810,7 @@ function clearAuth() {
   adminTools.couponUserFilter = "all";
   adminTools.couponPage = 1;
   adminTools.couponPageSize = 8;
+  adminTools.matchDateFilter = "";
   adminTools.accessAuditSearch = "";
   adminTools.accessAuditSuccessFilter = "all";
   adminTools.accessAuditStatusFilter = "all";
@@ -1812,6 +1847,8 @@ function clearAuth() {
   ui.predictionsMsg = "";
   ui.predictionsMineLoading = false;
   ui.predictionsMineMsg = "";
+  ui.predictionRankingLoading = false;
+  ui.predictionRankingMsg = "";
   ui.predictionRewardClaiming = false;
   ui.predictionSubmittingMatchId = 0;
   ui.tradeWindowSaving = false;
@@ -4041,10 +4078,42 @@ async function loadMyPredictions() {
   }
 }
 
+async function loadPredictionRanking() {
+  if (!isAuthenticated.value) {
+    state.predictionRanking = [];
+    state.myPredictionRankingPosition = 0;
+    state.myPredictionRankingCoins = 0;
+    state.predictionRankingUpdatedAt = "";
+    return;
+  }
+
+  ui.predictionRankingLoading = true;
+  ui.predictionRankingMsg = "";
+  try {
+    const data = await apiFetch("/matches/predictions/ranking?limit=5");
+    state.predictionRanking = Array.isArray(data.ranking) ? data.ranking : [];
+    state.myPredictionRankingPosition = Number(data?.me?.position || 0);
+    state.myPredictionRankingCoins = Number(data?.me?.predictionCoins || 0);
+    state.predictionRankingUpdatedAt = String(data?.generatedAt || "");
+  } catch (err) {
+    ui.predictionRankingMsg = err.message || "Erro ao carregar ranking de palpiteiros";
+    state.predictionRanking = [];
+    state.myPredictionRankingPosition = 0;
+    state.myPredictionRankingCoins = 0;
+    state.predictionRankingUpdatedAt = "";
+  } finally {
+    ui.predictionRankingLoading = false;
+  }
+}
+
 async function openPredictionsView() {
   state.view = "predictions";
   ui.mobileMenuOpen = false;
-  await Promise.all([loadPredictionMatches(), loadMyPredictions()]);
+  await Promise.all([
+    loadPredictionMatches(),
+    loadMyPredictions(),
+    loadPredictionRanking(),
+  ]);
 }
 
 const predictionClaimableCoins = computed(() =>
@@ -4086,7 +4155,7 @@ async function claimPredictionRewards() {
     state.tradeCoins = tradeCoins;
     ui.predictionsMineMsg = `Prêmio resgatado: +${awardedCoins} moedas.`;
     setToast(`Prêmio resgatado: +${awardedCoins} moedas`);
-    await loadMyPredictions();
+    await Promise.all([loadMyPredictions(), loadPredictionRanking()]);
   } catch (err) {
     ui.predictionsMineMsg = err.message || "Erro ao resgatar prêmio";
   } finally {
@@ -4949,66 +5018,116 @@ const myTradableDuplicatesForOffer = computed(() => {
             {{ ui.predictionsMsg }}
           </p>
 
-          <div v-if="!ui.predictionsLoading" class="admin-users-table-wrap">
-            <table class="admin-users-table">
-              <thead>
-                <tr>
-                  <th>Partida</th>
-                  <th>Início</th>
-                  <th>Prazo do palpite</th>
-                  <th>Seu palpite</th>
-                  <th>Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="state.predictionMatches.length === 0">
-                  <td colspan="5">Nenhuma partida apta para receber palpite nessa janela.</td>
-                </tr>
-                <tr v-for="match in state.predictionMatches" :key="`prediction-${match.id}`">
-                  <td>
-                    <strong>{{ match.homeTeam }}</strong>
-                    <small>x {{ match.awayTeam }}</small>
-                  </td>
-                  <td>{{ formatDateTime(match.matchDatetime) }}</td>
-                  <td>
-                    {{ match.predictionDeadline ? formatDateTime(match.predictionDeadline) : "-" }}
-                  </td>
-                  <td>
-                    <div class="manage-users-toolbar">
-                      <input
-                        v-model="predictionDraftFor(match.id).homeGoals"
-                        type="number"
-                        min="0"
-                        max="99"
-                        placeholder="Casa"
-                      />
-                      <span>x</span>
-                      <input
-                        v-model="predictionDraftFor(match.id).awayGoals"
-                        type="number"
-                        min="0"
-                        max="99"
-                        placeholder="Fora"
-                      />
-                    </div>
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      :disabled="ui.predictionSubmittingMatchId === match.id"
-                      @click="submitPrediction(match)"
-                    >
-                      {{
-                        ui.predictionSubmittingMatchId === match.id
-                          ? "Enviando..."
-                          : "Enviar palpite"
-                      }}
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div v-if="!ui.predictionsLoading" class="prediction-matches-list">
+            <p
+              v-if="state.predictionMatches.length === 0"
+              class="read-only-hint prediction-matches-empty"
+            >
+              Nenhuma partida apta para receber palpite nessa janela.
+            </p>
+
+            <article
+              v-for="match in state.predictionMatches"
+              :key="`prediction-card-${match.id}`"
+              class="prediction-match-card"
+            >
+              <strong class="prediction-match-title">
+                {{ match.homeTeam }} x {{ match.awayTeam }}
+              </strong>
+
+              <div class="prediction-match-score-row">
+                <label class="prediction-score-field">
+                  <span>GOLS</span>
+                  <input
+                    v-model="predictionDraftFor(match.id).homeGoals"
+                    type="number"
+                    min="0"
+                    max="99"
+                    placeholder="0"
+                  />
+                </label>
+                <span class="prediction-score-separator">x</span>
+                <label class="prediction-score-field">
+                  <span>GOLS</span>
+                  <input
+                    v-model="predictionDraftFor(match.id).awayGoals"
+                    type="number"
+                    min="0"
+                    max="99"
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                class="prediction-match-submit"
+                :disabled="ui.predictionSubmittingMatchId === match.id"
+                @click="submitPrediction(match)"
+              >
+                {{
+                  ui.predictionSubmittingMatchId === match.id
+                    ? "Enviando..."
+                    : "Enviar palpite"
+                }}
+              </button>
+            </article>
           </div>
+
+          <article class="prediction-ranking-card">
+            <div class="prediction-ranking-head">
+              <div>
+                <span class="badge-chip">Top 5 palpiteiros</span>
+                
+              </div>
+              <div class="panel-head-ranking prediction-ranking-position-card">
+                <small>Sua posição</small>
+                <strong>{{ myPredictionRankingDisplay }}</strong>
+                <small>{{ state.myPredictionRankingCoins }}</small>
+              </div>
+            </div>
+
+            <p v-if="ui.predictionRankingLoading" class="read-only-hint">
+              Carregando ranking de palpiteiros...
+            </p>
+            <p v-else-if="ui.predictionRankingMsg" class="read-only-hint">
+              {{ ui.predictionRankingMsg }}
+            </p>
+            <p
+              v-else-if="topPredictionRanking.length === 0"
+              class="read-only-hint"
+            >
+              O ranking aparecerá assim que houver palpites com partidas resolvidas.
+            </p>
+
+            <div
+              v-if="!ui.predictionRankingLoading && topPredictionRanking.length > 0"
+              class="prediction-ranking-body"
+            >
+              <small
+                v-if="state.predictionRankingUpdatedAt"
+                class="prediction-ranking-updated"
+              >
+                Atualizado em {{ formatDateTime(state.predictionRankingUpdatedAt) }}
+              </small>
+              <ol class="landing-ranking-list prediction-ranking-list">
+                <li
+                  v-for="entry in topPredictionRanking"
+                  :key="`prediction-ranking-${entry.userId || entry.position}`"
+                  class="landing-ranking-item prediction-ranking-item"
+                >
+                  <span class="landing-ranking-position">#{{ entry.position }}</span>
+                  <div class="prediction-ranking-meta">
+                    <strong class="landing-ranking-name">{{ entry.name }}</strong>
+                    <small>
+                      {{ entry.exactHits }} exato(s), {{ entry.winnerHits }} vencedor(es), {{ entry.oneTeamGoalHits }} gol(s) de um time
+                    </small>
+                  </div>
+                  <span class="landing-ranking-score">{{ entry.predictionCoins }}</span>
+                </li>
+              </ol>
+            </div>
+          </article>
 
           <div class="admin-users-table-wrap" style="margin-top: 1rem">
             <h3>Meus palpites</h3>
@@ -5458,7 +5577,28 @@ const myTradableDuplicatesForOffer = computed(() => {
                 {{ ui.adminMatchesMsg }}
               </p>
 
-              <div v-if="!ui.adminMatchesLoading" class="admin-users-table-wrap">
+              <div v-if="!ui.adminMatchesLoading" class="admin-matches-filter-bar">
+                <label class="admin-matches-filter-field">
+                  <span>Filtrar por data do jogo</span>
+                  <input
+                    v-model="adminTools.matchDateFilter"
+                    type="date"
+                  />
+                </label>
+                <button
+                  v-if="adminTools.matchDateFilter"
+                  type="button"
+                  class="admin-matches-filter-clear"
+                  @click="adminTools.matchDateFilter = ''"
+                >
+                  Limpar filtro
+                </button>
+              </div>
+
+              <div
+                v-if="!ui.adminMatchesLoading"
+                class="admin-users-table-wrap admin-matches-table-wrap"
+              >
                 <table class="admin-users-table">
                   <thead>
                     <tr>
@@ -5472,10 +5612,10 @@ const myTradableDuplicatesForOffer = computed(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="state.matches.length === 0">
+                    <tr v-if="filteredAdminMatches.length === 0">
                       <td colspan="7">Nenhuma partida cadastrada.</td>
                     </tr>
-                    <tr v-for="match in state.matches" :key="match.id">
+                    <tr v-for="match in filteredAdminMatches" :key="match.id">
                       <td>{{ match.id }}</td>
                       <td>{{ match.homeTeam }}</td>
                       <td>{{ match.awayTeam }}</td>
@@ -5515,6 +5655,61 @@ const myTradableDuplicatesForOffer = computed(() => {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+
+              <div v-if="!ui.adminMatchesLoading" class="admin-match-card-list">
+                <p v-if="filteredAdminMatches.length === 0" class="read-only-hint">
+                  Nenhuma partida cadastrada.
+                </p>
+
+                <article
+                  v-for="match in filteredAdminMatches"
+                  :key="`admin-match-card-${match.id}`"
+                  class="admin-match-card"
+                >
+                  <div class="admin-match-card-head">
+                    <strong>#{{ match.id }} · {{ match.homeTeam }} x {{ match.awayTeam }}</strong>
+                    <small>{{ formatDateTime(match.matchDatetime) }}</small>
+                  </div>
+
+                  <div class="admin-match-goals-row">
+                    <label class="admin-match-goal-field">
+                      <span>Gols mandante</span>
+                      <input
+                        v-model="match.homeGoals"
+                        type="number"
+                        min="0"
+                        placeholder="-"
+                      />
+                    </label>
+                    <label class="admin-match-goal-field">
+                      <span>Gols visitante</span>
+                      <input
+                        v-model="match.awayGoals"
+                        type="number"
+                        min="0"
+                        placeholder="-"
+                      />
+                    </label>
+                  </div>
+
+                  <div class="admin-match-card-actions">
+                    <button
+                      type="button"
+                      :disabled="ui.adminMatchSaving"
+                      @click="saveAdminMatchGoals(match)"
+                    >
+                      Salvar gols
+                    </button>
+                    <button
+                      type="button"
+                      :disabled="ui.adminMatchSaving"
+                      @click="deleteAdminMatch(match)"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </article>
               </div>
             </div>
 

@@ -726,6 +726,126 @@ button:disabled {
   font-weight: 800;
 }
 
+.prediction-ranking-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(241, 245, 249, 0.82));
+  display: grid;
+  gap: 0.85rem;
+}
+
+.prediction-ranking-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.prediction-ranking-head h3 {
+  margin: 0.45rem 0 0;
+}
+
+.prediction-ranking-copy {
+  margin-top: 0.4rem;
+}
+
+.prediction-ranking-position-card {
+  min-width: 120px;
+}
+
+.prediction-ranking-body {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.prediction-ranking-updated {
+  color: #64748b;
+}
+
+.prediction-ranking-item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.prediction-matches-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.prediction-match-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.84));
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.prediction-match-title {
+  text-align: center;
+  color: #0f172a;
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.prediction-score-field span {
+  display: block;
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.prediction-match-score-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.prediction-score-field {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+}
+
+.prediction-score-field input {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.prediction-score-separator {
+  align-self: center;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f766e;
+  padding-bottom: 0.55rem;
+}
+
+.prediction-match-submit {
+  width: 100%;
+}
+
+.prediction-matches-empty {
+  margin: 0;
+}
+
+.prediction-ranking-meta {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.prediction-ranking-meta small {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
 .badge-chip {
   font-size: 0.84rem;
   font-weight: 700;
@@ -4812,6 +4932,79 @@ button:disabled {
   max-width: 320px;
 }
 
+.admin-matches-filter-bar {
+  margin-top: 0.85rem;
+  display: flex;
+  align-items: end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.admin-matches-filter-field {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.admin-matches-filter-field span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.admin-matches-filter-clear {
+  align-self: end;
+}
+
+.admin-match-card-list {
+  display: none;
+  gap: 0.8rem;
+}
+
+.admin-match-card {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.admin-match-card-head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-match-card-head strong {
+  color: #0f172a;
+}
+
+.admin-match-card-head small {
+  color: #64748b;
+}
+
+.admin-match-goals-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.admin-match-goal-field {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.admin-match-goal-field span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.admin-match-card-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 .manage-users-coupon-filter-btn {
   width: 100%;
 }
@@ -5309,6 +5502,18 @@ button:disabled {
     padding: 0.75rem;
   }
 
+  .prediction-ranking-card {
+    padding: 0.85rem;
+  }
+
+  .prediction-ranking-item {
+    grid-template-columns: auto 1fr;
+  }
+
+  .prediction-ranking-item .landing-ranking-score {
+    grid-column: 2;
+  }
+
   .landing-complete-pill {
     /* width: 102px;
     min-height: 102px; */
@@ -5618,6 +5823,31 @@ button:disabled {
 
   .admin-users-table th {
     font-size: 0.6rem;
+  }
+
+  .admin-matches-table-wrap {
+    display: none;
+  }
+
+  .admin-match-card-list {
+    display: grid;
+  }
+
+  .admin-matches-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-matches-filter-clear {
+    width: 100%;
+  }
+
+  .admin-match-goals-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-match-card-actions {
+    flex-direction: column;
   }
 
   /* Esconder coluna "Criado por" (5ª coluna) em telas muito pequenas */
