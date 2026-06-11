@@ -92,6 +92,7 @@ const GROUP_COLORS = {
     J: "#f43f5e",
     K: "#64748b",
     L: "#78716c",
+    estudantes: "#50C878",
 };
 
 export {

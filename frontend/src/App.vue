@@ -1,7 +1,15 @@
 <script setup>
 import ProfileScreen from "./components/ProfileScreen.vue";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import playerImagesData from "../js/player-images.json";
+import estudantesData from "../js/estudantes.json";
 import {
   API_BASE_ORIGIN,
   API_BASE_URL,
@@ -58,13 +66,44 @@ const PRESTIGE_BONUS_STEP = 0.25;
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
+const estudantesImageItems = Array.isArray(estudantesData?.items)
+  ? estudantesData.items
+  : [];
 const BURN_REPEAT_DAILY_LIMIT = 10;
+
+function normalizePlayerImageUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("data:")) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("public/")) {
+    return withBasePath(`/${trimmed.slice(7)}`);
+  }
+  if (trimmed.startsWith("/public/")) {
+    return withBasePath(trimmed.slice(7));
+  }
+  return withBasePath(trimmed);
+}
 
 const playerImageMap = new Map(
   playerImageItems
     .filter((item) => item?.found && item?.player && item?.imageUrl)
     .map((item) => [playerImageKey(item.player, item.teamId), item]),
 );
+
+const estudantesImageMap = new Map(
+  estudantesImageItems
+    .filter((item) => item?.found && item?.player && item?.imageUrl)
+    .map((item) => [playerImageKey(item.player, item.teamId), item]),
+);
+
+// mesclar player e estudantes
+for (const [key, value] of estudantesImageMap.entries()) {
+  if (!playerImageMap.has(key)) {
+    playerImageMap.set(key, value);
+  }
+}
 
 const state = reactive({
   view: "dashboard",
@@ -919,7 +958,10 @@ const publicRankingWithoutCompleted = computed(() => {
         return aHasUpdatedAt ? -1 : 1;
       }
 
-      return String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR");
+      return String(a?.name || "").localeCompare(
+        String(b?.name || ""),
+        "pt-BR",
+      );
     })
     .slice(0, 10);
 });
@@ -1035,6 +1077,7 @@ const albumPages = computed(() => {
     "J",
     "K",
     "L",
+    "estudantes",
   ];
 
   return [...pages.values()]
@@ -1096,7 +1139,19 @@ const albumPages = computed(() => {
       };
     })
     .filter((page) => page.stickers.length > 0)
-    .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    .sort((a, b) => {
+      const aIndex = order.indexOf(a.key);
+      const bIndex = order.indexOf(b.key);
+      if (aIndex === -1 && bIndex === -1) {
+        return String(a.name || "").localeCompare(
+          String(b.name || ""),
+          "pt-BR",
+        );
+      }
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
 });
 
 const currentFlipPage = computed(() => {
@@ -2496,22 +2551,22 @@ async function loadAdminMatches() {
     const data = await apiFetch("/matches");
     state.matches = Array.isArray(data.matches)
       ? data.matches
-        .map((match) => ({
-          ...match,
-          homeGoals:
-            match?.homeGoals == null || match?.homeGoals === ""
-              ? ""
-              : String(match.homeGoals),
-          awayGoals:
-            match?.awayGoals == null || match?.awayGoals === ""
-              ? ""
-              : String(match.awayGoals),
-        }))
-        .sort((a, b) => {
-          const aTime = new Date(a?.matchDatetime || 0).getTime() || 0;
-          const bTime = new Date(b?.matchDatetime || 0).getTime() || 0;
-          return aTime - bTime;
-        })
+          .map((match) => ({
+            ...match,
+            homeGoals:
+              match?.homeGoals == null || match?.homeGoals === ""
+                ? ""
+                : String(match.homeGoals),
+            awayGoals:
+              match?.awayGoals == null || match?.awayGoals === ""
+                ? ""
+                : String(match.awayGoals),
+          }))
+          .sort((a, b) => {
+            const aTime = new Date(a?.matchDatetime || 0).getTime() || 0;
+            const bTime = new Date(b?.matchDatetime || 0).getTime() || 0;
+            return aTime - bTime;
+          })
       : [];
   } catch (err) {
     ui.adminMatchesMsg = err.message || "Erro ao carregar partidas";
@@ -2537,7 +2592,8 @@ async function createAdminMatch() {
   }
 
   if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
-    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    ui.adminMatchesMsg =
+      "Gols devem ser números inteiros maiores ou iguais a 0.";
     return;
   }
 
@@ -2626,7 +2682,8 @@ async function saveAdminMatchGoals(match) {
   const awayGoals = parseGoalInput(match.awayGoals);
 
   if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
-    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    ui.adminMatchesMsg =
+      "Gols devem ser números inteiros maiores ou iguais a 0.";
     return;
   }
 
@@ -4053,7 +4110,9 @@ async function loadMyPredictions() {
   ui.predictionsMineMsg = "";
   try {
     const data = await apiFetch("/matches/predictions/mine");
-    state.predictionMine = Array.isArray(data.predictions) ? data.predictions : [];
+    state.predictionMine = Array.isArray(data.predictions)
+      ? data.predictions
+      : [];
   } catch (err) {
     ui.predictionsMineMsg = err.message || "Erro ao carregar seus palpites";
     state.predictionMine = [];
@@ -4403,9 +4462,7 @@ const myTradableDuplicatesForOffer = computed(() => {
                 :key="`rank-${entry.userId || entry.position}-${index + 1}`"
                 class="landing-ranking-item"
               >
-                <span class="landing-ranking-position"
-                  >#{{ index + 1 }}</span
-                >
+                <span class="landing-ranking-position">#{{ index + 1 }}</span>
                 <strong class="landing-ranking-name">{{ entry.name }}</strong>
                 <span class="landing-ranking-score"
                   >{{ entry.collected }} coladas</span
@@ -4960,7 +5017,8 @@ const myTradableDuplicatesForOffer = computed(() => {
           </div>
 
           <p class="read-only-hint">
-            Você pode enviar apenas um palpite por jogo entre 24 horas e 1 hora antes do início da partida.
+            Você pode enviar apenas um palpite por jogo entre 24 horas e 1 hora
+            antes do início da partida.
           </p>
 
           <p v-if="ui.predictionsLoading" class="read-only-hint">
@@ -4983,16 +5041,25 @@ const myTradableDuplicatesForOffer = computed(() => {
               </thead>
               <tbody>
                 <tr v-if="state.predictionMatches.length === 0">
-                  <td colspan="5">Nenhuma partida apta para receber palpite nessa janela.</td>
+                  <td colspan="5">
+                    Nenhuma partida apta para receber palpite nessa janela.
+                  </td>
                 </tr>
-                <tr v-for="match in state.predictionMatches" :key="`prediction-${match.id}`">
+                <tr
+                  v-for="match in state.predictionMatches"
+                  :key="`prediction-${match.id}`"
+                >
                   <td>
                     <strong>{{ match.homeTeam }}</strong>
                     <small>x {{ match.awayTeam }}</small>
                   </td>
                   <td>{{ formatDateTime(match.matchDatetime) }}</td>
                   <td>
-                    {{ match.predictionDeadline ? formatDateTime(match.predictionDeadline) : "-" }}
+                    {{
+                      match.predictionDeadline
+                        ? formatDateTime(match.predictionDeadline)
+                        : "-"
+                    }}
                   </td>
                   <td>
                     <div class="manage-users-toolbar">
@@ -5085,11 +5152,16 @@ const myTradableDuplicatesForOffer = computed(() => {
                     <small>x {{ entry.match?.awayTeam || "-" }}</small>
                   </td>
                   <td>
-                    <strong>{{ entry.homeGoals }} x {{ entry.awayGoals }}</strong>
+                    <strong
+                      >{{ entry.homeGoals }} x {{ entry.awayGoals }}</strong
+                    >
                   </td>
                   <td>
                     <strong
-                      v-if="entry.match?.homeGoals != null && entry.match?.awayGoals != null"
+                      v-if="
+                        entry.match?.homeGoals != null &&
+                        entry.match?.awayGoals != null
+                      "
                     >
                       {{ entry.match.homeGoals }} x {{ entry.match.awayGoals }}
                     </strong>
@@ -5105,9 +5177,7 @@ const myTradableDuplicatesForOffer = computed(() => {
                     <small v-if="(entry.reward?.rewardCoins || 0) > 0">
                       +{{ entry.reward.rewardCoins }} moeda(s)
                     </small>
-                    <small v-if="entry.reward?.claimed">
-                      (resgatado)
-                    </small>
+                    <small v-if="entry.reward?.claimed"> (resgatado) </small>
                   </td>
                   <td>{{ formatDateTime(entry.match?.matchDatetime) }}</td>
                   <td>{{ formatDateTime(entry.createdAt) }}</td>
@@ -5453,7 +5523,8 @@ const myTradableDuplicatesForOffer = computed(() => {
               <div class="admin-matches-import-box">
                 <h5>Importar partidas por CSV</h5>
                 <p class="read-only-hint">
-                  Formato: mandante, visitante, data/hora ISO. Colunas 4 e 5 (gols) são opcionais.
+                  Formato: mandante, visitante, data/hora ISO. Colunas 4 e 5
+                  (gols) são opcionais.
                 </p>
                 <div class="admin-matches-import-actions">
                   <input
@@ -5467,7 +5538,11 @@ const myTradableDuplicatesForOffer = computed(() => {
                     :disabled="ui.adminMatchesImporting || ui.adminMatchSaving"
                     @click="importAdminMatchesCsv"
                   >
-                    {{ ui.adminMatchesImporting ? "Importando..." : "Importar CSV" }}
+                    {{
+                      ui.adminMatchesImporting
+                        ? "Importando..."
+                        : "Importar CSV"
+                    }}
                   </button>
                 </div>
               </div>
@@ -5475,11 +5550,17 @@ const myTradableDuplicatesForOffer = computed(() => {
               <p v-if="ui.adminMatchesLoading" class="read-only-hint">
                 Carregando partidas...
               </p>
-              <p v-if="!ui.adminMatchesLoading && ui.adminMatchesMsg" class="read-only-hint">
+              <p
+                v-if="!ui.adminMatchesLoading && ui.adminMatchesMsg"
+                class="read-only-hint"
+              >
                 {{ ui.adminMatchesMsg }}
               </p>
 
-              <div v-if="!ui.adminMatchesLoading" class="admin-users-table-wrap">
+              <div
+                v-if="!ui.adminMatchesLoading"
+                class="admin-users-table-wrap"
+              >
                 <table class="admin-users-table">
                   <thead>
                     <tr>
