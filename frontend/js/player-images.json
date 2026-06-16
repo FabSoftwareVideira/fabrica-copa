@@ -3444,10 +3444,10 @@
       "groupId": "G",
       "source": "transfermarkt",
       "sourceMethod": "transfermarkt-search+modal-trigger",
-      "transfermarktPage": "https://www.transfermarkt.com.br/david-trezeguet/profil/spieler/4146",
-      "searchPage": "https://www.transfermarkt.com.br/schnellsuche/ergebnis/schnellsuche?query=Trezeguet",
+      "transfermarktPage": "https://www.transfermarkt.com.br/trezeguet/profil/spieler/234189",
+      "searchPage": "https://www.transfermarkt.com.br/schnellsuche/ergebnis/schnellsuche?query=trezeguet",
       "error": null,
-      "imageUrl": "https://img.a.transfermarkt.technology/portrait/header/4146-1491231443.jpg?lm=1",
+      "imageUrl": "https://img.a.transfermarkt.technology/portrait/header/234189-1780929645.jpg?lm=1",
       "found": true
     },
     {
