@@ -785,10 +785,37 @@ button:disabled {
 }
 
 .prediction-match-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   text-align: center;
   color: #0f172a;
   font-size: 0.98rem;
   line-height: 1.35;
+}
+
+.prediction-team-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.prediction-team-flag-image {
+  width: 24px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.prediction-versus {
+  color: #334155;
+  font-weight: 800;
 }
 
 .prediction-score-field span {
