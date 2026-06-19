@@ -5195,13 +5195,6 @@ const myTradableDuplicatesForOffer = computed(() => {
           </p>
 
           <div v-if="!ui.predictionsLoading" class="prediction-matches-list">
-            <p
-              v-if="state.predictionMatches.length === 0"
-              class="read-only-hint prediction-matches-empty"
-            >
-              Nenhuma partida apta para receber palpite nessa janela.
-            </p>
-
             <article
               v-for="match in state.predictionMatches"
               :key="`prediction-card-${match.id}`"
