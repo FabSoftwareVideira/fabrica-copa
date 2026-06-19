@@ -5101,25 +5101,7 @@ const myTradableDuplicatesForOffer = computed(() => {
             </div>
           </div>
 
-          <p class="read-only-hint">
-            Você pode enviar apenas um palpite por jogo entre 24 horas e 1 hora antes do início da partida.
-          </p>
-
-          <p v-if="ui.predictionsLoading" class="read-only-hint">
-            Carregando partidas para palpite...
-          </p>
-          <p v-else-if="ui.predictionsMsg" class="read-only-hint">
-            {{ ui.predictionsMsg }}
-          </p>
-
           <div v-if="!ui.predictionsLoading" class="prediction-matches-list">
-            <p
-              v-if="state.predictionMatches.length === 0"
-              class="read-only-hint prediction-matches-empty"
-            >
-              Nenhuma partida apta para receber palpite nessa janela.
-            </p>
-
             <article
               v-for="match in state.predictionMatches"
               :key="`prediction-card-${match.id}`"

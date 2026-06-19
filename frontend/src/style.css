@@ -772,6 +772,13 @@ button:disabled {
 .prediction-matches-list {
   display: grid;
   gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 767px) {
+  .prediction-matches-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .prediction-match-card {
@@ -779,8 +786,8 @@ button:disabled {
   gap: 1rem;
   padding: 1rem;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.84));
+  border: 1px solid rgba(14, 116, 144, 0.18);
+  background: linear-gradient(145deg, rgba(236, 253, 245, 0.8), rgba(239, 246, 255, 0.85));
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
 }
 
@@ -798,15 +805,16 @@ button:disabled {
 
 .prediction-team-name {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .prediction-team-flag-image {
-  width: 24px;
-  height: 16px;
+  width: 46px;
+  height: 31px;
   object-fit: cover;
-  border-radius: 2px;
+  border-radius: 4px;
   border: 1px solid rgba(15, 23, 42, 0.12);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
   background: #fff;
