@@ -83,7 +83,7 @@ function createStickerCatalogService({
             id: String(sticker.id || "").trim(),
             num: Number(sticker.num || 0),
             name: String(sticker.name || "").trim(),
-            icon: String(sticker.icon || "🎟️").trim() || "🎟️",
+            icon: String(sticker.icon || "").trim() || "",
             section: String(sticker.section || (sticker.groupId ? `grupo-${sticker.groupId}` : "especial")),
             sectionName: String(sticker.sectionName || "Especial"),
             type: String(sticker.type || "custom"),

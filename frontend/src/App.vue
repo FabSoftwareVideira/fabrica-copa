@@ -1,7 +1,15 @@
 <script setup>
 import ProfileScreen from "./components/ProfileScreen.vue";
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import playerImagesData from "../js/player-images.json";
+import estudantesData from "../js/estudantes.json";
 import {
   API_BASE_ORIGIN,
   API_BASE_URL,
@@ -58,13 +66,44 @@ const PRESTIGE_BONUS_STEP = 0.25;
 const playerImageItems = Array.isArray(playerImagesData?.items)
   ? playerImagesData.items
   : [];
+const estudantesImageItems = Array.isArray(estudantesData?.items)
+  ? estudantesData.items
+  : [];
 const BURN_REPEAT_DAILY_LIMIT = 10;
+
+function normalizePlayerImageUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith("data:")) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("public/")) {
+    return withBasePath(`/${trimmed.slice(7)}`);
+  }
+  if (trimmed.startsWith("/public/")) {
+    return withBasePath(trimmed.slice(7));
+  }
+  return withBasePath(trimmed);
+}
 
 const playerImageMap = new Map(
   playerImageItems
     .filter((item) => item?.found && item?.player && item?.imageUrl)
     .map((item) => [playerImageKey(item.player, item.teamId), item]),
 );
+
+const estudantesImageMap = new Map(
+  estudantesImageItems
+    .filter((item) => item?.found && item?.player && item?.imageUrl)
+    .map((item) => [playerImageKey(item.player, item.teamId), item]),
+);
+
+// mesclar player e estudantes
+for (const [key, value] of estudantesImageMap.entries()) {
+  if (!playerImageMap.has(key)) {
+    playerImageMap.set(key, value);
+  }
+}
 
 const state = reactive({
   view: "dashboard",
@@ -246,7 +285,7 @@ const adminTools = reactive({
 const adminStickerForm = reactive({
   editingId: "",
   name: "",
-  icon: "🎟️",
+  icon: "",
   image: "",
   originalImage: "",
   imageFileName: "",
@@ -1024,6 +1063,30 @@ const publicRankingWithoutCompleted = computed(() => {
       if (userId <= 0) return true;
       return !completedIds.has(userId);
     })
+    .sort((a, b) => {
+      const byCollected = Number(b?.collected || 0) - Number(a?.collected || 0);
+      if (byCollected !== 0) return byCollected;
+
+      const byPercent = Number(b?.percent || 0) - Number(a?.percent || 0);
+      if (byPercent !== 0) return byPercent;
+
+      const aUpdatedAt = new Date(a?.updatedAt || 0).getTime();
+      const bUpdatedAt = new Date(b?.updatedAt || 0).getTime();
+      const aHasUpdatedAt = Number.isFinite(aUpdatedAt) && aUpdatedAt > 0;
+      const bHasUpdatedAt = Number.isFinite(bUpdatedAt) && bUpdatedAt > 0;
+
+      if (aHasUpdatedAt && bHasUpdatedAt && aUpdatedAt !== bUpdatedAt) {
+        return aUpdatedAt - bUpdatedAt;
+      }
+      if (aHasUpdatedAt !== bHasUpdatedAt) {
+        return aHasUpdatedAt ? -1 : 1;
+      }
+
+      return String(a?.name || "").localeCompare(
+        String(b?.name || ""),
+        "pt-BR",
+      );
+    })
     .slice(0, 10);
 });
 const filteredTradeWindows = computed(() => {
@@ -1138,6 +1201,7 @@ const albumPages = computed(() => {
     "J",
     "K",
     "L",
+    "estudantes",
   ];
 
   return [...pages.values()]
@@ -1199,7 +1263,19 @@ const albumPages = computed(() => {
       };
     })
     .filter((page) => page.stickers.length > 0)
-    .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+    .sort((a, b) => {
+      const aIndex = order.indexOf(a.key);
+      const bIndex = order.indexOf(b.key);
+      if (aIndex === -1 && bIndex === -1) {
+        return String(a.name || "").localeCompare(
+          String(b.name || ""),
+          "pt-BR",
+        );
+      }
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
 });
 
 const currentFlipPage = computed(() => {
@@ -1666,7 +1742,7 @@ function normalizeStickerForUi(raw) {
       raw?.section || (raw?.groupId ? `grupo-${raw.groupId}` : "especial"),
     sectionName:
       raw?.sectionName || (raw?.groupId ? `Grupo ${raw.groupId}` : "Especial"),
-    icon: raw?.icon || "🎟️",
+    icon: raw?.icon || "",
     type: raw?.type || "custom",
     image: raw?.image || "",
     teamId: raw?.teamId || null,
@@ -2606,22 +2682,22 @@ async function loadAdminMatches() {
     const data = await apiFetch("/matches");
     state.matches = Array.isArray(data.matches)
       ? data.matches
-        .map((match) => ({
-          ...match,
-          homeGoals:
-            match?.homeGoals == null || match?.homeGoals === ""
-              ? ""
-              : String(match.homeGoals),
-          awayGoals:
-            match?.awayGoals == null || match?.awayGoals === ""
-              ? ""
-              : String(match.awayGoals),
-        }))
-        .sort((a, b) => {
-          const aTime = new Date(a?.matchDatetime || 0).getTime() || 0;
-          const bTime = new Date(b?.matchDatetime || 0).getTime() || 0;
-          return aTime - bTime;
-        })
+          .map((match) => ({
+            ...match,
+            homeGoals:
+              match?.homeGoals == null || match?.homeGoals === ""
+                ? ""
+                : String(match.homeGoals),
+            awayGoals:
+              match?.awayGoals == null || match?.awayGoals === ""
+                ? ""
+                : String(match.awayGoals),
+          }))
+          .sort((a, b) => {
+            const aTime = new Date(a?.matchDatetime || 0).getTime() || 0;
+            const bTime = new Date(b?.matchDatetime || 0).getTime() || 0;
+            return aTime - bTime;
+          })
       : [];
   } catch (err) {
     ui.adminMatchesMsg = err.message || "Erro ao carregar partidas";
@@ -2647,7 +2723,8 @@ async function createAdminMatch() {
   }
 
   if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
-    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    ui.adminMatchesMsg =
+      "Gols devem ser números inteiros maiores ou iguais a 0.";
     return;
   }
 
@@ -2736,7 +2813,8 @@ async function saveAdminMatchGoals(match) {
   const awayGoals = parseGoalInput(match.awayGoals);
 
   if (Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) {
-    ui.adminMatchesMsg = "Gols devem ser números inteiros maiores ou iguais a 0.";
+    ui.adminMatchesMsg =
+      "Gols devem ser números inteiros maiores ou iguais a 0.";
     return;
   }
 
@@ -4163,7 +4241,9 @@ async function loadMyPredictions() {
   ui.predictionsMineMsg = "";
   try {
     const data = await apiFetch("/matches/predictions/mine");
-    state.predictionMine = Array.isArray(data.predictions) ? data.predictions : [];
+    state.predictionMine = Array.isArray(data.predictions)
+      ? data.predictions
+      : [];
   } catch (err) {
     ui.predictionsMineMsg = err.message || "Erro ao carregar seus palpites";
     state.predictionMine = [];
@@ -4190,7 +4270,8 @@ async function loadPredictionRanking() {
     state.myPredictionRankingCoins = Number(data?.me?.predictionCoins || 0);
     state.predictionRankingUpdatedAt = String(data?.generatedAt || "");
   } catch (err) {
-    ui.predictionRankingMsg = err.message || "Erro ao carregar ranking de palpiteiros";
+    ui.predictionRankingMsg =
+      err.message || "Erro ao carregar ranking de palpiteiros";
     state.predictionRanking = [];
     state.myPredictionRankingPosition = 0;
     state.myPredictionRankingCoins = 0;
@@ -4541,13 +4622,11 @@ const myTradableDuplicatesForOffer = computed(() => {
             </p>
             <ol v-else class="landing-ranking-list">
               <li
-                v-for="entry in publicRankingWithoutCompleted"
-                :key="`rank-${entry.userId || entry.position}-${entry.position}`"
+                v-for="(entry, index) in publicRankingWithoutCompleted"
+                :key="`rank-${entry.userId || entry.position}-${index + 1}`"
                 class="landing-ranking-item"
               >
-                <span class="landing-ranking-position"
-                  >#{{ entry.position }}</span
-                >
+                <span class="landing-ranking-position">#{{ index + 1 }}</span>
                 <strong class="landing-ranking-name">{{ entry.name }}</strong>
                 <span class="landing-ranking-score"
                   >{{ entry.collected }} coladas</span
@@ -5077,7 +5156,9 @@ const myTradableDuplicatesForOffer = computed(() => {
                     loading="lazy"
                     @error="onStickerPhotoError($event, item)"
                   />
-                  <span class="sticker-flag">{{ item.icon }}</span>
+                  <span v-if="item.icon" class="sticker-flag">{{
+                    item.icon
+                  }}</span>
                 </div>
                 <span class="num">#{{ item.num }}</span>
                 <strong>{{ item.name }}</strong>
@@ -5100,6 +5181,18 @@ const myTradableDuplicatesForOffer = computed(() => {
               <h2>Próximas partidas para palpite</h2>
             </div>
           </div>
+
+          <p class="read-only-hint">
+            Você pode enviar apenas um palpite por jogo entre 24 horas e 1 hora
+            antes do início da partida.
+          </p>
+
+          <p v-if="ui.predictionsLoading" class="read-only-hint">
+            Carregando partidas para palpite...
+          </p>
+          <p v-else-if="ui.predictionsMsg" class="read-only-hint">
+            {{ ui.predictionsMsg }}
+          </p>
 
           <div v-if="!ui.predictionsLoading" class="prediction-matches-list">
             <article
@@ -5176,7 +5269,6 @@ const myTradableDuplicatesForOffer = computed(() => {
             <div class="prediction-ranking-head">
               <div>
                 <span class="badge-chip">Top 5 palpiteiros</span>
-                
               </div>
               <div class="panel-head-ranking prediction-ranking-position-card">
                 <small>Sua posição</small>
@@ -5195,18 +5287,22 @@ const myTradableDuplicatesForOffer = computed(() => {
               v-else-if="topPredictionRanking.length === 0"
               class="read-only-hint"
             >
-              O ranking aparecerá assim que houver palpites com partidas resolvidas.
+              O ranking aparecerá assim que houver palpites com partidas
+              resolvidas.
             </p>
 
             <div
-              v-if="!ui.predictionRankingLoading && topPredictionRanking.length > 0"
+              v-if="
+                !ui.predictionRankingLoading && topPredictionRanking.length > 0
+              "
               class="prediction-ranking-body"
             >
               <small
                 v-if="state.predictionRankingUpdatedAt"
                 class="prediction-ranking-updated"
               >
-                Atualizado em {{ formatDateTime(state.predictionRankingUpdatedAt) }}
+                Atualizado em
+                {{ formatDateTime(state.predictionRankingUpdatedAt) }}
               </small>
               <ol class="landing-ranking-list prediction-ranking-list">
                 <li
@@ -5214,14 +5310,22 @@ const myTradableDuplicatesForOffer = computed(() => {
                   :key="`prediction-ranking-${entry.userId || entry.position}`"
                   class="landing-ranking-item prediction-ranking-item"
                 >
-                  <span class="landing-ranking-position">#{{ entry.position }}</span>
+                  <span class="landing-ranking-position"
+                    >#{{ entry.position }}</span
+                  >
                   <div class="prediction-ranking-meta">
-                    <strong class="landing-ranking-name">{{ entry.name }}</strong>
+                    <strong class="landing-ranking-name">{{
+                      entry.name
+                    }}</strong>
                     <small>
-                      {{ entry.exactHits }} exato(s), {{ entry.winnerHits }} vencedor(es), {{ entry.oneTeamGoalHits }} gol(s) de um time
+                      {{ entry.exactHits }} exato(s),
+                      {{ entry.winnerHits }} vencedor(es),
+                      {{ entry.oneTeamGoalHits }} gol(s) de um time
                     </small>
                   </div>
-                  <span class="landing-ranking-score">{{ entry.predictionCoins }}</span>
+                  <span class="landing-ranking-score">{{
+                    entry.predictionCoins
+                  }}</span>
                 </li>
               </ol>
             </div>
@@ -5281,11 +5385,16 @@ const myTradableDuplicatesForOffer = computed(() => {
                     <small>x {{ entry.match?.awayTeam || "-" }}</small>
                   </td>
                   <td>
-                    <strong>{{ entry.homeGoals }} x {{ entry.awayGoals }}</strong>
+                    <strong
+                      >{{ entry.homeGoals }} x {{ entry.awayGoals }}</strong
+                    >
                   </td>
                   <td>
                     <strong
-                      v-if="entry.match?.homeGoals != null && entry.match?.awayGoals != null"
+                      v-if="
+                        entry.match?.homeGoals != null &&
+                        entry.match?.awayGoals != null
+                      "
                     >
                       {{ entry.match.homeGoals }} x {{ entry.match.awayGoals }}
                     </strong>
@@ -5301,9 +5410,7 @@ const myTradableDuplicatesForOffer = computed(() => {
                     <small v-if="(entry.reward?.rewardCoins || 0) > 0">
                       +{{ entry.reward.rewardCoins }} moeda(s)
                     </small>
-                    <small v-if="entry.reward?.claimed">
-                      (resgatado)
-                    </small>
+                    <small v-if="entry.reward?.claimed"> (resgatado) </small>
                   </td>
                   <td>{{ formatDateTime(entry.match?.matchDatetime) }}</td>
                   <td>{{ formatDateTime(entry.createdAt) }}</td>
@@ -5649,7 +5756,8 @@ const myTradableDuplicatesForOffer = computed(() => {
               <div class="admin-matches-import-box">
                 <h5>Importar partidas por CSV</h5>
                 <p class="read-only-hint">
-                  Formato: mandante, visitante, data/hora ISO. Colunas 4 e 5 (gols) são opcionais.
+                  Formato: mandante, visitante, data/hora ISO. Colunas 4 e 5
+                  (gols) são opcionais.
                 </p>
                 <div class="admin-matches-import-actions">
                   <input
@@ -5663,7 +5771,11 @@ const myTradableDuplicatesForOffer = computed(() => {
                     :disabled="ui.adminMatchesImporting || ui.adminMatchSaving"
                     @click="importAdminMatchesCsv"
                   >
-                    {{ ui.adminMatchesImporting ? "Importando..." : "Importar CSV" }}
+                    {{
+                      ui.adminMatchesImporting
+                        ? "Importando..."
+                        : "Importar CSV"
+                    }}
                   </button>
                 </div>
               </div>
@@ -5671,17 +5783,20 @@ const myTradableDuplicatesForOffer = computed(() => {
               <p v-if="ui.adminMatchesLoading" class="read-only-hint">
                 Carregando partidas...
               </p>
-              <p v-if="!ui.adminMatchesLoading && ui.adminMatchesMsg" class="read-only-hint">
+              <p
+                v-if="!ui.adminMatchesLoading && ui.adminMatchesMsg"
+                class="read-only-hint"
+              >
                 {{ ui.adminMatchesMsg }}
               </p>
 
-              <div v-if="!ui.adminMatchesLoading" class="admin-matches-filter-bar">
+              <div
+                v-if="!ui.adminMatchesLoading"
+                class="admin-matches-filter-bar"
+              >
                 <label class="admin-matches-filter-field">
                   <span>Filtrar por data do jogo</span>
-                  <input
-                    v-model="adminTools.matchDateFilter"
-                    type="date"
-                  />
+                  <input v-model="adminTools.matchDateFilter" type="date" />
                 </label>
                 <button
                   v-if="adminTools.matchDateFilter"
@@ -5756,7 +5871,10 @@ const myTradableDuplicatesForOffer = computed(() => {
               </div>
 
               <div v-if="!ui.adminMatchesLoading" class="admin-match-card-list">
-                <p v-if="filteredAdminMatches.length === 0" class="read-only-hint">
+                <p
+                  v-if="filteredAdminMatches.length === 0"
+                  class="read-only-hint"
+                >
                   Nenhuma partida cadastrada.
                 </p>
 
@@ -5766,7 +5884,10 @@ const myTradableDuplicatesForOffer = computed(() => {
                   class="admin-match-card"
                 >
                   <div class="admin-match-card-head">
-                    <strong>#{{ match.id }} · {{ match.homeTeam }} x {{ match.awayTeam }}</strong>
+                    <strong
+                      >#{{ match.id }} · {{ match.homeTeam }} x
+                      {{ match.awayTeam }}</strong
+                    >
                     <small>{{ formatDateTime(match.matchDatetime) }}</small>
                   </div>
 
@@ -6890,7 +7011,9 @@ const myTradableDuplicatesForOffer = computed(() => {
                         loading="lazy"
                         @error="onStickerPhotoError($event, item)"
                       />
-                      <span class="sticker-flag">{{ item.icon }}</span>
+                      <span v-if="item.icon" class="sticker-flag">{{
+                        item.icon
+                      }}</span>
                     </div>
                     <strong>{{ item.name }}</strong>
                     <small>

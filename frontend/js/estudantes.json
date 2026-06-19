@@ -1,0 +1,76 @@
+{
+  "items": [
+    {
+      "player": "Arthur Teixeira",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_1.webp",
+      "found": true
+    },
+    {
+      "player": "Hurick",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_2.webp",
+      "found": true
+    },
+    {
+      "player": "Romanato",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_3.webp",
+      "found": true
+    },
+    {
+      "player": "Fuerst V",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_4.webp",
+      "found": true
+    },
+    {
+      "player": "Otávio",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_5.webp",
+      "found": true
+    },
+    {
+      "player": "Fuerst L",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_6.webp",
+      "found": true
+    },
+    {
+      "player": "Cendron",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_7.webp",
+      "found": true
+    },
+    {
+      "player": "Xavier",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_8.webp",
+      "found": true
+    }
+  ]
+}

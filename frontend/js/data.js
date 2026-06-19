@@ -5,7 +5,7 @@
 const ALBUM_DATA = {
     title: "Copa do Mundo FIFA 2026",
     subtitle: "EUA • Canadá • México",
-    totalExpected: 298,
+    totalExpected: 306,
 
     // Seção de figurinhas especiais
     special: {
@@ -289,6 +289,16 @@ const ALBUM_DATA = {
                 {
                     id: "nzl", name: "Nova Zelândia", flag: "🇳🇿", abbr: "NZL",
                     players: ["Chris Wood", "Liberato Cacace", "Sarpreet Singh", "Joe Bell", "Marko Stamenic", "Matthew Garbett", "Ben Waine", "Tyler Bindon", "Nando Pijnaker", "Alex Paulsen"]
+                }
+            ]
+        },
+        {
+            id: "estudantes", name: "Estudantes", color: "#50C878",
+            startNum: 323,
+            teams: [
+                {
+                    id: "info", name: "INFO", flag: "", abbr: "INFO",
+                    players: ["Arthur Teixeira", "Hurick", "Romanato", "Fuerst V", "Otávio", "Fuerst L", "Cendron", "Xavier"]
                 }
             ]
         }
