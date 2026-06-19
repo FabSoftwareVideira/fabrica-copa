@@ -382,6 +382,100 @@ const adminTeamOptions = computed(() => {
     return aName.localeCompare(bName, "pt-BR");
   });
 });
+
+function normalizeTeamNameKey(name) {
+  return String(name || "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const TEAM_NAME_TO_ISO2 = {
+  "africa do sul": "za",
+  "alemanha": "de",
+  "arabia saudita": "sa",
+  "argelia": "dz",
+  "argentina": "ar",
+  "australia": "au",
+  "austria": "at",
+  "belgica": "be",
+  "brasil": "br",
+  "canada": "ca",
+  "colombia": "co",
+  "coreia do sul": "kr",
+  "costa do marfim": "ci",
+  "croacia": "hr",
+  "dinamarca": "dk",
+  "egito": "eg",
+  "equador": "ec",
+  "escocia": "gb",
+  "espanha": "es",
+  "estados unidos": "us",
+  "eua": "us",
+  "franca": "fr",
+  "gana": "gh",
+  "haiti": "ht",
+  "holanda": "nl",
+  "inglaterra": "gb",
+  "ira": "ir",
+  "iraque": "iq",
+  "italia": "it",
+  "jamaica": "jm",
+  "japao": "jp",
+  "jordania": "jo",
+  "marrocos": "ma",
+  "mexico": "mx",
+  "nigeria": "ng",
+  "nova zelandia": "nz",
+  "pais de gales": "gb",
+  "paises baixos": "nl",
+  "panama": "pa",
+  "peru": "pe",
+  "polonia": "pl",
+  "portugal": "pt",
+  "romenia": "ro",
+  "servia": "rs",
+  "senegal": "sn",
+  "suica": "ch",
+  "turquia": "tr",
+  "uruguai": "uy",
+  "uzbequistao": "uz",
+  "venezuela": "ve",
+};
+
+const teamCodeByName = computed(() => {
+  const map = new Map(Object.entries(TEAM_NAME_TO_ISO2));
+  for (const item of stickers) {
+    if (!item?.teamName || !item?.teamId) continue;
+    const key = normalizeTeamNameKey(item.teamName);
+    if (!key || map.has(key)) continue;
+    const code = String(TEAM_IMAGE_CODES[item.teamId] || "").toLowerCase();
+    if (!code || code.includes("-")) continue;
+    map.set(key, code);
+  }
+  return map;
+});
+
+function flagCdnSrcByCode(code) {
+  const safeCode = String(code || "").toLowerCase().trim();
+  return safeCode ? `https://flagcdn.com/w40/${safeCode}.png` : "";
+}
+
+function predictionTeamFlagSrc(teamName) {
+  const teamKey = normalizeTeamNameKey(teamName);
+  const code = teamCodeByName.value.get(teamKey);
+  if (code) return flagCdnSrcByCode(code);
+  return flagCdnSrcByCode("un");
+}
+
+function onPredictionTeamImageError(event) {
+  const target = event?.target;
+  if (!target || target.dataset.fallbackApplied === "1") return;
+  target.dataset.fallbackApplied = "1";
+  target.src = flagCdnSrcByCode("un");
+}
+
 const hasNewStickerAlerts = computed(
   () => Number(state.newStickersUnread || 0) > 0,
 );
@@ -5114,7 +5208,29 @@ const myTradableDuplicatesForOffer = computed(() => {
               class="prediction-match-card"
             >
               <strong class="prediction-match-title">
-                {{ match.homeTeam }} x {{ match.awayTeam }}
+                <span class="prediction-team-name">
+                  <img
+                    class="prediction-team-flag-image"
+                    :src="predictionTeamFlagSrc(match.homeTeam)"
+                    :alt="`Bandeira ${match.homeTeam}`"
+                    loading="lazy"
+                    decoding="async"
+                    @error="onPredictionTeamImageError"
+                  />
+                  <span>{{ match.homeTeam }}</span>
+                </span>
+                <span class="prediction-versus">x</span>
+                <span class="prediction-team-name">
+                  <img
+                    class="prediction-team-flag-image"
+                    :src="predictionTeamFlagSrc(match.awayTeam)"
+                    :alt="`Bandeira ${match.awayTeam}`"
+                    loading="lazy"
+                    decoding="async"
+                    @error="onPredictionTeamImageError"
+                  />
+                  <span>{{ match.awayTeam }}</span>
+                </span>
               </strong>
 
               <div class="prediction-match-score-row">
