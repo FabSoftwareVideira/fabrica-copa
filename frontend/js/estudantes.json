@@ -71,6 +71,24 @@
       "source": "local",
       "imageUrl": "/alunos/info_8.webp",
       "found": true
+    },
+    {
+      "player": "Maria Carelli",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_9.webp",
+      "found": true
+    },
+    {
+      "player": "Mikaela Duarte",
+      "teamId": "info",
+      "teamName": "INFO",
+      "groupId": "estudantes",
+      "source": "local",
+      "imageUrl": "/alunos/info_10.webp",
+      "found": true
     }
   ]
 }

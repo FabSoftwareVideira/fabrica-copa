@@ -298,7 +298,7 @@ const ALBUM_DATA = {
             teams: [
                 {
                     id: "info", name: "INFO", flag: "", abbr: "INFO",
-                    players: ["Arthur Teixeira", "Hurick", "Romanato", "Fuerst V", "Otávio", "Fuerst L", "Cendron", "Xavier"]
+                    players: ["Arthur Teixeira", "Hurick", "Romanato", "Fuerst V", "Otávio", "Fuerst L", "Cendron", "Xavier", "Maria Carelli", "Mikaela Duarte"]
                 }
             ]
         }
