@@ -769,6 +769,18 @@ button:disabled {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+.prediction-ranking-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.prediction-ranking-pagination span {
+  font-size: 0.8rem;
+  color: #334155;
+}
+
 .prediction-matches-list {
   display: grid;
   gap: 0.8rem;
@@ -5543,6 +5555,15 @@ button:disabled {
 
   .prediction-ranking-item {
     grid-template-columns: auto 1fr;
+  }
+
+  .prediction-ranking-pagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .prediction-ranking-pagination span {
+    text-align: center;
   }
 
   .prediction-ranking-item .landing-ranking-score {

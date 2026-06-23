@@ -53,7 +53,7 @@ services:
     ports:
       - "8025:8025" # Interface web
       - "1025:1025" # SMTP
-    restart: always
+    restart: unless-stopped
     networks:
       - album-network
 
@@ -84,7 +84,7 @@ services:
     init: true
     ports:
       - "5173:5173"
-    restart: always
+    restart: unless-stopped
     networks:
       - album-network
 

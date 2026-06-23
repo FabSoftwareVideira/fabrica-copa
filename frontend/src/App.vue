@@ -159,6 +159,7 @@ const state = reactive({
   completedAuditItems: [],
   completedAuditSummary: { totalRows: 0, withCompletedAt: 0 },
   completedAuditMigration: null,
+  predictionAuditItems: [],
   accessAuditItems: [],
   myRankingPosition: 0,
   myPredictionRankingPosition: 0,
@@ -227,6 +228,8 @@ const ui = reactive({
   adminCouponsMsg: "",
   adminAuditLoading: false,
   adminAuditMsg: "",
+  adminPredictionAuditLoading: false,
+  adminPredictionAuditMsg: "",
   adminAccessAuditLoading: false,
   adminAccessAuditMsg: "",
   adminMatchesLoading: false,
@@ -269,6 +272,13 @@ const adminTools = reactive({
   couponPage: 1,
   couponPageSize: 8,
   matchDateFilter: "",
+  predictionAuditSearch: "",
+  predictionAuditResolvedFilter: "all",
+  predictionAuditRewardFilter: "all",
+  predictionAuditPage: 1,
+  predictionAuditPageSize: 10,
+  predictionAuditSortBy: "createdAt",
+  predictionAuditSortDir: "desc",
   accessAuditSearch: "",
   accessAuditSuccessFilter: "all",
   accessAuditStatusFilter: "all",
@@ -340,6 +350,7 @@ const adminSubTabs = computed(() => {
   if (isAdmin.value) {
     tabs.push({ key: "trade-windows", label: "Transferências" });
     tabs.push({ key: "users", label: "Usuários" });
+    tabs.push({ key: "prediction-audit", label: "Auditoria palpites" });
     tabs.push({ key: "ranking-audit", label: "Auditoria ranking" });
     tabs.push({ key: "access-audit", label: "Auditoria acessos" });
   }
@@ -356,6 +367,9 @@ function selectAdminTab(tab) {
   ui.adminTab = allowedTabs.has(tab) ? tab : defaultAdminTab();
   if (ui.adminTab === "access-audit" && isAdmin.value) {
     loadAdminAccessAudit();
+  }
+  if (ui.adminTab === "prediction-audit" && isAdmin.value) {
+    loadAdminPredictionAudit();
   }
   if (ui.adminTab === "matches" && isAdmin.value) {
     loadAdminMatches();
@@ -682,6 +696,107 @@ const filteredAdminMatches = computed(() => {
     return parsed.toISOString().slice(0, 10) === dateFilter;
   });
 });
+const filteredPredictionAuditItems = computed(() => {
+  const query = String(adminTools.predictionAuditSearch || "")
+    .trim()
+    .toLowerCase();
+  const resolvedFilter = String(
+    adminTools.predictionAuditResolvedFilter || "all",
+  );
+  const rewardFilter = String(adminTools.predictionAuditRewardFilter || "all");
+
+  return state.predictionAuditItems.filter((entry) => {
+    const isResolved = Boolean(entry?.reward?.resolved);
+    if (resolvedFilter === "resolved" && !isResolved) return false;
+    if (resolvedFilter === "pending" && isResolved) return false;
+
+    const badgeKey = String(entry?.reward?.badgeKey || "pending");
+    if (rewardFilter !== "all" && rewardFilter !== badgeKey) return false;
+
+    if (!query) return true;
+    const actorName = String(entry?.actor?.name || "").toLowerCase();
+    const actorEmail = String(entry?.actor?.email || "").toLowerCase();
+    const homeTeam = String(entry?.match?.homeTeam || "").toLowerCase();
+    const awayTeam = String(entry?.match?.awayTeam || "").toLowerCase();
+
+    return (
+      actorName.includes(query) ||
+      actorEmail.includes(query) ||
+      homeTeam.includes(query) ||
+      awayTeam.includes(query)
+    );
+  });
+});
+const predictionAuditSortedItems = computed(() => {
+  const list = [...filteredPredictionAuditItems.value];
+  const dir = adminTools.predictionAuditSortDir === "asc" ? 1 : -1;
+  const sortBy = String(adminTools.predictionAuditSortBy || "createdAt");
+
+  list.sort((a, b) => {
+    let aVal = "";
+    let bVal = "";
+
+    if (sortBy === "user") {
+      aVal = String(a?.actor?.name || "").toLowerCase();
+      bVal = String(b?.actor?.name || "").toLowerCase();
+    } else if (sortBy === "match") {
+      aVal = `${String(a?.match?.homeTeam || "").toLowerCase()}|${String(a?.match?.awayTeam || "").toLowerCase()}`;
+      bVal = `${String(b?.match?.homeTeam || "").toLowerCase()}|${String(b?.match?.awayTeam || "").toLowerCase()}`;
+    } else if (sortBy === "reward") {
+      aVal = String(a?.reward?.badgeKey || "pending").toLowerCase();
+      bVal = String(b?.reward?.badgeKey || "pending").toLowerCase();
+    } else if (sortBy === "coins") {
+      aVal = Number(a?.reward?.rewardCoins || 0);
+      bVal = Number(b?.reward?.rewardCoins || 0);
+    } else if (sortBy === "resolved") {
+      aVal = a?.reward?.resolved ? 1 : 0;
+      bVal = b?.reward?.resolved ? 1 : 0;
+    } else {
+      aVal = new Date(a?.createdAt || 0).getTime() || 0;
+      bVal = new Date(b?.createdAt || 0).getTime() || 0;
+    }
+
+    if (aVal < bVal) return -1 * dir;
+    if (aVal > bVal) return 1 * dir;
+    return 0;
+  });
+
+  return list;
+});
+const predictionAuditPageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil(
+      predictionAuditSortedItems.value.length /
+        Number(adminTools.predictionAuditPageSize || 10),
+    ),
+  ),
+);
+const predictionAuditSafePage = computed(() =>
+  Math.min(
+    Math.max(1, Number(adminTools.predictionAuditPage || 1)),
+    predictionAuditPageCount.value,
+  ),
+);
+const predictionAuditPagedItems = computed(() => {
+  const pageSize = Number(adminTools.predictionAuditPageSize || 10);
+  const start = (predictionAuditSafePage.value - 1) * pageSize;
+  return predictionAuditSortedItems.value.slice(start, start + pageSize);
+});
+const predictionAuditPageFrom = computed(() => {
+  if (!predictionAuditSortedItems.value.length) return 0;
+  return (
+    (predictionAuditSafePage.value - 1) *
+      Number(adminTools.predictionAuditPageSize || 10) +
+    1
+  );
+});
+const predictionAuditPageTo = computed(() =>
+  Math.min(
+    predictionAuditSafePage.value * Number(adminTools.predictionAuditPageSize || 10),
+    predictionAuditSortedItems.value.length,
+  ),
+);
 const filteredAccessAuditItems = computed(() => {
   const query = String(adminTools.accessAuditSearch || "")
     .trim()
@@ -998,10 +1113,68 @@ const myPredictionRankingDisplay = computed(() => {
   const position = Number(state.myPredictionRankingPosition || 0);
   return position > 0 ? `#${position}` : "-";
 });
-const topPredictionRanking = computed(() => {
+const predictionRankingPage = ref(1);
+const predictionRankingPageSize = 5;
+const fullPredictionRanking = computed(() => {
   if (!Array.isArray(state.predictionRanking)) return [];
-  return state.predictionRanking.slice(0, 5);
+  return state.predictionRanking;
 });
+const predictionRankingPageCount = computed(() =>
+  Math.max(
+    1,
+    Math.ceil(fullPredictionRanking.value.length / predictionRankingPageSize),
+  ),
+);
+const predictionRankingSafePage = computed(() =>
+  Math.min(
+    Math.max(1, Number(predictionRankingPage.value || 1)),
+    predictionRankingPageCount.value,
+  ),
+);
+const predictionRankingPaged = computed(() => {
+  const start = (predictionRankingSafePage.value - 1) * predictionRankingPageSize;
+  return fullPredictionRanking.value.slice(
+    start,
+    start + predictionRankingPageSize,
+  );
+});
+const predictionRankingPageFrom = computed(() => {
+  if (!fullPredictionRanking.value.length) return 0;
+  return (predictionRankingSafePage.value - 1) * predictionRankingPageSize + 1;
+});
+const predictionRankingPageTo = computed(() =>
+  Math.min(
+    predictionRankingSafePage.value * predictionRankingPageSize,
+    fullPredictionRanking.value.length,
+  )
+);
+
+function setPredictionRankingPage(nextPage) {
+  const n = Number(nextPage || 1);
+  predictionRankingPage.value = Math.min(
+    Math.max(1, n),
+    Math.max(1, predictionRankingPageCount.value),
+  );
+}
+
+watch(
+  () => fullPredictionRanking.value.length,
+  () => {
+    predictionRankingPage.value = Math.min(
+      Math.max(1, predictionRankingPage.value),
+      predictionRankingPageCount.value,
+    );
+  }
+);
+
+watch(
+  () => state.view,
+  (nextView) => {
+    if (nextView === "predictions") {
+      predictionRankingPage.value = 1;
+    }
+  }
+);
 
 function hasCompletedAnyCycle(entry) {
   const completedAt = String(entry?.completedAt || "").trim();
@@ -1928,6 +2101,7 @@ function clearAuth() {
   state.completedAuditItems = [];
   state.completedAuditSummary = { totalRows: 0, withCompletedAt: 0 };
   state.completedAuditMigration = null;
+  state.predictionAuditItems = [];
   state.accessAuditItems = [];
   state.matches = [];
   state.recentCreatedStickers = [];
@@ -1981,6 +2155,13 @@ function clearAuth() {
   adminTools.couponPage = 1;
   adminTools.couponPageSize = 8;
   adminTools.matchDateFilter = "";
+  adminTools.predictionAuditSearch = "";
+  adminTools.predictionAuditResolvedFilter = "all";
+  adminTools.predictionAuditRewardFilter = "all";
+  adminTools.predictionAuditPage = 1;
+  adminTools.predictionAuditPageSize = 10;
+  adminTools.predictionAuditSortBy = "createdAt";
+  adminTools.predictionAuditSortDir = "desc";
   adminTools.accessAuditSearch = "";
   adminTools.accessAuditSuccessFilter = "all";
   adminTools.accessAuditStatusFilter = "all";
@@ -1999,7 +2180,9 @@ function clearAuth() {
   ui.stickerCreateMsg = "";
   ui.recentStickersMsg = "";
   ui.adminCouponsMsg = "";
+  ui.adminPredictionAuditMsg = "";
   ui.adminAccessAuditMsg = "";
+  ui.adminPredictionAuditLoading = false;
   ui.adminMatchesMsg = "";
   ui.adminMatchesLoading = false;
   ui.adminMatchSaving = false;
@@ -2883,6 +3066,63 @@ async function loadAdminCompletedAudit() {
   } finally {
     ui.adminAuditLoading = false;
   }
+}
+
+async function loadAdminPredictionAudit() {
+  if (!isAuthenticated.value || !isAdmin.value) {
+    state.predictionAuditItems = [];
+    return;
+  }
+
+  ui.adminPredictionAuditLoading = true;
+  ui.adminPredictionAuditMsg = "";
+  try {
+    const data = await apiFetch("/admin/matches/predictions?limit=3000");
+    state.predictionAuditItems = Array.isArray(data?.items) ? data.items : [];
+    adminTools.predictionAuditPage = 1;
+  } catch (err) {
+    ui.adminPredictionAuditMsg =
+      err.message || "Erro ao carregar auditoria de palpites";
+    state.predictionAuditItems = [];
+  } finally {
+    ui.adminPredictionAuditLoading = false;
+  }
+}
+
+function clearPredictionAuditFilters() {
+  adminTools.predictionAuditSearch = "";
+  adminTools.predictionAuditResolvedFilter = "all";
+  adminTools.predictionAuditRewardFilter = "all";
+  adminTools.predictionAuditSortBy = "createdAt";
+  adminTools.predictionAuditSortDir = "desc";
+  adminTools.predictionAuditPage = 1;
+}
+
+function setPredictionAuditSort(sortBy) {
+  const allowed = ["createdAt", "user", "match", "reward", "coins", "resolved"];
+  if (!allowed.includes(sortBy)) return;
+  if (adminTools.predictionAuditSortBy === sortBy) {
+    adminTools.predictionAuditSortDir =
+      adminTools.predictionAuditSortDir === "asc" ? "desc" : "asc";
+  } else {
+    adminTools.predictionAuditSortBy = sortBy;
+    adminTools.predictionAuditSortDir = sortBy === "createdAt" ? "desc" : "asc";
+  }
+  adminTools.predictionAuditPage = 1;
+}
+
+function setPredictionAuditPage(nextPage) {
+  const n = Number(nextPage || 1);
+  adminTools.predictionAuditPage = Math.min(
+    Math.max(1, n),
+    Math.max(1, predictionAuditPageCount.value),
+  );
+}
+
+function setPredictionAuditPageSize(nextSize) {
+  const n = Number(nextSize || 10);
+  adminTools.predictionAuditPageSize = [5, 10, 20, 50].includes(n) ? n : 10;
+  adminTools.predictionAuditPage = 1;
 }
 
 function normalizeDateTimeFilterInput(value) {
@@ -3907,6 +4147,7 @@ function handleAdminRefresh() {
     loadAdminMatches();
     loadRecentCreatedStickers();
     loadAllTradeWindows();
+    loadAdminPredictionAudit();
     loadAdminCompletedAudit();
     loadAdminAccessAudit();
   }
@@ -4264,11 +4505,12 @@ async function loadPredictionRanking() {
   ui.predictionRankingLoading = true;
   ui.predictionRankingMsg = "";
   try {
-    const data = await apiFetch("/matches/predictions/ranking?limit=5");
+    const data = await apiFetch("/matches/predictions/ranking?limit=5000");
     state.predictionRanking = Array.isArray(data.ranking) ? data.ranking : [];
     state.myPredictionRankingPosition = Number(data?.me?.position || 0);
     state.myPredictionRankingCoins = Number(data?.me?.predictionCoins || 0);
     state.predictionRankingUpdatedAt = String(data?.generatedAt || "");
+    predictionRankingPage.value = 1;
   } catch (err) {
     ui.predictionRankingMsg =
       err.message || "Erro ao carregar ranking de palpiteiros";
@@ -5268,7 +5510,7 @@ const myTradableDuplicatesForOffer = computed(() => {
           <article class="prediction-ranking-card">
             <div class="prediction-ranking-head">
               <div>
-                <span class="badge-chip">Top 5 palpiteiros</span>
+                <span class="badge-chip">Ranking de palpiteiros</span>
               </div>
               <div class="panel-head-ranking prediction-ranking-position-card">
                 <small>Sua posição</small>
@@ -5284,7 +5526,7 @@ const myTradableDuplicatesForOffer = computed(() => {
               {{ ui.predictionRankingMsg }}
             </p>
             <p
-              v-else-if="topPredictionRanking.length === 0"
+              v-else-if="fullPredictionRanking.length === 0"
               class="read-only-hint"
             >
               O ranking aparecerá assim que houver palpites com partidas
@@ -5293,7 +5535,7 @@ const myTradableDuplicatesForOffer = computed(() => {
 
             <div
               v-if="
-                !ui.predictionRankingLoading && topPredictionRanking.length > 0
+                !ui.predictionRankingLoading && fullPredictionRanking.length > 0
               "
               class="prediction-ranking-body"
             >
@@ -5304,9 +5546,13 @@ const myTradableDuplicatesForOffer = computed(() => {
                 Atualizado em
                 {{ formatDateTime(state.predictionRankingUpdatedAt) }}
               </small>
+              <small class="prediction-ranking-updated">
+                Exibindo {{ predictionRankingPageFrom }}-{{ predictionRankingPageTo }}
+                de {{ fullPredictionRanking.length }}
+              </small>
               <ol class="landing-ranking-list prediction-ranking-list">
                 <li
-                  v-for="entry in topPredictionRanking"
+                  v-for="entry in predictionRankingPaged"
                   :key="`prediction-ranking-${entry.userId || entry.position}`"
                   class="landing-ranking-item prediction-ranking-item"
                 >
@@ -5328,6 +5574,30 @@ const myTradableDuplicatesForOffer = computed(() => {
                   }}</span>
                 </li>
               </ol>
+
+              <div
+                v-if="predictionRankingPageCount > 1"
+                class="prediction-ranking-pagination"
+              >
+                <button
+                  type="button"
+                  :disabled="predictionRankingSafePage <= 1"
+                  @click="setPredictionRankingPage(predictionRankingSafePage - 1)"
+                >
+                  Anterior
+                </button>
+                <span>
+                  Página {{ predictionRankingSafePage }} de
+                  {{ predictionRankingPageCount }}
+                </span>
+                <button
+                  type="button"
+                  :disabled="predictionRankingSafePage >= predictionRankingPageCount"
+                  @click="setPredictionRankingPage(predictionRankingSafePage + 1)"
+                >
+                  Próxima
+                </button>
+              </div>
             </div>
           </article>
 
@@ -6520,6 +6790,191 @@ const myTradableDuplicatesForOffer = computed(() => {
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            <div
+              v-if="ui.adminTab === 'prediction-audit' && isAdmin"
+              class="manage-users-box"
+            >
+              <h4>Auditoria de palpites</h4>
+
+              <div class="manage-users-toolbar">
+                <input
+                  v-model.trim="adminTools.predictionAuditSearch"
+                  type="search"
+                  placeholder="Buscar por usuário, email ou partida"
+                  @input="setPredictionAuditPage(1)"
+                />
+                <select
+                  v-model="adminTools.predictionAuditResolvedFilter"
+                  @change="setPredictionAuditPage(1)"
+                >
+                  <option value="all">Status: todos</option>
+                  <option value="resolved">Status: resolvidos</option>
+                  <option value="pending">Status: pendentes</option>
+                </select>
+                <select
+                  v-model="adminTools.predictionAuditRewardFilter"
+                  @change="setPredictionAuditPage(1)"
+                >
+                  <option value="all">Premiação: todas</option>
+                  <option value="exact">Cravou placar</option>
+                  <option value="winner">Acertou vencedor</option>
+                  <option value="one-team-goals">Acertou gols de um time</option>
+                  <option value="miss">Sem premiação</option>
+                  <option value="pending">Em processamento</option>
+                </select>
+                <button type="button" @click="clearPredictionAuditFilters()">
+                  Limpar filtros
+                </button>
+              </div>
+
+              <p v-if="ui.adminPredictionAuditLoading" class="read-only-hint">
+                Carregando auditoria de palpites...
+              </p>
+              <p v-else-if="ui.adminPredictionAuditMsg" class="read-only-hint">
+                {{ ui.adminPredictionAuditMsg }}
+              </p>
+
+              <div v-else class="admin-users-table-wrap admin-audit-table-wrap">
+                <table class="admin-users-table">
+                  <thead>
+                    <tr>
+                      <th>
+                        <button type="button" @click="setPredictionAuditSort('createdAt')">
+                          Data
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setPredictionAuditSort('user')">
+                          Usuário
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setPredictionAuditSort('match')">
+                          Partida
+                        </button>
+                      </th>
+                      <th>Palpite</th>
+                      <th>Resultado</th>
+                      <th>
+                        <button type="button" @click="setPredictionAuditSort('reward')">
+                          Premiação
+                        </button>
+                      </th>
+                      <th>
+                        <button type="button" @click="setPredictionAuditSort('coins')">
+                          Moedas
+                        </button>
+                      </th>
+                      <th>
+                        <button
+                          type="button"
+                          @click="setPredictionAuditSort('resolved')"
+                        >
+                          Resolvido
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="predictionAuditPagedItems.length === 0">
+                      <td colspan="8">Nenhum palpite encontrado.</td>
+                    </tr>
+                    <tr
+                      v-for="entry in predictionAuditPagedItems"
+                      :key="`prediction-audit-${entry.id}`"
+                    >
+                      <td>
+                        <small>{{ formatDateTime(entry.createdAt) }}</small>
+                      </td>
+                      <td>
+                        <strong>{{ entry.actor?.name || '-' }}</strong>
+                        <small>{{ entry.actor?.email || '-' }}</small>
+                      </td>
+                      <td>
+                        <strong>
+                          {{ entry.match?.homeTeam || '-' }} x
+                          {{ entry.match?.awayTeam || '-' }}
+                        </strong>
+                        <small>{{ formatDateTime(entry.match?.matchDatetime) }}</small>
+                      </td>
+                      <td>
+                        <strong>
+                          {{ entry.prediction?.homeGoals ?? '-' }} x
+                          {{ entry.prediction?.awayGoals ?? '-' }}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong v-if="entry.reward?.resolved">
+                          {{ entry.match?.homeGoals ?? '-' }} x
+                          {{ entry.match?.awayGoals ?? '-' }}
+                        </strong>
+                        <small v-else>-</small>
+                      </td>
+                      <td>
+                        <span
+                          class="table-pill"
+                          :class="entry.reward?.resolved ? 'active' : 'blocked'"
+                        >
+                          {{ entry.reward?.badgeLabel || '-' }}
+                        </span>
+                      </td>
+                      <td>{{ Number(entry.reward?.rewardCoins || 0) }}</td>
+                      <td>
+                        <span
+                          class="table-pill"
+                          :class="entry.reward?.resolved ? 'active' : 'blocked'"
+                        >
+                          {{ entry.reward?.resolved ? 'sim' : 'não' }}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="admin-pagination">
+                <div>
+                  <small>
+                    Exibindo {{ predictionAuditPageFrom }}-{{ predictionAuditPageTo }}
+                    de
+                    {{ predictionAuditSortedItems.length }}
+                  </small>
+                  <label class="page-size-label">
+                    Itens por página
+                    <select
+                      :value="adminTools.predictionAuditPageSize"
+                      @change="setPredictionAuditPageSize($event.target.value)"
+                    >
+                      <option :value="5">5</option>
+                      <option :value="10">10</option>
+                      <option :value="20">20</option>
+                      <option :value="50">50</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="admin-pagination-actions">
+                  <button
+                    type="button"
+                    :disabled="predictionAuditSafePage <= 1"
+                    @click="setPredictionAuditPage(predictionAuditSafePage - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <span>
+                    Página {{ predictionAuditSafePage }} de
+                    {{ predictionAuditPageCount }}
+                  </span>
+                  <button
+                    type="button"
+                    :disabled="predictionAuditSafePage >= predictionAuditPageCount"
+                    @click="setPredictionAuditPage(predictionAuditSafePage + 1)"
+                  >
+                    Próxima
+                  </button>
+                </div>
               </div>
             </div>
 

@@ -141,6 +141,14 @@ function parseScore(rawValue) {
     return n;
 }
 
+function parseBooleanFilter(rawValue) {
+    if (rawValue === true || rawValue === false) return rawValue;
+    const value = String(rawValue || "").trim().toLowerCase();
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return null;
+}
+
 function matchOutcome(homeGoals, awayGoals) {
     if (homeGoals === awayGoals) return "draw";
     return homeGoals > awayGoals ? "home" : "away";
@@ -468,10 +476,10 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
 
     router.get("/matches/predictions/ranking", authMiddleware, async (req, res) => {
         try {
-            const requestedLimit = Number(req.query?.limit || 5);
+            const requestedLimit = Number(req.query?.limit || 200);
             const limit = Number.isFinite(requestedLimit)
-                ? Math.max(1, Math.min(20, Math.floor(requestedLimit)))
-                : 5;
+                ? Math.max(1, Math.min(5000, Math.floor(requestedLimit)))
+                : 200;
             const rows = await all(
                 `SELECT u.id AS user_id,
                         u.name AS user_name,
@@ -547,6 +555,95 @@ function createMatchRoutes({ authMiddleware, requireRoles, ROLE_ADMIN, all, get,
             });
         } catch (err) {
             return res.status(500).json({ error: "Erro ao resgatar premio", detail: err.message });
+        }
+    });
+
+    router.get("/admin/matches/predictions", authMiddleware, requireRoles(ROLE_ADMIN), async (req, res) => {
+        try {
+            const requestedLimit = Number(req.query?.limit || 2000);
+            const limit = Number.isFinite(requestedLimit)
+                ? Math.max(1, Math.min(5000, Math.floor(requestedLimit)))
+                : 2000;
+            const resolvedFilter = parseBooleanFilter(req.query?.resolved);
+
+            const rows = await all(
+                `SELECT mp.id,
+                        mp.user_id,
+                        mp.match_id,
+                        mp.home_goals AS predicted_home_goals,
+                        mp.away_goals AS predicted_away_goals,
+                        mp.created_at,
+                        mp.reward_claimed_at,
+                        mp.reward_claimed_coins,
+                        u.name AS user_name,
+                        u.email AS user_email,
+                        m.home_team,
+                        m.away_team,
+                        m.match_datetime,
+                        m.home_goals AS actual_home_goals,
+                        m.away_goals AS actual_away_goals
+                 FROM match_predictions mp
+                 JOIN users u ON u.id = mp.user_id
+                 JOIN matches m ON m.id = mp.match_id
+                 ORDER BY mp.created_at DESC, mp.id DESC
+                 LIMIT ?`,
+                [limit],
+            );
+
+            const items = [];
+            for (const row of rows) {
+                const actualHomeGoals = row.actual_home_goals == null ? null : Number(row.actual_home_goals);
+                const actualAwayGoals = row.actual_away_goals == null ? null : Number(row.actual_away_goals);
+                const reward = evaluatePredictionReward({
+                    predictedHomeGoals: Number(row.predicted_home_goals),
+                    predictedAwayGoals: Number(row.predicted_away_goals),
+                    actualHomeGoals,
+                    actualAwayGoals,
+                });
+
+                if (resolvedFilter !== null && reward.resolved !== resolvedFilter) {
+                    continue;
+                }
+
+                const rewardClaimedAt = row.reward_claimed_at || null;
+                items.push({
+                    id: Number(row.id || 0),
+                    createdAt: row.created_at,
+                    actor: {
+                        userId: Number(row.user_id || 0),
+                        name: String(row.user_name || "Usuário"),
+                        email: String(row.user_email || ""),
+                    },
+                    match: {
+                        id: Number(row.match_id || 0),
+                        homeTeam: String(row.home_team || ""),
+                        awayTeam: String(row.away_team || ""),
+                        matchDatetime: row.match_datetime,
+                        homeGoals: actualHomeGoals,
+                        awayGoals: actualAwayGoals,
+                    },
+                    prediction: {
+                        homeGoals: Number(row.predicted_home_goals),
+                        awayGoals: Number(row.predicted_away_goals),
+                    },
+                    reward: {
+                        badgeKey: reward.badgeKey,
+                        badgeLabel: reward.badgeLabel,
+                        rewardCoins: reward.rewardCoins,
+                        resolved: reward.resolved,
+                        claimed: Boolean(rewardClaimedAt),
+                        claimedAt: rewardClaimedAt,
+                        claimedCoins: Number(row.reward_claimed_coins || 0),
+                    },
+                });
+            }
+
+            return res.json({
+                items,
+                total: items.length,
+            });
+        } catch (err) {
+            return res.status(500).json({ error: "Erro ao carregar auditoria de palpites", detail: err.message });
         }
     });
 

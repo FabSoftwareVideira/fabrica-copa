@@ -149,6 +149,7 @@ function createAuditLogService({ run, all, nowSqlTimestamp, sanitizeMeta, extrac
         ["GET /api/admin/users", "admin.user.list"],
         ["GET /api/admin/ranking/completed-audit", "admin.ranking.completedAudit.read"],
         ["GET /api/admin/audit-logs", "admin.audit.read"],
+        ["GET /api/admin/matches/predictions", "admin.prediction.audit.read"],
         ["PUT /api/admin/users/:id", "admin.user.update"],
         ["PUT /api/admin/users/:id/password", "admin.user.password.update"],
         ["POST /api/admin/stickers", "admin.sticker.create"],
